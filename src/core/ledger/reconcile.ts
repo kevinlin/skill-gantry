@@ -93,7 +93,7 @@ export function reconcile(
       `select fingerprint, state from issues
         where skill_id = ? and state in ('open', 'acknowledged')`,
     )
-    .all(skillId) as CandidateRow[]
+    .all(skillId) as unknown as CandidateRow[]
 
   for (const candidate of candidates) {
     const detectors = db
