@@ -15,7 +15,7 @@ pnpm build              # tsc -p tsconfig.json
 pnpm lint               # eslint src tests (also enforces the import boundary)
 pnpm test               # vitest run — offline, excludes install + acceptance
 pnpm acceptance         # SG_ACCEPTANCE=1, drives the whole CLI
-pnpm test:integration   # adds the real-network install driver test
+pnpm test:integration   # SG_INTEGRATION=1 + SG_ACCEPTANCE=1: real-network installs, then acceptance
 pnpm check              # lint && build && test && acceptance — run before committing
 ```
 
@@ -30,7 +30,12 @@ pnpm vitest run tests/core/reconcile.test.ts -t 'closes only when every detector
 
 Adapter fixtures are regenerated, not hand-edited: `scripts/capture-fixtures.sh <skills-repo>`. It refuses to run unless the installed tool matches the pinned version, so fixtures and pins cannot drift apart.
 
-The CLI itself has two entry paths: `skillgantry run <skill> [--json] [--yes]` is the headless one, and `skillgantry [--concurrency <n>]` with no subcommand falls through to commander's root action and launches the Ink work screen.
+The CLI has three subcommands plus a root action, all built by `buildProgram(deps)` in `src/cli/run-command.ts`:
+
+- `skillgantry run <skill> [--json] [--yes]` — headless.
+- `skillgantry doctor [--json]` — re-verify the lock, report drift.
+- `skillgantry setup` — the Ink wizard.
+- `skillgantry [--concurrency <n>]` — no subcommand falls through to the root action, which routes to the wizard when `needsSetup(home)` and otherwise launches the Ink work screen.
 
 ## Specs are the source of truth
 
@@ -38,10 +43,13 @@ The CLI itself has two entry paths: `skillgantry run <skill> [--json] [--yes]` i
 
 - [requirements.md](docs/specs/requirements.md) — numbered `R*` requirements, each tracing to a decision. Code comments and commit messages cite these ids.
 - [design.md](docs/specs/design.md) — module map, stage contract, outcome classification table (§8.1), ledger schema and reconciliation (§10), sidecar layout (§9). Read the relevant section before changing a contract.
-- [plan-m1.md](docs/specs/plan-m1.md) / [plan-m2.md](docs/specs/plan-m2.md) — task-by-task implementation plans with checkboxes.
+- [plan-m1.md](docs/specs/plan-m1.md) / [plan-m2.md](docs/specs/plan-m2.md) / [plan-m3.md](docs/specs/plan-m3.md) — task-by-task implementation plans with checkboxes.
 - [decision-log.md](docs/specs/decision-log.md) — `D*` decisions the requirements derive from.
+- `design-review-r1.md` / `design-review-r2.md` — point-in-time reviews against a named commit. Historical; not a contract.
 
-M1 (engine + headless CLI) and M2 (queue + Ink TUI) are both merged. `plan-m2.md` still carries unchecked boxes; the shipped code is ahead of it, and its "Working against M1" section records where the two diverged. Trust the code over either plan; trust `design.md` and `requirements.md` over the code.
+Merged: M1 (engine + headless CLI), M2 (queue + Ink TUI), M3 (full `tools` module, setup wizard, doctor). Milestone ownership lives in exactly one table, [requirements.md § Milestone ownership](docs/specs/requirements.md); `design.md` deliberately no longer carries a second copy. M4 is the seven remaining adapters and cross-tool merge, M5 `release` + retirement, M6 the dashboard.
+
+Each plan ends with a "Deviations found while implementing" section recording where the shipped code diverged from it; `plan-m1.md` and `plan-m2.md` have been compacted post-ship, so they hold the why and not the how. Trust the code over any plan; trust `design.md` and `requirements.md` over the code.
 
 When implementation proves a spec wrong, amend the spec doc in the same branch rather than letting the two diverge.
 
@@ -66,7 +74,7 @@ Rule applied throughout `src/core/`: a module that owns I/O does not also own de
 |---|---|---|
 | `config/` | `~/.skillgantry/config.json`, tool lock, `.env` read and secret extraction | fs |
 | `discovery/` | repo path → `SkillRef[]`, frontmatter, `workspacePath()`, candidate manifest, digest | fs |
-| `tools/` | tool root, uv install driver, verify-by-invocation, lockfile | fs, net, subprocess |
+| `tools/` | catalogue and presets, runtime probe, three install drivers (`uv.ts`, `npm.ts`, `gh-release.ts`) behind `install.ts` dispatch, verify-by-invocation, lockfile, `doctor.ts` drift report, `setup.ts` state machine | fs, net, subprocess |
 | `adapters/` | manifest + `parse` per tool, shared SARIF parser, rule-class map | **none** |
 | `runner/` | spawn one tool: env injection, timeout with process-group kill, stream redaction, artefact load | subprocess, fs |
 | `stages/` | `StageExecutor` contract, `AdapterStageExecutor`, outcome reduction | — |
@@ -79,9 +87,17 @@ Rule applied throughout `src/core/`: a module that owns I/O does not also own de
 
 `queue/pool.ts` schedules; it never builds a run. The caller injects `startRun`, which is why `src/cli/tui-command.ts` is the only place config, lock, env, ledger and pipeline meet.
 
+### The tools module
+
+Same split as the rest of the engine: `catalogue.ts` and `setup.ts` are pure decisions, the three drivers own subprocess and network. Every driver takes an injected `Exec` (`exec.ts`, 300 s default ceiling) and `gh-release.ts` also takes `fetchImpl`, which is what keeps `pnpm test` offline — real installs live in the `SG_INTEGRATION` suite. `install.ts` dispatches on `installKind` and writes the lock entry only after `verifyTool` gets a semver out of the binary.
+
+`tools/**` must not open the ledger. Doctor's lifecycle check therefore takes ledger state as an argument, from `src/cli/` — the same rule that keeps `queue/` out of the ledger.
+
 ### The TUI
 
 `src/tui/store.ts` is a reducer over `Action`, and every input — queue events, log flushes, key presses — is an action. The components are thin. `views.ts` holds the reads the store cannot do itself (`SKILL.md`, artefact listing, last outcome per skill from the sidecar `index.ndjson` rather than the ledger, since cross-repo ledger aggregates are M6).
+
+The setup wizard is a second app, not a screen of the first: `setup-app.tsx` owns input and driver calls, `components/Setup.tsx` is a pure render of `SetupState`. The wizard cannot advance a state without calling an injected driver.
 
 ### Contracts worth knowing before you edit
 
@@ -90,7 +106,10 @@ Rule applied throughout `src/core/`: a module that owns I/O does not also own de
 - **Finding identity** is `(skillId, relPath, ruleClass)` and nothing else: no line number, no message text, no tool id. Two scanners describing one problem resolve to one issue with two detections.
 - **Reconciliation** closes an issue only when every tool that has ever detected it agrees it is gone. It is a conjunction over a set, deliberately order-free, because fan-out tools run concurrently.
 - **Candidate manifest** (design §4.4) is the single definition of which bytes are a skill: for the digest, for tool input, and for packaging. No consumer applies its own exclusion list, and nothing filters findings after a tool has run.
-- **`SKILL.md` frontmatter is the authority** for a skill's lifecycle state. Ledger lifecycle columns are a derived cache; a divergence is drift to report, not an error.
+- **The catalogue is the install authority; the adapter registry is the run authority** (design §5.1a). A tool can be installed, verified and locked with no adapter — vercel `skills` is. It must not reach `stageTools`, because `AdapterStageExecutor.plan()` throws `unknown tool: <id>` on an id the registry lacks and would fail the whole run. `AdapterManifest.install` survives as documentation, kept in step by a test asserting the two agree for every tool holding both.
+- **The wizard never installs a runtime** (R3.7). Not a check — there is no code path that could. `probeRuntimes` invokes version argv and nothing else; `INSTALL_COMMAND` is printed for the user to run.
+- **A `gh-release` install verifies integrity before the binary is used**, and `integrity: 'none'` requires a written reason (R3.2b). `{os}` / `{arch}` in `assetPattern` are substituted from the host before matching.
+- **`SKILL.md` frontmatter is the authority** for a skill's lifecycle state. Ledger lifecycle columns are a derived cache; a divergence is drift to report, not an error — which is exactly what `doctor` reports it as.
 - **Log text never enters React state line by line.** Tool output goes to a ring buffer outside the component tree (2000 lines, 100 ms flush, design §14) and a tick copies the visible window in. The reducer test asserts this by dispatching a `tool:output` event and expecting no state change.
 - **Cancellation has exactly four phases**: `queued` (queue-owned), `running`, `awaiting-approval`, `finalising` (pipeline-owned). A cancelled run still finalises.
 - **Mutating stages are `optimise` and `release`.** The set lives in `queue/types.ts` so the queue can serialise them without importing a stage executor. Neither stage ships yet; the gate, timeout and serialisation do.
@@ -111,6 +130,6 @@ Lint enforces the invariants, so a violation fails `pnpm lint` rather than revie
 
 Tests mirror `src/` under `tests/core/`, plus `tests/tui/`, `tests/cli/` and `tests/acceptance/`. Helpers: `tests/helpers/tmp-repo.ts` builds a fixture repo in a temp dir, `tests/helpers/fake-tool.ts` writes executable shell scripts standing in for real tools (including a grandchild-spawning script for the process-tree kill test), `tests/helpers/fake-executor.ts` and `fake-run.ts` stand in for a stage executor and a `RunHandle` so queue and store tests never spawn.
 
-`tests/tui/store.test.ts` dispatches actions and asserts state; the component tests render through `tests/helpers/render-ink.tsx` and assert on frames. `deps.startTui` on `CliDeps` is the seam that lets `tests/cli/tui-command.test.ts` assert the launch without a terminal.
+`tests/tui/store.test.ts` dispatches actions and asserts state; the component tests render through `tests/helpers/render-ink.tsx`, which drives Ink with a fake TTY and `debug: true`, and assert on frames. `deps.startTui` and `deps.startSetup` on `CliDeps` are the seams that let the `tests/cli/` tests assert a launch without a terminal.
 
 Adapter tests run against golden SARIF fixtures captured from the pinned tool version, so upstream schema drift shows up as a test failure. Ledger tests use in-memory SQLite. Design §16 lists the target and guard for each suite; consult it when adding tests for a new module.
