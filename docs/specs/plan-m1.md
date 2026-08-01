@@ -1908,6 +1908,8 @@ import { text } from 'node:stream/consumers'
 import { RedactionTransform, redactString } from '../../src/core/runner/redaction.js'
 
 const SECRET = 'sk-testtokenvalue000000000000000000'
+/** Long enough to clear the collision floor that makes short values unsafe to scrub. */
+const OTHER_SECRET = 'other-secret-0001'
 
 const pipeChunks = async (chunks: string[], secrets: string[]): Promise<string> =>
   text(Readable.from(chunks).pipe(new RedactionTransform(secrets)))
@@ -1944,7 +1946,10 @@ describe('RedactionTransform', () => {
   })
 
   it('handles many secrets and repeated occurrences', async () => {
-    const out = await pipeChunks([`${SECRET} and ${SECRET} and other`], [SECRET, 'other'])
+    const out = await pipeChunks(
+      [`${SECRET} and ${SECRET} and ${OTHER_SECRET}`],
+      [SECRET, OTHER_SECRET],
+    )
     expect(out).toBe('«redacted» and «redacted» and «redacted»')
   })
 
