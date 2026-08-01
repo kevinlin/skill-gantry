@@ -18,12 +18,20 @@ export interface CliDeps {
   write: (line: string) => void
 }
 
+/**
+ * commander does not model an exit code on the command itself, but R12.2 makes
+ * the code part of the contract, so it is carried here and the bin entry copies
+ * it onto the process. Callers can then assert it without spawning.
+ */
+export interface GantryProgram extends Command {
+  exitCode?: number
+}
+
 export function defaultDeps(): CliDeps {
   const home = join(homedir(), '.skillgantry')
   return {
     home,
     dbPath: join(home, 'gantry.db'),
-    // eslint-disable-next-line no-console
     write: (line) => console.log(line),
   }
 }
@@ -52,8 +60,8 @@ function parseStages(raw: string): Stage[] {
   })
 }
 
-export function buildProgram(deps: CliDeps): Command {
-  const program = new Command()
+export function buildProgram(deps: CliDeps): GantryProgram {
+  const program = new Command() as GantryProgram
   program.name('skillgantry').description('SkillOps orchestrator for skill maintainers')
 
   program
