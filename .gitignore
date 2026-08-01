@@ -6,5 +6,8 @@ coverage/
 .env
 *-workspace/
 
+# Worktrees
+.claude/worktrees/
+
 # AGENTS.md
 AGENTS.md
