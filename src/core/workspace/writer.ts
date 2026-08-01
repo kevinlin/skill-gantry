@@ -1,4 +1,15 @@
-import { mkdir, open, readFile, rename, rm, stat, symlink, utimes, writeFile } from 'node:fs/promises'
+import {
+  appendFile,
+  mkdir,
+  open,
+  readFile,
+  rename,
+  rm,
+  stat,
+  symlink,
+  utimes,
+  writeFile,
+} from 'node:fs/promises'
 import { join } from 'node:path'
 import { v7 as uuidv7 } from 'uuid'
 import type { Provenance } from '../config/env.js'
@@ -86,6 +97,23 @@ const holderAlive = (pid: number): boolean => {
   }
 }
 
+export type ReclaimReason = 'dead-holder' | 'stale-lease'
+
+export type ReclaimListener = (path: string, pid: number, reason: ReclaimReason) => void
+
+export const reclaimLogPath = (workspacePath: string): string =>
+  join(workspacePath, 'skillgantry', 'lock-reclaims.log')
+
+/**
+ * R6.9 requires a reclaim to be logged, and `core` may not write to the
+ * console, so the record goes where the evidence already lives. Fire and
+ * forget: failing to log must never fail the run that reclaimed the lock.
+ */
+export function appendReclaimLog(workspacePath: string, pid: number, reason: ReclaimReason): void {
+  const line = JSON.stringify({ at: new Date().toISOString(), pid, reason, by: process.pid })
+  void appendFile(reclaimLogPath(workspacePath), `${line}\n`).catch(() => undefined)
+}
+
 /**
  * Leased per-skill lock. A bare `wx` lockfile is not enough: if the holder is
  * killed the file survives and that skill can never be finalised again. The
@@ -96,7 +124,7 @@ export async function withSkillLock<T>(
   workspacePath: string,
   fn: () => Promise<T>,
   timeoutMs = 10_000,
-  onReclaim: (path: string, pid: number) => void = () => undefined,
+  onReclaim: ReclaimListener = (_path, pid, reason) => appendReclaimLog(workspacePath, pid, reason),
 ): Promise<T> {
   const path = lockPath(workspacePath)
   await mkdir(join(workspacePath, 'skillgantry'), { recursive: true, mode: WORKSPACE_MODE })
@@ -113,11 +141,20 @@ export async function withSkillLock<T>(
 
       const info = await stat(path).catch(() => null)
       if (info) {
-        const held = JSON.parse(await readFile(path, 'utf8').catch(() => '{}')) as { pid?: number }
+        // Creating the lockfile and writing its holder are two steps, so a
+        // second process can read it empty. An unreadable body means "holder
+        // unknown", never "holder dead": only the lease may reclaim it.
+        const raw = await readFile(path, 'utf8').catch(() => '')
+        let held: { pid?: number } = {}
+        try {
+          held = raw.length > 0 ? (JSON.parse(raw) as { pid?: number }) : {}
+        } catch {
+          held = {}
+        }
         const stale = Date.now() - info.mtimeMs > LOCK_STALE_MS
         const dead = typeof held.pid === 'number' && !holderAlive(held.pid)
         if (dead || stale) {
-          onReclaim(path, held.pid ?? -1)
+          onReclaim(path, held.pid ?? -1, dead ? 'dead-holder' : 'stale-lease')
           await rm(path, { force: true })
           continue
         }

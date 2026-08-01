@@ -2,9 +2,15 @@
   "name": "skillgantry",
   "version": "0.1.0",
   "type": "module",
-  "bin": { "skillgantry": "./dist/cli/index.js" },
-  "engines": { "node": ">=24.0.0" },
-  "files": ["dist"],
+  "bin": {
+    "skillgantry": "./dist/cli/index.js"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "eslint src tests",
@@ -22,6 +28,7 @@
   "devDependencies": {
     "@types/node": "^24.0.0",
     "eslint": "^9.0.0",
+    "tsx": "^4.23.1",
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.0.0",
     "vitest": "^4.1.0"
