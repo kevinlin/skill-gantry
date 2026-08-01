@@ -2,9 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the SkillGantry engine end to end for one adapter, driven by a headless command, with every cross-cutting contract — sidecar layout, redaction, fingerprinting, reconciliation, provenance — proven against real tool output.
+**Status:** revision 2, aligned to [design.md](design.md) revision 3 and [requirements.md](requirements.md) revision 3.
 
-**Architecture:** One npm package, three source roots (`src/core`, `src/tui`, `src/cli`) with a one-directional import boundary enforced by lint. M1 builds `core` and `cli` only; no terminal interface. The engine discovers skills in registered repos, spawns SkillSpector against one, normalises its SARIF into findings, writes evidence to the skill's sidecar workspace, and records runs and issues in SQLite.
+**Goal:** Build the SkillGantry engine end to end for one adapter, driven by a headless command, with every cross-cutting contract — sidecar layout, redaction, fingerprinting, reconciliation, provenance — proven against real tool output from a tool SkillGantry itself installed.
+
+**Architecture:** One npm package, three source roots (`src/core`, `src/tui`, `src/cli`) with a one-directional import boundary enforced by lint. M1 builds `core` and `cli` only; no terminal interface. The engine discovers skills in registered repos, installs SkillSpector into its own tool root, spawns it against one skill, normalises its SARIF into findings, writes evidence to the skill's sidecar workspace, and records runs and issues in SQLite.
 
 **Tech Stack:** TypeScript 5 (ESM, `NodeNext`), Node 24, pnpm, vitest 4, `node:sqlite` (built-in — verified working on Node 24.15 with no flag), `node:child_process` (direct, for process-group control), `zod` for schema validation, `yaml` for frontmatter, `uuid` v14 for UUIDv7, `commander` for the CLI.
 
@@ -22,16 +24,19 @@ No `better-sqlite3`: `node:sqlite` is built in at our Node floor and avoids ship
 - Metric keys are a closed union. Token and cost keys do not exist. This is R1.5.
 - Fingerprints never include a line number or message text. This is R8.4.
 - The pinned SkillSpector version is `2.3.7`, which is the version installed and the version every fixture was captured from.
-- SkillSpector is always invoked with `--no-llm`. Its LLM mode requires an API key and produces nondeterministic findings, which would make golden fixtures worthless.
+- SkillSpector is always invoked with `--no-llm`, declared in the manifest as `analysisMode: 'static'` with `credentials: { kind: 'none' }`. Its LLM mode needs a provider key and produces nondeterministic findings, which would make golden fixtures worthless. There is no fallback between modes; a mode change is a new adapter id. This is R4.2b.
+- Installs relocate through `UV_TOOL_DIR` and `UV_TOOL_BIN_DIR` set on the child. uv 0.7.12 has no `--tool-dir`. Nothing may land in the user's global `~/.local/share/uv/tools`.
+- One candidate manifest defines which bytes are a skill, for the digest, for tool input and for packaging. No consumer applies its own exclusion list, and nothing filters after a tool has run. This is R2.9.
+- Symlinks are hashed as links, never followed. A link escaping the candidate root is an error. This is R2.10.
 - British spelling in identifiers that appear in the spec (`optimise`, `artefact`, `normalise`) to match the requirements documents.
 - Every commit message uses Conventional Commits.
 
-## Spec corrections this plan carries
+## Facts established by running the real tool
 
-Two errors in [design.md](design.md) were found by running the real tool. Task 12 fixes them in the design document as part of its deliverable.
+Both were fed back into [design.md](design.md) revision 3; they are repeated here because several tasks depend on them.
 
-1. The example manifest declares `requiresCredentials: false` with no `--no-llm` flag. SkillSpector 2.3.7 aborts with `No LLM API key configured` unless `--no-llm` is passed. The manifest must pass it.
-2. SARIF `artifactLocation.uri` is relative to the **scanned directory**, not the repo root. Verified: scanning `declawed` yields `uri: "SKILL.md"` and `uri: "scripts/scan.py"`. The normaliser must rebase onto `skill.relPath` to produce the repo-relative path R8.3 requires.
+1. SkillSpector 2.3.7's `scan` runs LLM analysis by default and aborts unless a provider credential is present. `--no-llm` selects static analysis and needs none. There is no rule-listing subcommand, so the static rule set, and therefore `manifest.detects`, is derived from captured output by `scripts/capture-fixtures.sh`.
+2. SARIF `artifactLocation.uri` is relative to the **scanned directory**, not the repo root. Verified: scanning `declawed` yields `uri: "SKILL.md"` and `uri: "scripts/scan.py"`. The normaliser rebases onto `skill.relPath` to produce the repo-relative path R8.3 requires. This also makes a materialised candidate and an in-place one yield identical findings.
 
 ## File structure
 
@@ -48,7 +53,11 @@ src/
     discovery/
       frontmatter.ts            split and parse SKILL.md frontmatter
       discover.ts               discoverSkills(), workspacePath()
-      digest.ts                 skillDigest()
+      candidate.ts              candidateManifest(), materialiseCandidate()
+      digest.ts                 skillDigest() over a manifest
+    tools/
+      uv.ts                     uv-tool install driver
+      install.ts                installTool(), verifyTool(), lock writer
     runner/
       redaction.ts              RedactionTransform
       spawn.ts                  runTool(): timeout, process-group kill, artefact load
@@ -70,7 +79,7 @@ src/
       db.ts                     openLedger()
       fingerprint.ts            fingerprint()
       issues.ts                 transition table
-      reconcile.ts              per-tool reconciliation
+      reconcile.ts              per-detector evidence and conjunctive closure
       record.ts                 recordRun() transaction
     pipeline/
       events.ts                 RunEvent union
@@ -358,14 +367,16 @@ export type ToolOutcome = 'passed' | 'failed' | 'errored' | 'skipped'
 
 export type StageOutcome = 'passed' | 'failed' | 'degraded' | 'errored' | 'skipped'
 
+/** One per non-passing row of the R4.13 classification table. */
 export type ErrorKind =
-  | 'exit'
+  | 'spawn'
   | 'timeout'
   | 'missing-artefact'
   | 'parse'
   | 'cancelled'
   | 'not-installed'
   | 'no-credentials'
+  | 'no-authorisation'
   | 'artefact-too-large'
 
 export const KNOWN_RULE_CLASSES = [
@@ -826,131 +837,324 @@ git commit -m "feat(discovery): discover skills and resolve workspace paths"
 
 ---
 
-### Task 5: Skill digest
+### Task 5: Candidate manifest and skill digest
 
 **Files:**
+- Create: `src/core/discovery/candidate.ts`
 - Create: `src/core/discovery/digest.ts`
-- Test: `tests/core/digest.test.ts`
+- Test: `tests/core/candidate.test.ts`, `tests/core/digest.test.ts`
 
 **Interfaces:**
-- Consumes: `SkillRef` (Task 2), `isExcludedDir`/`WORKSPACE_SUFFIX`/`ROOT_WORKSPACE_DIR` (Task 4).
-- Produces: `skillDigest(skillDir: string): Promise<string>` returning `sha256:<hex>`, and `gitState(repoPath, relPath): Promise<{ commit: string | null; dirty: boolean }>`.
+- Consumes: `SkillRef` (Task 2), which already carries the resolved `workspacePath` from Task 4.
+- Produces: `CandidateManifest`, `CandidateEntry`, `candidateManifest(skill): Promise<CandidateManifest>`, `materialiseCandidate(manifest, destRoot): Promise<string>`, `skillDigest(manifest): Promise<string>`, `digestSkill(skill): Promise<string>`, and `gitState(repoPath, relPath): Promise<{ commit: string | null; dirty: boolean }>`.
+
+This task carries three corrections from the second design review, and each one is a test below.
+
+**Exclusions are exact paths, never basenames.** Revision 2 excluded "any `snapshot-pre/` directory", so a skill legitimately containing `snapshot-pre/` could change without invalidating its gate evidence. Snapshots live under the workspace, which is already excluded, so the basename rule was pure hazard.
+
+**Symlinks are hashed as links.** Following one can hash or package content outside the repo; ignoring one entirely misses a real change. Recording the link and its target text does neither. A link resolving outside the candidate root is a hard error, because no consumer has a safe answer for it: not the digest, the snapshot, the diff, the rollback or the archive.
+
+**One manifest, four consumers.** The digest is a pure function of the manifest, so the bytes gated, snapshotted and packaged are the same set by construction. `materialiseCandidate` exists for the repo-root case, where the workspace would otherwise sit inside the tree a tool is pointed at.
 
 - [ ] **Step 1: Write the failing test**
+
+`tests/core/candidate.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest'
+import { mkdir, mkdtemp, readFile, readlink, symlink, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { candidateManifest, materialiseCandidate } from '../../src/core/discovery/candidate.js'
+import { discoverSkills } from '../../src/core/discovery/discover.js'
+import type { RepoRef } from '../../src/core/types.js'
+import { SKILL_MD, makeRepo } from '../helpers/tmp-repo.js'
+
+const repoRef = (path: string): RepoRef => ({ id: 'fx', path, name: 'fx', isGit: false })
+
+const only = async (root: string) => (await discoverSkills(repoRef(root)))[0]!
+
+describe('candidateManifest', () => {
+  it('lists files sorted, with the exec bit', async () => {
+    const root = await makeRepo({
+      files: { 'a/SKILL.md': SKILL_MD('a'), 'a/scripts/run.sh': '#!/bin/sh\n' },
+    })
+    const m = await candidateManifest(await only(root))
+    expect(m.entries.map((e) => e.relPath)).toEqual(['SKILL.md', 'scripts/run.sh'])
+    expect(m.selfContained).toBe(true)
+  })
+
+  it('excludes the exact workspace path but keeps a directory named snapshot-pre', async () => {
+    const root = await makeRepo({
+      files: {
+        'a/SKILL.md': SKILL_MD('a'),
+        'a/snapshot-pre/notes.md': 'a legitimate skill directory\n',
+        'a-workspace/skillgantry/runs/x/run.json': '{}',
+      },
+    })
+    const m = await candidateManifest(await only(root))
+    expect(m.entries.map((e) => e.relPath)).toContain('snapshot-pre/notes.md')
+    expect(m.entries.some((e) => e.relPath.includes('workspace'))).toBe(false)
+  })
+
+  it('marks a repo-root candidate not self-contained and drops its control files', async () => {
+    const root = await makeRepo({
+      files: { 'SKILL.md': SKILL_MD('solo'), '.gitignore': '*-workspace/\n' },
+    })
+    await mkdir(join(root, '.skillgantry-workspace'), { recursive: true })
+    await writeFile(join(root, '.skillgantry-workspace/leak.json'), 'sk-secret\n')
+    await writeFile(join(root, 'solo_1.0.0.zip'), 'PK')
+    const m = await candidateManifest(await only(root))
+    expect(m.selfContained).toBe(false)
+    expect(m.entries.map((e) => e.relPath)).toEqual(['SKILL.md'])
+  })
+
+  it('records a symlink as a link and never reads its target', async () => {
+    const root = await makeRepo({ files: { 'a/SKILL.md': SKILL_MD('a'), 'a/real.md': 'x\n' } })
+    await symlink('real.md', join(root, 'a/alias.md'))
+    const m = await candidateManifest(await only(root))
+    expect(m.entries.find((e) => e.relPath === 'alias.md')).toEqual({
+      kind: 'symlink',
+      relPath: 'alias.md',
+      target: 'real.md',
+    })
+  })
+
+  it('rejects a symlink escaping the candidate root', async () => {
+    const root = await makeRepo({ files: { 'a/SKILL.md': SKILL_MD('a'), 'outside.md': 'x\n' } })
+    await symlink('../outside.md', join(root, 'a/escape.md'))
+    await expect(candidateManifest(await only(root))).rejects.toThrow(/candidate-escapes-root/)
+  })
+})
+
+describe('materialiseCandidate', () => {
+  it('copies only manifest entries, preserving links and modes', async () => {
+    const root = await makeRepo({
+      files: { 'SKILL.md': SKILL_MD('solo'), 'scripts/run.sh': '#!/bin/sh\n' },
+    })
+    await mkdir(join(root, '.skillgantry-workspace'), { recursive: true })
+    await writeFile(join(root, '.skillgantry-workspace/leak.json'), 'sk-canary\n')
+    await symlink('scripts/run.sh', join(root, 'alias.sh'))
+
+    const m = await candidateManifest(await only(root))
+    const dest = await materialiseCandidate(m, await mkdtemp(join(tmpdir(), 'sg-cand-')))
+
+    await expect(readFile(join(dest, 'SKILL.md'), 'utf8')).resolves.toContain('solo')
+    expect(await readlink(join(dest, 'alias.sh'))).toBe('scripts/run.sh')
+    await expect(readFile(join(dest, '.skillgantry-workspace/leak.json'))).rejects.toThrow()
+  })
+})
+```
 
 `tests/core/digest.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest'
-import { chmod, mkdir, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, symlink, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { skillDigest } from '../../src/core/discovery/digest.js'
+import { digestSkill } from '../../src/core/discovery/digest.js'
+import { discoverSkills } from '../../src/core/discovery/discover.js'
+import type { RepoRef } from '../../src/core/types.js'
 import { SKILL_MD, makeRepo } from '../helpers/tmp-repo.js'
 
-describe('skillDigest', () => {
+const repoRef = (path: string): RepoRef => ({ id: 'fx', path, name: 'fx', isGit: false })
+const only = async (root: string) => (await discoverSkills(repoRef(root)))[0]!
+const digestOf = async (root: string) => digestSkill(await only(root))
+
+describe('digestSkill', () => {
   it('is stable across repeated calls', async () => {
     const root = await makeRepo({ files: { 'a/SKILL.md': SKILL_MD('a') } })
-    const dir = join(root, 'a')
-    expect(await skillDigest(dir)).toBe(await skillDigest(dir))
+    expect(await digestOf(root)).toBe(await digestOf(root))
   })
 
   it('changes when any byte of the skill changes', async () => {
     const root = await makeRepo({ files: { 'a/SKILL.md': SKILL_MD('a') } })
-    const dir = join(root, 'a')
-    const before = await skillDigest(dir)
-    await writeFile(join(dir, 'SKILL.md'), `${SKILL_MD('a')}\n`)
-    expect(await skillDigest(dir)).not.toBe(before)
+    const before = await digestOf(root)
+    await writeFile(join(root, 'a/SKILL.md'), `${SKILL_MD('a')}\n`)
+    expect(await digestOf(root)).not.toBe(before)
   })
 
   it('ignores the workspace directory so writing a run does not change it', async () => {
     const root = await makeRepo({ files: { 'SKILL.md': SKILL_MD('solo') } })
-    const before = await skillDigest(root)
+    const before = await digestOf(root)
     await mkdir(join(root, '.skillgantry-workspace/runs/x'), { recursive: true })
     await writeFile(join(root, '.skillgantry-workspace/runs/x/run.json'), '{}')
-    expect(await skillDigest(root)).toBe(before)
+    expect(await digestOf(root)).toBe(before)
   })
 
-  it('ignores .git and snapshot-pre', async () => {
+  it('does change when a directory named snapshot-pre changes', async () => {
     const root = await makeRepo({
-      files: {
-        'a/SKILL.md': SKILL_MD('a'),
-        'a/.git/HEAD': 'ref: refs/heads/main\n',
-        'a/snapshot-pre/SKILL.md': SKILL_MD('a'),
-      },
+      files: { 'a/SKILL.md': SKILL_MD('a'), 'a/snapshot-pre/notes.md': 'one\n' },
     })
-    const root2 = await makeRepo({ files: { 'a/SKILL.md': SKILL_MD('a') } })
-    expect(await skillDigest(join(root, 'a'))).toBe(await skillDigest(join(root2, 'a')))
+    const before = await digestOf(root)
+    await writeFile(join(root, 'a/snapshot-pre/notes.md'), 'two\n')
+    expect(await digestOf(root)).not.toBe(before)
   })
 
   it('changes when the executable bit changes', async () => {
     const root = await makeRepo({
       files: { 'a/SKILL.md': SKILL_MD('a'), 'a/scripts/run.sh': '#!/bin/sh\necho hi\n' },
     })
-    const dir = join(root, 'a')
-    const before = await skillDigest(dir)
-    await chmod(join(dir, 'scripts/run.sh'), 0o755)
-    expect(await skillDigest(dir)).not.toBe(before)
+    const before = await digestOf(root)
+    await chmod(join(root, 'a/scripts/run.sh'), 0o755)
+    expect(await digestOf(root)).not.toBe(before)
+  })
+
+  it('changes when a symlink is retargeted, without reading either target', async () => {
+    const root = await makeRepo({
+      files: { 'a/SKILL.md': SKILL_MD('a'), 'a/one.md': 'x\n', 'a/two.md': 'x\n' },
+    })
+    await symlink('one.md', join(root, 'a/alias.md'))
+    const before = await digestOf(root)
+    await unlink(join(root, 'a/alias.md'))
+    await symlink('two.md', join(root, 'a/alias.md'))
+    expect(await digestOf(root)).not.toBe(before)
   })
 })
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `pnpm vitest run tests/core/digest.test.ts`
-Expected: FAIL — module not found.
+Run: `pnpm vitest run tests/core/candidate.test.ts tests/core/digest.test.ts`
+Expected: FAIL — modules not found.
 
 - [ ] **Step 3: Write the implementation**
+
+`src/core/discovery/candidate.ts`:
+
+```ts
+import { copyFile, chmod, lstat, mkdir, readdir, readlink, symlink } from 'node:fs/promises'
+import { dirname, join, relative, resolve, sep } from 'node:path'
+import type { SkillRef } from '../types.js'
+
+export type CandidateEntry =
+  | { kind: 'file'; relPath: string; exec: boolean }
+  | { kind: 'symlink'; relPath: string; target: string }
+
+export interface CandidateManifest {
+  root: string
+  entries: CandidateEntry[]
+  /** False when the root would otherwise hold SkillGantry-owned paths. */
+  selfContained: boolean
+}
+
+const posix = (p: string): string => p.split(sep).join('/')
+
+/**
+ * Exact owned paths, resolved against the candidate root. Deliberately not a
+ * basename match: revision 2 excluded any directory called `snapshot-pre`,
+ * which let a legitimately named skill directory change without invalidating
+ * the gate evidence bound to its digest.
+ */
+function excludedPaths(skill: SkillRef): Set<string> {
+  const owned = new Set<string>([
+    posix(relative(skill.dir, skill.workspacePath)),
+    '.git',
+  ])
+  if (skill.rootSkill) owned.add('.gitignore')
+  return owned
+}
+
+const isReleaseArchive = (skill: SkillRef, rel: string): boolean =>
+  skill.rootSkill && /^[^/]+_[^/]*\.zip$/.test(rel)
+
+export async function candidateManifest(skill: SkillRef): Promise<CandidateManifest> {
+  const excluded = excludedPaths(skill)
+  const entries: CandidateEntry[] = []
+
+  const walk = async (dir: string): Promise<void> => {
+    for (const e of await readdir(dir, { withFileTypes: true })) {
+      const abs = join(dir, e.name)
+      const rel = posix(relative(skill.dir, abs))
+      if (excluded.has(rel) || isReleaseArchive(skill, rel)) continue
+
+      if (e.isSymbolicLink()) {
+        const target = await readlink(abs)
+        const resolved = resolve(dirname(abs), target)
+        const inside = resolved === skill.dir || resolved.startsWith(skill.dir + sep)
+        if (!inside) {
+          throw new Error(`candidate-escapes-root: ${rel} -> ${target}`)
+        }
+        entries.push({ kind: 'symlink', relPath: rel, target })
+      } else if (e.isDirectory()) {
+        await walk(abs)
+      } else if (e.isFile()) {
+        // lstat, not stat: a mode must describe the entry itself, never a target.
+        const info = await lstat(abs)
+        entries.push({ kind: 'file', relPath: rel, exec: (info.mode & 0o111) !== 0 })
+      }
+    }
+  }
+  await walk(skill.dir)
+
+  entries.sort((a, b) => a.relPath.localeCompare(b.relPath))
+
+  return {
+    root: skill.dir,
+    entries,
+    // A repo-root skill keeps its workspace, gitignore and archives inside the
+    // root, so the root alone is not a safe thing to hand a tool.
+    selfContained: !skill.rootSkill,
+  }
+}
+
+/** Copies exactly the manifest into destRoot. Nothing else can be observed there. */
+export async function materialiseCandidate(
+  manifest: CandidateManifest,
+  destRoot: string,
+): Promise<string> {
+  for (const entry of manifest.entries) {
+    const dest = join(destRoot, entry.relPath)
+    await mkdir(dirname(dest), { recursive: true })
+    if (entry.kind === 'symlink') {
+      await symlink(entry.target, dest)
+    } else {
+      await copyFile(join(manifest.root, entry.relPath), dest)
+      if (entry.exec) await chmod(dest, 0o755)
+    }
+  }
+  return destRoot
+}
+```
 
 `src/core/discovery/digest.ts`:
 
 ```ts
 import { createHash } from 'node:crypto'
 import { execFile } from 'node:child_process'
-import { readFile, readdir, stat } from 'node:fs/promises'
-import { join, relative, sep } from 'node:path'
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { promisify } from 'node:util'
-import { ROOT_WORKSPACE_DIR, WORKSPACE_SUFFIX } from './discover.js'
+import type { SkillRef } from '../types.js'
+import { type CandidateManifest, candidateManifest } from './candidate.js'
 
 const run = promisify(execFile)
-
-const DIGEST_EXCLUDED = new Set(['.git', 'snapshot-pre', ROOT_WORKSPACE_DIR])
-
-function excluded(name: string): boolean {
-  return DIGEST_EXCLUDED.has(name) || name.endsWith(WORKSPACE_SUFFIX)
-}
-
-async function walk(root: string, dir: string, out: string[]): Promise<void> {
-  for (const entry of await readdir(dir, { withFileTypes: true })) {
-    if (excluded(entry.name)) continue
-    const abs = join(dir, entry.name)
-    if (entry.isDirectory()) {
-      await walk(root, abs, out)
-    } else if (entry.isFile()) {
-      out.push(relative(root, abs).split(sep).join('/'))
-    }
-  }
-}
 
 /**
  * Content identity of a skill, independent of git. This is the only identifier
  * available for the non-git skills, which are the majority by count, so it —
  * not the commit — is what binds release evidence to the bytes released.
+ *
+ * A pure function of the manifest, so the bytes gated, snapshotted and packaged
+ * are the same set by construction rather than by three exclusion lists agreeing.
  */
-export async function skillDigest(skillDir: string): Promise<string> {
-  const paths: string[] = []
-  await walk(skillDir, skillDir, paths)
-  paths.sort()
-
+export async function skillDigest(manifest: CandidateManifest): Promise<string> {
   const outer = createHash('sha256')
-  for (const rel of paths) {
-    const abs = join(skillDir, rel)
-    const info = await stat(abs)
-    const exec = (info.mode & 0o111) !== 0 ? '1' : '0'
-    const inner = createHash('sha256').update(await readFile(abs)).digest('hex')
-    outer.update(`${rel}\0${exec}\0${inner}\n`)
+  for (const entry of manifest.entries) {
+    if (entry.kind === 'symlink') {
+      const target = createHash('sha256').update(entry.target).digest('hex')
+      outer.update(`${entry.relPath}\0l\0${target}\n`)
+    } else {
+      const bytes = await readFile(join(manifest.root, entry.relPath))
+      const inner = createHash('sha256').update(bytes).digest('hex')
+      outer.update(`${entry.relPath}\0f\0${entry.exec ? '1' : '0'}\0${inner}\n`)
+    }
   }
   return `sha256:${outer.digest('hex')}`
 }
+
+export const digestSkill = async (skill: SkillRef): Promise<string> =>
+  skillDigest(await candidateManifest(skill))
 
 export interface GitState {
   commit: string | null
@@ -970,14 +1174,15 @@ export async function gitState(repoPath: string, relPath: string): Promise<GitSt
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `pnpm vitest run tests/core/digest.test.ts`
-Expected: PASS, five cases.
+Run: `pnpm vitest run tests/core/candidate.test.ts tests/core/digest.test.ts`
+Expected: PASS, twelve cases. The `snapshot-pre` and escaping-symlink cases are the R2.9 and R2.10 acceptance checks.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/core/discovery/digest.ts tests/core/digest.test.ts
-git commit -m "feat(discovery): add content digest and git state capture"
+git add src/core/discovery/candidate.ts src/core/discovery/digest.ts \
+        tests/core/candidate.test.ts tests/core/digest.test.ts
+git commit -m "feat(discovery): define the candidate manifest and digest it"
 ```
 
 ---
@@ -1110,6 +1315,8 @@ export const toolLockEntrySchema = z.object({
   requestedPin: z.string(),
   resolvedVersion: z.string(),
   bin: z.string().min(1),
+  /** 'n/a' when the package manager verified its own download, else 'sha256:…' or 'none'. */
+  integrity: z.string().min(1).default('n/a'),
   installedAt: z.string(),
   verifiedAt: z.string().nullable(),
 })
@@ -1238,6 +1445,219 @@ git commit -m "feat(config): add config and tool lock stores with path canonical
 
 ---
 
+### Task 6a: `uv-tool` install driver and lock writer
+
+**Files:**
+- Create: `src/core/tools/uv.ts`, `src/core/tools/install.ts`
+- Test: `tests/core/install.test.ts`
+
+**Interfaces:**
+- Consumes: `ToolLock`, `ToolLockEntry`, `loadToolLock`, `saveToolLock` (Task 6).
+- Produces: `toolRoot(home)`, `installUvTool(home, spec): Promise<ToolLockEntry>`, `verifyTool(entry, versionArgv): Promise<string>`, `installAndLock(home, spec, versionArgv): Promise<ToolLockEntry>`.
+
+Numbered `6a` deliberately: it is an insertion from the second design review and renumbering twenty tasks would break every cross-reference in this plan for no gain.
+
+**Why this is in M1 at all.** M1's runner resolves an executable from the lockfile, and M1's exit criterion is a real SkillSpector run. Revision 2 put the whole tool manager in M3, so nothing in M1 could write a lock entry and the only working path was a hand-written one in tests. That is not a validated contract, it is a fixture. M1 therefore builds one install kind end to end — `uv-tool`, which is what SkillSpector needs. `npm-prefix`, `gh-release`, presets, the wizard and `doctor` stay in M3.
+
+**Why `UV_TOOL_DIR`.** Revision 2 specified `uv tool install --tool-dir <path>`. uv 0.7.12 rejects that: `unexpected argument '--tool-dir'`. Relocation is through `UV_TOOL_DIR` and `UV_TOOL_BIN_DIR`, and both are set explicitly on the child rather than inherited, so an install can never leak into the user's `~/.local/share/uv/tools`.
+
+**Verify by invocation.** An install that succeeds but produces a binary that will not run is the common failure, so the lock entry is only written after the executable has answered `--version`.
+
+- [ ] **Step 1: Write the failing test**
+
+`tests/core/install.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest'
+import { mkdtemp, readFile, stat } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { installAndLock, toolRoot, verifyTool } from '../../src/core/tools/install.js'
+import { loadToolLock } from '../../src/core/config/config.js'
+
+const home = async (): Promise<string> => mkdtemp(join(tmpdir(), 'sg-tools-'))
+
+const SPEC = {
+  id: 'skillspector',
+  kind: 'uv-tool' as const,
+  spec: 'skillspector',
+  pin: '2.3.7',
+  binName: 'skillspector',
+}
+
+describe('installAndLock', () => {
+  it('installs into the tool root and never the global uv dir', async () => {
+    const h = await home()
+    const entry = await installAndLock(h, SPEC, ['--version'])
+    expect(entry.bin).toBe(join(toolRoot(h), 'skillspector', 'bin', 'skillspector'))
+    await expect(stat(entry.bin)).resolves.toBeTruthy()
+    expect(entry.bin.startsWith(toolRoot(h))).toBe(true)
+  }, 300_000)
+
+  it('records the resolved version, integrity and both timestamps', async () => {
+    const h = await home()
+    const entry = await installAndLock(h, SPEC, ['--version'])
+    expect(entry.resolvedVersion).toBe('2.3.7')
+    expect(entry.requestedPin).toBe('2.3.7')
+    expect(entry.integrity).toBe('n/a')
+    expect(entry.verifiedAt).not.toBeNull()
+  }, 300_000)
+
+  it('writes the entry into lock.json under the tool id', async () => {
+    const h = await home()
+    await installAndLock(h, SPEC, ['--version'])
+    const lock = await loadToolLock(h)
+    expect(lock.tools.skillspector?.installKind).toBe('uv-tool')
+  }, 300_000)
+
+  it('fails the install when the executable cannot be invoked', async () => {
+    const h = await home()
+    await expect(
+      verifyTool({ ...(await installAndLock(h, SPEC, ['--version'])), bin: '/nonexistent/x' }, [
+        '--version',
+      ]),
+    ).rejects.toThrow(/could not be invoked/)
+  }, 300_000)
+
+  it('refuses a pin the index does not have', async () => {
+    const h = await home()
+    await expect(
+      installAndLock(h, { ...SPEC, pin: '0.0.0-does-not-exist' }, ['--version']),
+    ).rejects.toThrow(/install failed/)
+  }, 300_000)
+})
+```
+
+These are network tests against the real index, so they carry a long timeout and run under `pnpm test:integration` rather than the default suite. Everything downstream uses a fake executable; this is the one task that proves the real path.
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `pnpm vitest run tests/core/install.test.ts`
+Expected: FAIL — module not found.
+
+- [ ] **Step 3: Write the implementation**
+
+`src/core/tools/uv.ts`:
+
+```ts
+import { execFile } from 'node:child_process'
+import { join } from 'node:path'
+import { promisify } from 'node:util'
+
+const run = promisify(execFile)
+
+export interface UvInstallSpec {
+  id: string
+  kind: 'uv-tool'
+  spec: string
+  pin: string
+  binName: string
+}
+
+/**
+ * uv 0.7.12 has no `--tool-dir`. Relocation is through UV_TOOL_DIR and
+ * UV_TOOL_BIN_DIR, set explicitly rather than inherited so an install cannot
+ * land in the user's global tool directory.
+ */
+export async function uvInstall(dir: string, spec: UvInstallSpec): Promise<string> {
+  const binDir = join(dir, 'bin')
+  try {
+    await run('uv', ['tool', 'install', `${spec.spec}==${spec.pin}`], {
+      env: { ...process.env, UV_TOOL_DIR: dir, UV_TOOL_BIN_DIR: binDir },
+      maxBuffer: 32 * 1024 * 1024,
+    })
+  } catch (err) {
+    const detail = (err as { stderr?: string }).stderr ?? (err as Error).message
+    throw new Error(`install failed for ${spec.id}@${spec.pin}: ${detail}`)
+  }
+  return join(binDir, spec.binName)
+}
+```
+
+`src/core/tools/install.ts`:
+
+```ts
+import { execFile } from 'node:child_process'
+import { join } from 'node:path'
+import { promisify } from 'node:util'
+import { loadToolLock, saveToolLock } from '../config/config.js'
+import type { ToolLockEntry } from '../config/schema.js'
+import { type UvInstallSpec, uvInstall } from './uv.js'
+
+const run = promisify(execFile)
+
+export const toolRoot = (home: string): string => join(home, 'tools')
+
+const SEMVER = /\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?/
+
+/**
+ * An install that succeeds but leaves an unrunnable binary is the common
+ * failure, so the lock entry is written only after the executable answers.
+ */
+export async function verifyTool(
+  entry: Pick<ToolLockEntry, 'bin'>,
+  versionArgv: string[],
+): Promise<string> {
+  let output: string
+  try {
+    const res = await run(entry.bin, versionArgv)
+    output = `${res.stdout}${res.stderr}`
+  } catch (err) {
+    throw new Error(`${entry.bin} could not be invoked: ${(err as Error).message}`)
+  }
+  const match = SEMVER.exec(output)
+  if (!match) throw new Error(`${entry.bin} could not be invoked: no version in ${output.trim()}`)
+  return match[0]
+}
+
+export async function installAndLock(
+  home: string,
+  spec: UvInstallSpec,
+  versionArgv: string[],
+): Promise<ToolLockEntry> {
+  const dir = join(toolRoot(home), spec.id)
+  const bin = await uvInstall(dir, spec)
+  const installedAt = new Date().toISOString()
+
+  const resolvedVersion = await verifyTool({ bin }, versionArgv)
+
+  const entry: ToolLockEntry = {
+    installKind: 'uv-tool',
+    requestedPin: spec.pin,
+    resolvedVersion,
+    bin,
+    // uv verifies its own downloads against the index; there is nothing for us
+    // to re-check. gh-release, which has no such guarantee, gains a declared
+    // integrity source in M3.
+    integrity: 'n/a',
+    installedAt,
+    verifiedAt: new Date().toISOString(),
+  }
+
+  const lock = await loadToolLock(home)
+  await saveToolLock(home, { ...lock, tools: { ...lock.tools, [spec.id]: entry } })
+  return entry
+}
+```
+
+- [ ] **Step 4: Run the test to verify it passes**
+
+Run: `pnpm vitest run tests/core/install.test.ts`
+Expected: PASS, five cases, several minutes on a cold uv cache.
+
+- [ ] **Step 5: Add the integration script**
+
+In `package.json` scripts: `"test:integration": "vitest run tests/core/install.test.ts"`, and exclude that file from the default `test` run so the unit suite stays offline and fast.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/core/tools src/core/config/schema.ts package.json tests/core/install.test.ts
+git commit -m "feat(tools): install and verify uv tools into a managed tool root"
+```
+
+---
+
 ### Task 7: Credential loading and the secret value set
 
 **Files:**
@@ -1246,7 +1666,7 @@ git commit -m "feat(config): add config and tool lock stores with path canonical
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `loadEnvFile(home): Promise<EnvLoad>` where `EnvLoad = { vars: Record<string,string>; secrets: string[]; warnings: string[]; present: boolean }`, and `provenanceOf(vars): Provenance`.
+- Produces: `loadEnvFile(home): Promise<EnvLoad>` where `EnvLoad = { vars: Record<string,string>; secrets: string[]; warnings: string[]; present: boolean }`, `provenanceOf(vars): Provenance` and `withAnalysisModes(provenance, modes)`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1257,7 +1677,7 @@ import { describe, expect, it } from 'vitest'
 import { chmod, mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { loadEnvFile, provenanceOf } from '../../src/core/config/env.js'
+import { loadEnvFile, provenanceOf, withAnalysisModes } from '../../src/core/config/env.js'
 
 const ENV = [
   'ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic',
@@ -1315,6 +1735,13 @@ describe('provenanceOf', () => {
     expect(JSON.stringify(prov)).not.toContain('sk-testtokenvalue')
   })
 
+  it('starts with no analysis modes, which only the pipeline can know', () => {
+    expect(provenanceOf({}).analysisModes).toEqual({})
+    expect(withAnalysisModes(provenanceOf({}), { skillspector: 'static' }).analysisModes).toEqual({
+      skillspector: 'static',
+    })
+  })
+
   it('yields a null host when no base url is set', () => {
     expect(provenanceOf({}).baseUrlHost).toBeNull()
   })
@@ -1357,6 +1784,13 @@ export interface Provenance {
   baseUrlHost: string | null
   models: Record<string, string | null>
   authTokenHash: string | null
+  /**
+   * `toolId -> manifest.analysisMode`, filled by the pipeline from the tools it
+   * actually selected. A tool that changes analysis mode changes what its
+   * numbers mean, so the mode belongs beside the provider fingerprint that
+   * already exists for the same reason (R4.2b).
+   */
+  analysisModes: Record<string, string>
 }
 
 function parse(source: string): Record<string, string> {
@@ -1424,7 +1858,15 @@ export function provenanceOf(vars: Record<string, string>): Provenance {
     ? `sha256:${createHash('sha256').update(token).digest('hex').slice(0, 8)}`
     : null
 
-  return { baseUrlHost: host, models, authTokenHash }
+  return { baseUrlHost: host, models, authTokenHash, analysisModes: {} }
+}
+
+/** Called by the pipeline once tool selection is known. */
+export function withAnalysisModes(
+  provenance: Provenance,
+  modes: Record<string, string>,
+): Provenance {
+  return { ...provenance, analysisModes: { ...provenance.analysisModes, ...modes } }
 }
 ```
 
@@ -1810,6 +2252,9 @@ export interface RunToolOutput {
   signalled: NodeJS.Signals | null
   timedOut: boolean
   cancelled: boolean
+  /** ENOENT, EACCES and friends: the process never started, so exitCode is meaningless. */
+  spawnFailed: boolean
+  spawnError: string | null
   durationMs: number
   stdout: string
   stderr: string
@@ -1901,9 +2346,14 @@ export async function runTool(input: RunToolInput): Promise<RunToolOutput> {
   }
   input.signal?.addEventListener('abort', onAbort, { once: true })
 
+  let spawnError: string | null = null
+
   const exit = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(
     (resolve) => {
-      child.on('error', () => resolve({ code: null, signal: null }))
+      child.on('error', (err) => {
+        spawnError = err.message
+        resolve({ code: null, signal: null })
+      })
       child.on('close', (code, signal) => resolve({ code, signal }))
     },
   )
@@ -1919,6 +2369,8 @@ export async function runTool(input: RunToolInput): Promise<RunToolOutput> {
     signalled: exit.signal,
     timedOut,
     cancelled,
+    spawnFailed: spawnError !== null,
+    spawnError,
     durationMs: Date.now() - startedAt,
     stdout: redactString(capture.stdout, input.secrets),
     stderr: redactString(capture.stderr, input.secrets),
@@ -2024,19 +2476,57 @@ import type {
   ToolOutcome,
 } from '../types.js'
 
+export type Integrity =
+  | { kind: 'sha256-asset'; assetPattern: string }
+  | { kind: 'sha256-digest'; digest: string }
+  | { kind: 'none'; reason: string }
+
 export type InstallSpec =
   | { kind: 'uv-tool'; spec: string; pin: string; binName: string }
   | { kind: 'npm-prefix'; spec: string; pin: string; binName: string }
-  | { kind: 'gh-release'; repo: string; pin: string; assetPattern: string; binName: string }
+  | {
+      kind: 'gh-release'
+      repo: string
+      pin: string
+      assetPattern: string
+      binName: string
+      /** Declared, never assumed: M3's driver has no checksum without it. */
+      integrity: Integrity
+    }
+
+export interface CredentialSet {
+  /** Human label for the setup wizard, e.g. 'OpenAI'. */
+  provider: string
+  /** Every key must be present and non-empty for this alternative to be satisfied. */
+  required: readonly string[]
+  optional?: readonly string[]
+  /** Env assignment selecting this provider, when the tool needs one. */
+  selects?: Readonly<Record<string, string>>
+}
+
+/**
+ * A boolean could not express "one of four provider credential sets", which is
+ * what SkillSpector's LLM mode actually needs, so the wizard could neither name
+ * the missing value nor tell whether the configured provider was usable.
+ */
+export type CredentialRequirement =
+  | { kind: 'none' }
+  | { kind: 'one-of'; alternatives: readonly CredentialSet[] }
 
 export interface AdapterManifest {
   id: string
   stage: Stage
   policy: 'fan-out' | 'pick-one'
   mutating: boolean
-  /** Reconciliation scope. An issue outside this set is never closed by this tool. */
+  /**
+   * Declared reconciliation scope. Widened at runtime by every class this tool
+   * has actually produced for the skill, so a too-narrow declaration costs
+   * completeness rather than correctness — see Task 17.
+   */
   detects: readonly KnownRuleClass[]
-  requiresCredentials: boolean
+  credentials: CredentialRequirement
+  /** Recorded in run provenance. A mode change is a new adapter id, never a fallback. */
+  analysisMode: string
   install: InstallSpec
   /** `{skillDir}`, `{repoRoot}` and `{toolDir}` are substituted at spawn time. */
   invoke: { argv: readonly string[]; cwd: 'skillDir' | 'repoRoot' }
@@ -2044,6 +2534,21 @@ export interface AdapterManifest {
   artefacts: readonly string[]
   binaryArtefacts?: readonly string[]
   timeoutMs: number
+}
+
+/** Satisfied by `none`, or by any one alternative whose required keys are all set. */
+export function credentialsSatisfied(
+  req: CredentialRequirement,
+  env: Readonly<Record<string, string | undefined>>,
+): boolean {
+  if (req.kind === 'none') return true
+  return req.alternatives.some((alt) => alt.required.every((key) => (env[key] ?? '') !== ''))
+}
+
+/** Names what is missing, for the wizard and for the skip summary. */
+export function missingCredentials(req: CredentialRequirement): string {
+  if (req.kind === 'none') return ''
+  return req.alternatives.map((a) => `${a.provider} (${a.required.join(', ')})`).join(' or ')
 }
 
 /** Pure input: the runner has already read the files. */
@@ -2144,7 +2649,8 @@ export const manifest: AdapterManifest = {
   policy: 'fan-out',
   mutating: false,
   detects: [],
-  requiresCredentials: false,
+  credentials: { kind: 'none' },
+  analysisMode: 'static',
   install: { kind: 'uv-tool', spec: 'skillspector', pin: '2.3.7', binName: 'skillspector' },
   invoke: { argv: [], cwd: 'repoRoot' },
   versionArgv: ['--version'],
@@ -2432,7 +2938,7 @@ git commit -m "feat(adapters): parse SARIF and rebase paths onto the repo root"
 - Modify: `src/core/adapters/skillspector.ts` (replaces the Task 10 placeholder)
 - Create: `tests/fixtures/sarif/skillspector-declawed.sarif`
 - Create: `scripts/capture-fixtures.sh`
-- Modify: `docs/specs/design.md` (§7 example manifest)
+- Create: `tests/core/design-example.test.ts` (keeps design.md §7 and the shipped manifest in step)
 - Test: `tests/core/skillspector.test.ts`
 
 **Interfaces:**
@@ -2558,7 +3064,7 @@ const ctx = async (): Promise<Parameters<typeof parse>[0]> => ({
 describe('skillspector manifest', () => {
   it('passes --no-llm so the tool never needs an API key', () => {
     expect(manifest.invoke.argv).toContain('--no-llm')
-    expect(manifest.requiresCredentials).toBe(false)
+    expect(manifest.credentials.kind).toBe('none')
   })
 
   it('is pinned to the version the fixture was captured from', () => {
@@ -2579,6 +3085,16 @@ describe('skillspector manifest', () => {
   it('declares a reconciliation scope covering what it detects', () => {
     expect(manifest.detects).toContain('excessive-permission')
     expect(manifest.detects).toContain('prompt-injection')
+  })
+
+  it('declares static mode with no credential, matching its argv', () => {
+    expect(manifest.analysisMode).toBe('static')
+    expect(manifest.credentials).toEqual({ kind: 'none' })
+    expect(manifest.invoke.argv).toContain('--no-llm')
+  })
+
+  it('claims no class that only LLM analysis reaches', () => {
+    expect(manifest.detects).not.toContain('vulnerable-dep')
   })
 })
 
@@ -2622,9 +3138,15 @@ import { parseSarif } from './sarif.js'
 import type { AdapterManifest, Parse } from './types.js'
 
 /**
- * `--no-llm` is not optional. Without it SkillSpector 2.3.7 aborts with
- * "No LLM API key configured", and its LLM findings are nondeterministic,
- * which would make golden fixtures worthless.
+ * `--no-llm` is not optional, and `credentials`/`analysisMode` must agree with
+ * it. SkillSpector 2.3.7's `scan` runs LLM analysis by default and aborts
+ * unless a provider key is present; its LLM findings are also nondeterministic,
+ * which would make golden fixtures worthless. Declaring static mode makes the
+ * narrower coverage visible in provenance instead of silently degrading.
+ *
+ * `detects` covers static analysis only, and is re-derived by
+ * scripts/capture-fixtures.sh rather than hand-maintained. `vulnerable-dep` is
+ * absent because dependency findings are an LLM-mode analyser in 2.3.7.
  */
 export const manifest: AdapterManifest = {
   id: 'skillspector',
@@ -2636,10 +3158,10 @@ export const manifest: AdapterManifest = {
     'credential-access',
     'unsafe-script',
     'data-exfiltration',
-    'vulnerable-dep',
     'excessive-permission',
   ],
-  requiresCredentials: false,
+  credentials: { kind: 'none' },
+  analysisMode: 'static',
   install: { kind: 'uv-tool', spec: 'skillspector', pin: '2.3.7', binName: 'skillspector' },
   invoke: {
     argv: ['scan', '{skillDir}', '--no-llm', '--format', 'sarif', '--output', '{toolDir}/findings.sarif'],
@@ -2668,27 +3190,40 @@ export const parse: Parse = (ctx) => {
 - [ ] **Step 5: Run the test to verify it passes**
 
 Run: `pnpm vitest run tests/core/skillspector.test.ts`
-Expected: PASS, nine cases.
+Expected: PASS, eleven cases.
 
-- [ ] **Step 6: Correct the design document**
+- [ ] **Step 6: Assert the design example and the shipped manifest agree**
 
-In `docs/specs/design.md` §7, the example manifest is wrong in two ways found by running the real tool. Replace its `requiresCredentials`, `install` and `invoke` lines with the implementation above, and add this note directly beneath the example:
+[design.md](design.md) §7 carries this manifest as its worked example, and revision 3 already corrected it. Rather than re-editing prose, add a test that fails the build when the two drift:
 
-```markdown
-`--no-llm` is mandatory. SkillSpector 2.3.7 aborts with `No LLM API key configured`
-without it, and its LLM-assisted findings are nondeterministic, which would make
-golden fixtures worthless. SARIF `artifactLocation.uri` is relative to the scanned
-directory, so the parser rebases it onto `skill.relPath` to produce the
-repo-relative path R8.3 requires.
+`tests/core/design-example.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest'
+import { readFile } from 'node:fs/promises'
+import { manifest } from '../../src/core/adapters/skillspector.js'
+
+describe('design.md §7 example', () => {
+  it('matches the shipped manifest on every field that can silently break a run', async () => {
+    const doc = await readFile('docs/specs/design.md', 'utf8')
+    const example = doc.slice(doc.indexOf("id: 'skillspector'"))
+    expect(example).toContain(`pin: '${manifest.install.pin}'`)
+    expect(example).toContain(`analysisMode: '${manifest.analysisMode}'`)
+    expect(example).toContain('--no-llm')
+    expect(example).toContain('credentials: { kind: \'none\' }')
+  })
+})
 ```
+
+An out-of-date worked example is how the credential-mode defect reached revision 2 in the first place: nothing connected the document to the tool.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/core/adapters/skillspector.ts tests/core/skillspector.test.ts \
-        tests/fixtures/sarif/skillspector-declawed.sarif scripts/capture-fixtures.sh \
-        docs/specs/design.md
 chmod +x scripts/capture-fixtures.sh
+git add src/core/adapters/skillspector.ts tests/core/skillspector.test.ts \
+        tests/core/design-example.test.ts \
+        tests/fixtures/sarif/skillspector-declawed.sarif scripts/capture-fixtures.sh
 git commit -m "feat(adapters): implement the skillspector adapter against a real fixture"
 ```
 
@@ -2883,6 +3418,26 @@ git commit -m "feat(stages): add a total tool-to-stage outcome reduction"
 
 Selection is resolved before the lockfile is consulted. A selected tool that is not installed yields a `skipped` record with `error_kind = 'not-installed'`; it is never quietly dropped, because dropping it would let a fan-out stage pass without running every selected tool.
 
+**The classification table (R4.13, design §8.1) lives here, and it is ordered.** The governing rule is that a successful, schema-valid parse is authoritative and the exit code is fallback evidence only — linters and scanners routinely exit non-zero precisely because they found something. `classifyToolRun` below implements one row per case, first match wins, and the test suite carries one case per row asserting the reconciliation effect.
+
+| # | Condition | Outcome | `errorKind` | Reconciles? |
+|---|---|---|---|---|
+| 1 | not in the lock, or no runnable `bin` | `skipped` | `not-installed` | no |
+| 2 | `credentials` unsatisfied | `skipped` | `no-credentials` | no |
+| 3 | mutating stage, no authorisation | `skipped` | `no-authorisation` | no (M5) |
+| 4 | cancelled | `errored` | `cancelled` | no |
+| 5 | timeout, tree killed | `errored` | `timeout` | no |
+| 6 | artefact over the size cap | `errored` | `artefact-too-large` | no |
+| 7 | declared artefact absent | `errored` | `missing-artefact` | no |
+| 8 | `parse` threw | `errored` | `parse` | no |
+| 9 | `parse` returned `errored` | `errored` | `parse` | no |
+| 10 | parsed, no findings, exit 0 | `passed` | — | yes |
+| 11 | parsed, no findings, exit non-zero | `passed` | — | yes |
+| 12 | parsed, findings present | `failed` | — | yes |
+| 13 | spawn failed | `errored` | `spawn` | no |
+
+Row 7 sits before row 8 deliberately. Revision 2 handed an empty artefact map to the parser and classified by whichever exception it happened to raise, so a missing report was reported as a parse defect.
+
 - [ ] **Step 1: Write the failing test**
 
 `tests/core/adapter-stage.test.ts`:
@@ -2893,6 +3448,7 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { AdapterStageExecutor } from '../../src/core/stages/adapter-stage.js'
+import type { CredentialRequirement } from '../../src/core/adapters/types.js'
 import type { StageContext } from '../../src/core/stages/types.js'
 import type { SkillRef } from '../../src/core/types.js'
 import { makeFakeTool } from '../helpers/fake-tool.js'
@@ -2920,10 +3476,17 @@ async function context(over: Partial<StageContext> = {}): Promise<StageContext> 
     secrets: [],
     artefactSizeCapBytes: 1024 * 1024,
     timeoutOverridesMs: {},
-    credentialsPresent: false,
     onOutput: () => undefined,
     ...over,
   }
+}
+
+const NEEDS_KEY: CredentialRequirement = {
+  kind: 'one-of',
+  alternatives: [
+    { provider: 'NVIDIA', required: ['NVIDIA_INFERENCE_KEY'] },
+    { provider: 'OpenAI', required: ['OPENAI_API_KEY'] },
+  ],
 }
 
 async function lockWith(script: string) {
@@ -2936,6 +3499,7 @@ async function lockWith(script: string) {
         requestedPin: '2.3.7',
         resolvedVersion: '2.3.7',
         bin,
+        integrity: 'n/a',
         installedAt: '2026-08-01T00:00:00Z',
         verifiedAt: '2026-08-01T00:00:00Z',
       },
@@ -3005,14 +3569,65 @@ describe('AdapterStageExecutor.execute', () => {
     expect(result.toolRuns[0]?.artefactDir).toBe(join(ctx.stageDir, 'skillspector'))
   })
 
-  it('skips a credential-requiring tool when no .env is present', async () => {
+  it('skips a credential-requiring tool and names what is missing', async () => {
     const lock = await lockWith('exit 0')
     const exec = new AdapterStageExecutor('security', {
-      requiresCredentialsOverride: { skillspector: true },
+      credentialsOverride: { skillspector: NEEDS_KEY },
     })
-    const ctx = await context({ lock, credentialsPresent: false })
+    const ctx = await context({ lock, env: {} })
     const result = await exec.execute(ctx, await exec.plan(ctx))
     expect(result.toolRuns[0]).toMatchObject({ outcome: 'skipped', errorKind: 'no-credentials' })
+    expect(result.toolRuns[0]?.summary).toMatch(/NVIDIA_INFERENCE_KEY.*OPENAI_API_KEY/s)
+  })
+
+  it('runs when any one credential alternative is satisfied', async () => {
+    const lock = await lockWith(`printf '%s' '${SARIF_EMPTY}' > "$7"`)
+    const exec = new AdapterStageExecutor('security', {
+      credentialsOverride: { skillspector: NEEDS_KEY },
+    })
+    const ctx = await context({ lock, env: { OPENAI_API_KEY: 'x' } })
+    const result = await exec.execute(ctx, await exec.plan(ctx))
+    expect(result.toolRuns[0]?.outcome).toBe('passed')
+  })
+
+  it('passes a non-zero exit whose report parses clean — R4.13 row 11', async () => {
+    const lock = await lockWith(`printf '%s' '${SARIF_EMPTY}' > "$7"; exit 1`)
+    const exec = new AdapterStageExecutor('security')
+    const ctx = await context({ lock })
+    const result = await exec.execute(ctx, await exec.plan(ctx))
+    expect(result.toolRuns[0]).toMatchObject({ outcome: 'passed', exitCode: 1, errorKind: null })
+  })
+
+  it('classifies an absent declared artefact before invoking the parser — R4.13 row 7', async () => {
+    const lock = await lockWith('exit 0')
+    const exec = new AdapterStageExecutor('security')
+    const ctx = await context({ lock })
+    const result = await exec.execute(ctx, await exec.plan(ctx))
+    expect(result.toolRuns[0]).toMatchObject({
+      outcome: 'errored',
+      errorKind: 'missing-artefact',
+    })
+  })
+
+  it('errors when the executable does not exist — R4.13 row 13', async () => {
+    const lock = {
+      version: 1 as const,
+      tools: {
+        skillspector: {
+          installKind: 'uv-tool' as const,
+          requestedPin: '2.3.7',
+          resolvedVersion: '2.3.7',
+          bin: '/nonexistent/skillspector',
+          integrity: 'n/a',
+          installedAt: '2026-08-01T00:00:00Z',
+          verifiedAt: '2026-08-01T00:00:00Z',
+        },
+      },
+    }
+    const exec = new AdapterStageExecutor('security')
+    const ctx = await context({ lock })
+    const result = await exec.execute(ctx, await exec.plan(ctx))
+    expect(result.toolRuns[0]).toMatchObject({ outcome: 'errored', errorKind: 'spawn' })
   })
 
   it('streams output through onOutput', async () => {
@@ -3069,7 +3684,6 @@ export interface StageContext {
   secrets: readonly string[]
   artefactSizeCapBytes: number
   timeoutOverridesMs: Readonly<Record<string, number>>
-  credentialsPresent: boolean
   onOutput: (toolId: string, stream: 'stdout' | 'stderr', chunk: string) => void
   signal?: AbortSignal
 }
@@ -3107,9 +3721,15 @@ export interface StageExecutor {
 ```ts
 import { join } from 'node:path'
 import { getAdapter } from '../adapters/registry.js'
-import type { AdapterManifest } from '../adapters/types.js'
-import { runTool } from '../runner/spawn.js'
-import type { ErrorKind, Stage, ToolOutcome } from '../types.js'
+import {
+  type Adapter,
+  type AdapterManifest,
+  type CredentialRequirement,
+  credentialsSatisfied,
+  missingCredentials,
+} from '../adapters/types.js'
+import { type RunToolOutput, runTool } from '../runner/spawn.js'
+import type { ErrorKind, SkillRef, Stage } from '../types.js'
 import { reduceStageOutcome } from './outcome.js'
 import type {
   StageContext,
@@ -3122,8 +3742,8 @@ import type {
 const FAN_OUT_LIMIT = 2
 
 export interface AdapterStageOptions {
-  /** Test seam: force a manifest's credential requirement. */
-  requiresCredentialsOverride?: Readonly<Record<string, boolean>>
+  /** Test seam: substitute a manifest's credential requirement. */
+  credentialsOverride?: Readonly<Record<string, CredentialRequirement>>
 }
 
 function substitute(
@@ -3135,7 +3755,95 @@ function substitute(
   )
 }
 
-function skipped(toolId: string, artefactDir: string, kind: ErrorKind): ToolRunRecord {
+type Classification = Pick<
+  ToolRunRecord,
+  'outcome' | 'errorKind' | 'findings' | 'metrics' | 'summary'
+>
+
+const errored = (kind: ErrorKind, summary: string, durationMs: number): Classification => ({
+  outcome: 'errored',
+  errorKind: kind,
+  findings: [],
+  metrics: { durationMs },
+  summary,
+})
+
+/**
+ * Rows 4 to 13 of the R4.13 table, in order, first match wins. Rows 1 to 3 are
+ * decided before a process is ever spawned, by `skipped()` below.
+ *
+ * The governing rule is that a schema-valid parse is authoritative and the exit
+ * code is fallback evidence only: scanners and linters exit non-zero precisely
+ * because they found something, so treating exit status as primary turns valid
+ * findings into errors. Only rows 10 to 12 reach reconciliation.
+ */
+export function classifyToolRun(
+  adapter: Adapter,
+  skill: SkillRef,
+  run: RunToolOutput,
+): Classification {
+  const { durationMs } = run
+
+  if (run.cancelled) return errored('cancelled', 'cancelled', durationMs)
+  if (run.timedOut) return errored('timeout', 'timed out', durationMs)
+  if (run.oversizeArtefacts.length > 0) {
+    return errored(
+      'artefact-too-large',
+      `artefact over the size cap: ${run.oversizeArtefacts.join(', ')}`,
+      durationMs,
+    )
+  }
+  if (run.spawnFailed) return errored('spawn', `could not spawn: ${run.spawnError}`, durationMs)
+  // Before parse, not after: a missing report is not a parser defect, and
+  // classifying it by whichever exception the parser raised said it was.
+  if (run.missingArtefacts.length > 0) {
+    return errored(
+      'missing-artefact',
+      `declared artefact never written: ${run.missingArtefacts.join(', ')}`,
+      durationMs,
+    )
+  }
+
+  let parsed
+  try {
+    parsed = adapter.parse({
+      skill,
+      artefacts: run.artefacts,
+      stdout: run.stdout,
+      stderr: run.stderr,
+      exitCode: run.exitCode,
+      durationMs,
+    })
+  } catch (err) {
+    return errored('parse', `parse threw: ${(err as Error).message}`, durationMs)
+  }
+
+  if (parsed.outcome === 'errored') {
+    return errored('parse', parsed.summary, durationMs)
+  }
+
+  // Rows 10 to 12. The exit code is recorded but does not vote.
+  return {
+    outcome: parsed.outcome,
+    errorKind: null,
+    findings: parsed.findings,
+    metrics: { ...parsed.metrics, durationMs },
+    summary: parsed.summary,
+  }
+}
+
+/** Rows 1 to 3: decided before a process is spawned. */
+function skipped(
+  toolId: string,
+  artefactDir: string,
+  kind: ErrorKind,
+  detail = '',
+): ToolRunRecord {
+  const reason: Record<string, string> = {
+    'not-installed': 'tool is not installed',
+    'no-credentials': `needs ${detail}`,
+    'no-authorisation': 'mutating stage without authorisation',
+  }
   return {
     toolId,
     toolVersion: null,
@@ -3146,7 +3854,7 @@ function skipped(toolId: string, artefactDir: string, kind: ErrorKind): ToolRunR
     artefactDir,
     findings: [],
     metrics: {},
-    summary: kind === 'not-installed' ? 'tool is not installed' : 'no credentials configured',
+    summary: reason[kind] ?? kind,
   }
 }
 
@@ -3174,8 +3882,8 @@ export class AdapterStageExecutor implements StageExecutor {
     private readonly options: AdapterStageOptions = {},
   ) {}
 
-  private requiresCredentials(manifest: AdapterManifest): boolean {
-    return this.options.requiresCredentialsOverride?.[manifest.id] ?? manifest.requiresCredentials
+  private credentialsFor(manifest: AdapterManifest): CredentialRequirement {
+    return this.options.credentialsOverride?.[manifest.id] ?? manifest.credentials
   }
 
   /**
@@ -3212,8 +3920,12 @@ export class AdapterStageExecutor implements StageExecutor {
 
       const locked = ctx.lock.tools[toolId]
       if (!locked) return skipped(toolId, artefactDir, 'not-installed')
-      if (this.requiresCredentials(adapter.manifest) && !ctx.credentialsPresent) {
-        return skipped(toolId, artefactDir, 'no-credentials')
+
+      // Structured, so the skip summary and the wizard can both name what is
+      // missing. A boolean could only say "something".
+      const required = this.credentialsFor(adapter.manifest)
+      if (!credentialsSatisfied(required, ctx.env)) {
+        return skipped(toolId, artefactDir, 'no-credentials', missingCredentials(required))
       }
 
       const { manifest } = adapter
@@ -3247,74 +3959,7 @@ export class AdapterStageExecutor implements StageExecutor {
         artefactDir,
       }
 
-      if (run.timedOut) {
-        return {
-          ...base,
-          outcome: 'errored' as ToolOutcome,
-          errorKind: 'timeout' as ErrorKind,
-          findings: [],
-          metrics: { durationMs: run.durationMs },
-          summary: 'timed out',
-        }
-      }
-      if (run.cancelled) {
-        return {
-          ...base,
-          outcome: 'errored' as ToolOutcome,
-          errorKind: 'cancelled' as ErrorKind,
-          findings: [],
-          metrics: { durationMs: run.durationMs },
-          summary: 'cancelled',
-        }
-      }
-      if (run.oversizeArtefacts.length > 0) {
-        return {
-          ...base,
-          outcome: 'errored' as ToolOutcome,
-          errorKind: 'artefact-too-large' as ErrorKind,
-          findings: [],
-          metrics: { durationMs: run.durationMs },
-          summary: `artefact over the size cap: ${run.oversizeArtefacts.join(', ')}`,
-        }
-      }
-
-      // Parse success is authoritative; the exit code is only a fallback signal.
-      let parsed
-      try {
-        parsed = adapter.parse({
-          skill: ctx.skill,
-          artefacts: run.artefacts,
-          stdout: run.stdout,
-          stderr: run.stderr,
-          exitCode: run.exitCode,
-          durationMs: run.durationMs,
-        })
-      } catch (err) {
-        return {
-          ...base,
-          outcome: 'errored' as ToolOutcome,
-          errorKind: 'parse' as ErrorKind,
-          findings: [],
-          metrics: { durationMs: run.durationMs },
-          summary: `parse threw: ${(err as Error).message}`,
-        }
-      }
-
-      const errorKind: ErrorKind | null =
-        parsed.outcome === 'errored'
-          ? run.missingArtefacts.length > 0
-            ? 'missing-artefact'
-            : 'parse'
-          : null
-
-      return {
-        ...base,
-        outcome: parsed.outcome as ToolOutcome,
-        errorKind,
-        findings: parsed.findings,
-        metrics: { ...parsed.metrics, durationMs: run.durationMs },
-        summary: parsed.summary,
-      }
+      return { ...base, ...classifyToolRun(adapter, ctx.skill, run) }
     })
 
     const { outcome, verdict } = reduceStageOutcome(toolRuns.map((t) => t.outcome))
@@ -3330,7 +3975,7 @@ places the output path at position 7.
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `pnpm vitest run tests/core/adapter-stage.test.ts`
-Expected: PASS, ten cases.
+Expected: PASS, fifteen cases. Together with the timeout, cancellation and oversize cases in Task 9, every row of the R4.13 table is asserted somewhere.
 
 - [ ] **Step 5: Commit**
 
@@ -3349,9 +3994,17 @@ git commit -m "feat(stages): execute adapter-backed stages with per-tool isolati
 
 **Interfaces:**
 - Consumes: `SkillRef` (Task 2), `StageResult` (Task 14), `Provenance` (Task 7).
-- Produces: `claimRunDir(workspacePath)`, `stageDirFor(runDir, index, stage)`, `writeRunJson(runDir, meta)`, `writeStageJson(stageDir, result, unredacted)`, `finalizeRun(workspacePath, entry)`, `ensureGitignore(repoPath)`, `withSkillLock(workspacePath, fn)`.
+- Produces: `claimRunDir(workspacePath)`, `stageDirFor(runDir, index, stage)`, `writeRunJson(runDir, meta)`, `writeStageJson(stageDir, result, unredacted)`, `finalizeRun(workspacePath, entry)`, `readIndex(workspacePath)`, `ensureGitignore(repoPath)`, `withSkillLock(workspacePath, fn)`, `LOCK_STALE_MS`.
 
-Uniqueness is claimed, not asserted: `mkdir` with `recursive: false` fails if the directory exists, so a collision is detected rather than silently sharing a directory. `index.ndjson` is appended in `a` mode under the per-skill lock, so a crash truncates at a line boundary.
+Uniqueness is claimed, not asserted: `mkdir` with `recursive: false` fails if the directory exists, so a collision is detected rather than silently sharing a directory.
+
+Three durability corrections from the second design review, each a test below.
+
+**The index recovers on read, not on write.** One `write()` per record, newline included, then `fsync`. That is the strongest guarantee POSIX offers and it is not atomicity: a power failure can still leave a partial final line. So `readIndex` discards an invalid final line and `finalizeRun` prefixes a newline when the file does not end in one, and neither pretends otherwise.
+
+**`latest` is the greatest run id.** UUIDv7 is ordered by claim time, which is one stable field. Defining it as "the later run" left open whether later meant started, finished or locked — and two runs that start in one order and finish in the other would then disagree.
+
+**The lock has a lease.** A plain `wx` lockfile whose holder is killed blocks that skill forever. The lockfile carries the holder's pid and a heartbeat mtime; a waiter past the stale threshold breaks it and logs having done so.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -3359,13 +4012,14 @@ Uniqueness is claimed, not asserted: `mkdir` with `recursive: false` fails if th
 
 ```ts
 import { describe, expect, it } from 'vitest'
-import { mkdtemp, readFile, readlink, stat, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, mkdtemp, readFile, readlink, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { basename, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import {
   claimRunDir,
   ensureGitignore,
   finalizeRun,
+  readIndex,
   stageDirFor,
   withSkillLock,
   writeRunJson,
@@ -3490,6 +4144,78 @@ describe('finalizeRun', () => {
     expect(lines).toHaveLength(3)
     expect(new Set(lines.map((l) => JSON.parse(l).runId)).size).toBe(3)
   })
+
+  it('points latest at the greatest run id even when finish order is inverted', async () => {
+    const root = await ws()
+    const first = await claimRunDir(root)
+    const second = await claimRunDir(root)
+    expect(second.runId > first.runId).toBe(true)
+
+    // Second claimed later but finalises first.
+    await finalizeRun(root, {
+      runId: second.runId,
+      outcome: 'passed',
+      endedAt: '2026-08-01T00:00:00Z',
+    })
+    await finalizeRun(root, {
+      runId: first.runId,
+      outcome: 'passed',
+      endedAt: '2026-08-01T00:05:00Z',
+    })
+    expect(await readlink(join(root, 'skillgantry/runs/latest'))).toContain(second.runId)
+  })
+})
+
+describe('index recovery', () => {
+  it('discards a truncated final line and keeps every earlier record', async () => {
+    const root = await ws()
+    const a = await claimRunDir(root)
+    await finalizeRun(root, { runId: a.runId, outcome: 'passed', endedAt: '2026-08-01T00:00:00Z' })
+
+    const path = join(root, 'skillgantry/runs/index.ndjson')
+    await appendFile(path, '{"runId":"partial","outc')
+
+    const entries = await readIndex(root)
+    expect(entries).toHaveLength(1)
+    expect(entries[0]?.runId).toBe(a.runId)
+  })
+
+  it('does not fuse a new record onto a partial line', async () => {
+    const root = await ws()
+    const path = join(root, 'skillgantry/runs/index.ndjson')
+    await mkdir(dirname(path), { recursive: true })
+    await writeFile(path, '{"runId":"partial","outc')
+
+    const b = await claimRunDir(root)
+    await finalizeRun(root, { runId: b.runId, outcome: 'passed', endedAt: '2026-08-01T00:01:00Z' })
+
+    const entries = await readIndex(root)
+    expect(entries).toHaveLength(1)
+    expect(entries[0]?.runId).toBe(b.runId)
+  })
+})
+
+describe('withSkillLock', () => {
+  it('reclaims a lock whose holder is dead', async () => {
+    const root = await ws()
+    await mkdir(join(root, 'skillgantry'), { recursive: true })
+    // pid 2^22 + 1 is above every platform's pid_max default, so it cannot exist.
+    await writeFile(join(root, 'skillgantry/.lock'), JSON.stringify({ pid: 4194305 }))
+
+    const reclaimed: number[] = []
+    const value = await withSkillLock(root, async () => 'ran', 1_000, (_p, pid) =>
+      reclaimed.push(pid),
+    )
+    expect(value).toBe('ran')
+    expect(reclaimed).toEqual([4194305])
+  })
+
+  it('times out rather than breaking a live lock', async () => {
+    const root = await ws()
+    await mkdir(join(root, 'skillgantry'), { recursive: true })
+    await writeFile(join(root, 'skillgantry/.lock'), JSON.stringify({ pid: process.pid }))
+    await expect(withSkillLock(root, async () => 'ran', 100)).rejects.toThrow(/timed out/)
+  })
 })
 
 describe('ensureGitignore', () => {
@@ -3576,7 +4302,17 @@ export const toolDirFor = (stageDir: string, toolId: string): string => join(sta
 `src/core/workspace/writer.ts`:
 
 ```ts
-import { mkdir, open, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises'
+import {
+  mkdir,
+  open,
+  readFile,
+  rename,
+  rm,
+  stat,
+  symlink,
+  utimes,
+  writeFile,
+} from 'node:fs/promises'
 import { join } from 'node:path'
 import { v7 as uuidv7 } from 'uuid'
 import type { Provenance } from '../config/env.js'
@@ -3652,11 +4388,29 @@ export async function writeStageJson(
   await writeFile(join(stageDir, 'stage.json'), `${JSON.stringify(doc, null, 2)}\n`)
 }
 
-/** Advisory per-skill lock. Opening with `wx` fails when the lockfile exists. */
+/** A lock older than this with a dead holder is reclaimable. */
+export const LOCK_STALE_MS = 30_000
+
+const holderAlive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Leased per-skill lock. A bare `wx` lockfile is not enough: if the holder is
+ * killed the file survives and that skill can never be finalised again. The
+ * lease makes the failure recoverable — a waiter may break a lock whose holder
+ * is gone, or whose heartbeat has stopped for longer than the threshold.
+ */
 export async function withSkillLock<T>(
   workspacePath: string,
   fn: () => Promise<T>,
   timeoutMs = 10_000,
+  onReclaim: (path: string, pid: number) => void = () => undefined,
 ): Promise<T> {
   const path = lockPath(workspacePath)
   await mkdir(join(workspacePath, 'skillgantry'), { recursive: true, mode: WORKSPACE_MODE })
@@ -3665,36 +4419,102 @@ export async function withSkillLock<T>(
   for (;;) {
     try {
       const handle = await open(path, 'wx')
+      await handle.write(JSON.stringify({ pid: process.pid, at: new Date().toISOString() }))
       await handle.close()
       break
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+
+      const info = await stat(path).catch(() => null)
+      if (info) {
+        const held = JSON.parse(await readFile(path, 'utf8').catch(() => '{}')) as { pid?: number }
+        const stale = Date.now() - info.mtimeMs > LOCK_STALE_MS
+        const dead = typeof held.pid === 'number' && !holderAlive(held.pid)
+        if (dead || stale) {
+          onReclaim(path, held.pid ?? -1)
+          await rm(path, { force: true })
+          continue
+        }
+      }
       if (Date.now() > deadline) throw new Error(`timed out waiting for ${path}`)
       await new Promise((r) => setTimeout(r, 15))
     }
   }
 
+  const heartbeat = setInterval(() => {
+    void utimes(path, new Date(), new Date()).catch(() => undefined)
+  }, LOCK_STALE_MS / 3)
+
   try {
     return await fn()
   } finally {
+    clearInterval(heartbeat)
     await rm(path, { force: true })
   }
 }
 
+/**
+ * Reads the index, discarding a final line that a crash truncated. Every record
+ * is also present in full inside its own run directory, so a lost tail line
+ * costs an index entry and never evidence.
+ */
+export async function readIndex(workspacePath: string): Promise<IndexEntry[]> {
+  let body: string
+  try {
+    body = await readFile(indexPath(workspacePath), 'utf8')
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return []
+    throw err
+  }
+  const out: IndexEntry[] = []
+  for (const line of body.split('\n')) {
+    if (line.length === 0) continue
+    try {
+      out.push(JSON.parse(line) as IndexEntry)
+    } catch {
+      // Only the last line can be partial; anything else is not recoverable
+      // here either, and skipping it is the same conservative choice.
+    }
+  }
+  return out
+}
+
 export async function finalizeRun(workspacePath: string, entry: IndexEntry): Promise<void> {
   await withSkillLock(workspacePath, async () => {
-    const handle = await open(indexPath(workspacePath), 'a')
+    const path = indexPath(workspacePath)
+    const info = await stat(path).catch(() => null)
+    let prefix = ''
+    if (info && info.size > 0) {
+      const handle = await open(path, 'r')
+      try {
+        const tail = Buffer.alloc(1)
+        await handle.read(tail, 0, 1, info.size - 1)
+        // A previous crash may have lost the terminating newline. Starting on a
+        // fresh line means one damaged record can never corrupt the next.
+        if (tail[0] !== 0x0a) prefix = '\n'
+      } finally {
+        await handle.close()
+      }
+    }
+
+    const handle = await open(path, 'a')
     try {
-      await handle.write(`${JSON.stringify(entry)}\n`)
+      // One write call per record, newline included, then fsync.
+      await handle.write(`${prefix}${JSON.stringify(entry)}\n`)
       await handle.sync()
     } finally {
       await handle.close()
     }
 
+    // `latest` is the greatest run id, not the last finaliser. UUIDv7 orders by
+    // claim time, so two runs finishing out of order still agree.
+    const entries = await readIndex(workspacePath)
+    const newest = entries.reduce((max, e) => (e.runId > max ? e.runId : max), entry.runId)
+
     const link = latestPath(workspacePath)
     const temp = `${link}.tmp`
     await rm(temp, { force: true })
-    await symlink(entry.runId, temp)
+    await symlink(newest, temp)
     await rename(temp, link)
   })
 }
@@ -3720,7 +4540,7 @@ export async function ensureGitignore(repoPath: string): Promise<void> {
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `pnpm vitest run tests/core/workspace.test.ts`
-Expected: PASS, eleven cases. The concurrent-finalisation case is the R6.7 acceptance check.
+Expected: PASS, eighteen cases. The concurrent-finalisation and inverted-order cases are the R6.7 acceptance checks; the truncated-line and dead-holder cases are R6.4 and R6.9.
 
 - [ ] **Step 5: Commit**
 
@@ -3824,6 +4644,7 @@ describe('openLedger', () => {
       'tool_runs',
       'issues',
       'issue_detections',
+      'issue_detectors',
     ]) {
       expect(names).toContain(t)
     }
@@ -4014,10 +4835,22 @@ export const MIGRATIONS: readonly string[] = [
     primary key (issue_fp, tool_run_id, ordinal)
   );
 
+  -- One row per tool that has ever detected this issue. Closure is a
+  -- conjunction over these rows, which is what makes it independent of the
+  -- order two concurrent fan-out tools happen to finish in.
+  create table if not exists issue_detectors (
+    issue_fp        text not null references issues(fingerprint) on delete cascade,
+    tool_id         text not null,
+    last_seen_run   text,
+    last_absent_run text,
+    primary key (issue_fp, tool_id)
+  );
+
   create index if not exists idx_runs_skill on runs(skill_id, started_at);
   create index if not exists idx_stages_run on stages(run_id);
   create index if not exists idx_issues_skill_state on issues(skill_id, state);
   create index if not exists idx_detections_issue on issue_detections(issue_fp);
+  create index if not exists idx_detectors_issue on issue_detectors(issue_fp);
   `,
 ]
 ```
@@ -4078,10 +4911,16 @@ git commit -m "feat(ledger): add the schema, connection and merge-first fingerpr
 - Test: `tests/core/issues.test.ts`, `tests/core/reconcile.test.ts`
 
 **Interfaces:**
-- Consumes: `openLedger` (Task 16), `fingerprint` (Task 16), `getAdapter` (Task 10), `isUnmappedFor` (Task 10), `StageResult`/`ToolRunRecord` (Task 14).
-- Produces: `IssueState`, `stateOnDetection(state)`, `stateOnAbsence(state)`, `maxSeverity(a, b)`; `reconcile(db, args)`; `recordRun(ledger, input): RunDelta`.
+- Consumes: `openLedger` (Task 16), `fingerprint` (Task 16), `getAdapter` (Task 10), `StageResult`/`ToolRunRecord` (Task 14).
+- Produces: `IssueState`, `stateOnDetection(state)`, `stateOnAbsence(state)`, `maxSeverity(a, b)`; `reconcile(db, skillId, runId, toolRuns)`; `recordRun(ledger, input): RunDelta`.
 
-Two rules carry the weight here. A tool that errored or was skipped reconciles nothing, so a crashed scanner cannot mark every issue it ever found as fixed. And a tool's reconciliation scope includes its own `unmapped:` classes, without which an unmapped finding could never close.
+Three rules carry the weight here.
+
+A tool that errored or was skipped reconciles nothing, so a crashed scanner cannot mark every issue it ever found as fixed.
+
+**Closure is a conjunction over detectors, not a single owner.** Merge-first identity means one issue can carry detections from two scanners. Revision 2 then closed it when the tool owning its *most recent* detection reported a conclusive absence — but fan-out tools run concurrently, so two detections from one run have no order, and completion timing decided ownership. Identical runs could disagree about whether an issue closed. An `issue_detectors` row per tool turns closure into "every detector has since been conclusively absent", which no ordering can influence.
+
+**Scope is derived, not declared.** A tool's reconciliation scope is its `detects` unioned with every class it has actually produced for this skill. That subsumes revision 2's `unmapped:` clause and also covers a mapped class the manifest simply forgot.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -4269,10 +5108,10 @@ describe('recordRun', () => {
   })
 })
 
-describe('reconciliation', () => {
-  const clean = (outcome: ToolOutcome = 'passed'): StageResult =>
-    stage([toolRun({ outcome, findings: [] })], outcome === 'passed' ? 'passed' : 'errored')
+const clean = (outcome: ToolOutcome = 'passed'): StageResult =>
+  stage([toolRun({ outcome, findings: [] })], outcome === 'passed' ? 'passed' : 'errored')
 
+describe('reconciliation', () => {
   it('closes an issue the same tool no longer reports', () => {
     recordRun(ledger, input([stage([toolRun()], 'failed')]))
     const delta = recordRun(ledger, input([clean('passed')]))
@@ -4346,6 +5185,83 @@ describe('reconciliation', () => {
     expect(stateOf(ledger, fp)).toBe('open')
   })
 })
+
+/**
+ * Detector ownership. One issue, two scanners, and closure must not depend on
+ * which of them finished first — which is exactly what revision 2's
+ * most-recent-detector rule could not promise.
+ */
+describe('conjunctive closure across detectors', () => {
+  const both = (findings: RawFinding[]): StageResult =>
+    stage(
+      [
+        toolRun({ toolId: 'skillspector', findings, outcome: findings.length ? 'failed' : 'passed' }),
+        toolRun({ toolId: 'skill-scanner', findings, outcome: findings.length ? 'failed' : 'passed' }),
+      ],
+      findings.length ? 'failed' : 'passed',
+    )
+
+  const mixed = (present: string, absentOutcome: ToolOutcome): StageResult =>
+    stage(
+      [
+        toolRun({ toolId: present, findings: [], outcome: 'passed' }),
+        toolRun({
+          toolId: present === 'skillspector' ? 'skill-scanner' : 'skillspector',
+          findings: [],
+          outcome: absentOutcome,
+        }),
+      ],
+      'degraded',
+    )
+
+  beforeEach(() => {
+    recordRun(ledger, input([both([finding()])]))
+    expect(stateOf(ledger)).toBe('open')
+  })
+
+  it('stays open when one detector is absent and the other errored', () => {
+    recordRun(ledger, input([mixed('skillspector', 'errored')]))
+    expect(stateOf(ledger)).toBe('open')
+  })
+
+  it('stays open when one detector is absent and the other was skipped', () => {
+    recordRun(ledger, input([mixed('skillspector', 'skipped')]))
+    expect(stateOf(ledger)).toBe('open')
+  })
+
+  it('closes only once both detectors are conclusively absent', () => {
+    recordRun(ledger, input([mixed('skillspector', 'errored')]))
+    expect(stateOf(ledger)).toBe('open')
+    const delta = recordRun(ledger, input([both([])]))
+    expect(stateOf(ledger)).toBe('fixed')
+    expect(delta.closed).toBe(1)
+  })
+
+  it('reaches the same state whichever detector clears first', () => {
+    const other = openLedger(':memory:')
+    recordRun(other, input([both([finding()])]))
+
+    recordRun(ledger, input([mixed('skillspector', 'errored')]))
+    recordRun(ledger, input([both([])]))
+
+    recordRun(other, input([mixed('skill-scanner', 'errored')]))
+    recordRun(other, input([both([])]))
+
+    expect(stateOf(ledger)).toBe(stateOf(other))
+    other.close()
+  })
+
+  it('widens scope to a class the manifest never declared', () => {
+    // skillspector does not declare eval-failure, but if it produced one it
+    // must be able to retract it.
+    const stray = finding({ ruleClass: 'eval-failure', nativeRuleId: 'E1' })
+    const fp = fingerprint(SKILL.id, stray.path, 'eval-failure')
+    recordRun(ledger, input([stage([toolRun({ findings: [stray] })], 'failed')]))
+    expect(stateOf(ledger, fp)).toBe('open')
+    recordRun(ledger, input([clean('passed')]))
+    expect(stateOf(ledger, fp)).toBe('fixed')
+  })
+})
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -4411,16 +5327,38 @@ export interface ReconcileToolRun {
 interface CandidateRow {
   fingerprint: string
   state: IssueState
-  rule_class: string
 }
 
 /**
- * Closes issues a competent tool run stopped reporting.
+ * A tool's reconciliation scope. `detects` is a declaration and declarations go
+ * stale, so it is unioned with every class this tool has actually produced for
+ * this skill. Revision 2 unioned only `unmapped:` classes, which left a merely
+ * incomplete `detects` just as unclosable.
+ */
+function scopeFor(db: DatabaseSync, skillId: string, toolId: string): Set<string> {
+  const declared = getAdapter(toolId)?.manifest.detects ?? []
+  const produced = db
+    .prepare(
+      `select distinct i.rule_class as rule_class
+         from issues i
+         join issue_detectors d on d.issue_fp = i.fingerprint
+        where i.skill_id = ? and d.tool_id = ?`,
+    )
+    .all(skillId, toolId) as Array<{ rule_class: string }>
+  return new Set<string>([...declared, ...produced.map((r) => r.rule_class)])
+}
+
+/**
+ * Two phases: each conclusive tool records what it did and did not see, then an
+ * issue closes only when every tool that has ever detected it agrees it is gone.
  *
- * Scope is the tool's declared `detects` plus its own `unmapped:` classes.
- * Without the second half an unmapped issue could never close. Tool runs that
- * errored or were skipped are excluded entirely, which is what stops a crashed
- * scanner from marking everything it ever found as fixed.
+ * Closure is a conjunction over a set, and a set has no order — which is the
+ * point. Revision 2 asked which tool detected an issue "most recently", but
+ * fan-out tools run concurrently, so two detections from one run had no defined
+ * order and completion timing decided whether the issue closed.
+ *
+ * Tool runs that errored or were skipped are excluded from both phases, which
+ * is what stops a crashed scanner from marking everything it ever found as fixed.
  */
 export function reconcile(
   db: DatabaseSync,
@@ -4428,52 +5366,71 @@ export function reconcile(
   runId: string,
   toolRuns: readonly ReconcileToolRun[],
 ): number {
-  let closed = 0
-
+  // Phase 1: per-tool evidence.
   for (const toolRun of toolRuns) {
     if (toolRun.outcome !== 'passed' && toolRun.outcome !== 'failed') continue
 
-    const detects = getAdapter(toolRun.toolId)?.manifest.detects ?? []
-    const placeholders = detects.map(() => '?').join(',')
-    const classFilter =
-      detects.length > 0
-        ? `(i.rule_class in (${placeholders}) or i.rule_class like ?)`
-        : `i.rule_class like ?`
-
-    const params: unknown[] = [
-      skillId,
-      ...(detects.length > 0 ? detects : []),
-      `unmapped:${toolRun.toolId}:%`,
-      toolRun.toolId,
-    ]
-
-    const candidates = db
-      .prepare(
-        `select i.fingerprint, i.state, i.rule_class
-           from issues i
-          where i.skill_id = ?
-            and i.state in ('open', 'acknowledged')
-            and ${classFilter}
-            and (
-              select tr.tool_id
-                from issue_detections d
-                join tool_runs tr on tr.id = d.tool_run_id
-               where d.issue_fp = i.fingerprint
-               order by d.tool_run_id desc
-               limit 1
-            ) = ?`,
-      )
-      .all(...(params as never[])) as CandidateRow[]
-
-    for (const candidate of candidates) {
-      if (toolRun.reported.has(candidate.fingerprint)) continue
-      const next = stateOnAbsence(candidate.state)
-      if (!next) continue
+    for (const fp of toolRun.reported) {
       db.prepare(
-        `update issues set state = ?, closed_run = ?, reopened_run = null where fingerprint = ?`,
-      ).run(next, runId, candidate.fingerprint)
-      closed += 1
+        `insert into issue_detectors (issue_fp, tool_id, last_seen_run)
+              values (?, ?, ?)
+         on conflict(issue_fp, tool_id) do update set last_seen_run = excluded.last_seen_run`,
+      ).run(fp, toolRun.toolId, runId)
     }
+
+    const scope = scopeFor(db, skillId, toolRun.toolId)
+    if (scope.size === 0) continue
+    const placeholders = [...scope].map(() => '?').join(',')
+
+    const known = db
+      .prepare(
+        `select i.fingerprint as fingerprint
+           from issues i
+           join issue_detectors d on d.issue_fp = i.fingerprint and d.tool_id = ?
+          where i.skill_id = ? and i.rule_class in (${placeholders})`,
+      )
+      .all(toolRun.toolId, skillId, ...([...scope] as never[])) as Array<{ fingerprint: string }>
+
+    for (const row of known) {
+      if (toolRun.reported.has(row.fingerprint)) continue
+      db.prepare(
+        `update issue_detectors set last_absent_run = ? where issue_fp = ? and tool_id = ?`,
+      ).run(runId, row.fingerprint, toolRun.toolId)
+    }
+  }
+
+  // Phase 2: close only where every detector agrees.
+  let closed = 0
+  const candidates = db
+    .prepare(
+      `select fingerprint, state from issues
+        where skill_id = ? and state in ('open', 'acknowledged')`,
+    )
+    .all(skillId) as CandidateRow[]
+
+  for (const candidate of candidates) {
+    const detectors = db
+      .prepare(
+        `select last_seen_run, last_absent_run from issue_detectors where issue_fp = ?`,
+      )
+      .all(candidate.fingerprint) as Array<{
+      last_seen_run: string | null
+      last_absent_run: string | null
+    }>
+    if (detectors.length === 0) continue
+
+    // Run ids are UUIDv7, so lexical order is claim order.
+    const allAbsent = detectors.every(
+      (d) => d.last_absent_run !== null && (d.last_seen_run === null || d.last_absent_run > d.last_seen_run),
+    )
+    if (!allAbsent) continue
+
+    const next = stateOnAbsence(candidate.state)
+    if (!next) continue
+    db.prepare(
+      `update issues set state = ?, closed_run = ?, reopened_run = null where fingerprint = ?`,
+    ).run(next, runId, candidate.fingerprint)
+    closed += 1
   }
 
   return closed
@@ -4683,7 +5640,7 @@ The reconcile tests reference `skill-scanner` and `skill-up`, which have no adap
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `pnpm vitest run tests/core/issues.test.ts tests/core/reconcile.test.ts`
-Expected: PASS, twenty cases. The errored-tool and skipped-tool cases are the R8.8 acceptance checks.
+Expected: PASS, twenty-five cases. The errored-tool, skipped-tool and detector-ownership cases together are the R8.8 acceptance check; "reaches the same state whichever detector clears first" is the one that would have failed under revision 2.
 
 - [ ] **Step 6: Commit**
 
@@ -4702,7 +5659,7 @@ git commit -m "feat(ledger): add issue transitions, scoped reconciliation and th
 - Test: `tests/core/pipeline.test.ts`
 
 **Interfaces:**
-- Consumes: `AdapterStageExecutor` (Task 14), workspace writer (Task 15), `recordRun` (Task 17), `skillDigest`/`gitState` (Task 5), `haltsChain` (Task 13).
+- Consumes: `AdapterStageExecutor` (Task 14), workspace writer (Task 15), `recordRun` (Task 17), `digestSkill`/`gitState` (Task 5), `haltsChain` (Task 13).
 - Produces: `RunEvent`, `AsyncEventQueue`, `RunHandle`, `runPipeline(input): RunHandle`, `RunSummary`.
 
 M1 emits no `mutation:pending`, because no mutating stage exists yet. The handle still carries `resolveMutation` so M5 adds a stage rather than reshaping the API every consumer is written against.
@@ -4759,6 +5716,7 @@ async function setup(sarifBody: string) {
             requestedPin: '2.3.7',
             resolvedVersion: '2.3.7',
             bin,
+            integrity: 'n/a',
             installedAt: '2026-08-01T00:00:00Z',
             verifiedAt: '2026-08-01T00:00:00Z',
           },
@@ -4766,7 +5724,6 @@ async function setup(sarifBody: string) {
       },
       env: {},
       secrets: [],
-      credentialsPresent: false,
       provenance: { baseUrlHost: null, models: {}, authTokenHash: null },
       artefactSizeCapBytes: 1024 * 1024,
       timeoutOverridesMs: {},
@@ -4955,8 +5912,9 @@ export class AsyncEventQueue<T> {
 
 ```ts
 import type { ToolLock } from '../config/schema.js'
-import type { Provenance } from '../config/env.js'
-import { gitState, skillDigest } from '../discovery/digest.js'
+import { type Provenance, withAnalysisModes } from '../config/env.js'
+import { getAdapter } from '../adapters/registry.js'
+import { gitState, digestSkill } from '../discovery/digest.js'
 import type { Ledger } from '../ledger/db.js'
 import { recordRun } from '../ledger/record.js'
 import { AdapterStageExecutor } from '../stages/adapter-stage.js'
@@ -4984,7 +5942,6 @@ export interface RunPipelineInput {
   ledger: Ledger
   env: NodeJS.ProcessEnv
   secrets: readonly string[]
-  credentialsPresent: boolean
   provenance: Provenance
   artefactSizeCapBytes: number
   timeoutOverridesMs: Readonly<Record<string, number>>
@@ -5026,20 +5983,33 @@ export function runPipeline(input: RunPipelineInput): RunHandle {
     const { runId: id, runDir } = await claimRunDir(input.skill.workspacePath)
     resolveRunId(id)
 
+    // Order matters: R2.12. The gitignore write is itself a change to the repo,
+    // so capturing the digest first would record one its own side effect
+    // immediately invalidates.
     await ensureGitignore(input.skill.repo.path)
-    const digest = await skillDigest(input.skill.dir)
+    const digest = await digestSkill(input.skill)
     const git = await gitState(input.skill.repo.path, input.skill.relPath)
 
     const toolLockVersions = Object.fromEntries(
       Object.entries(input.lock.tools).map(([toolId, entry]) => [toolId, entry.resolvedVersion]),
     )
 
+    // A tool's analysis mode changes what its numbers mean, so it is recorded
+    // beside the provider fingerprint that exists for the same reason (R4.2b).
+    const analysisModes: Record<string, string> = {}
+    for (const stage of input.stages) {
+      for (const toolId of input.stageTools[stage] ?? []) {
+        const adapter = getAdapter(toolId)
+        if (adapter) analysisModes[toolId] = adapter.manifest.analysisMode
+      }
+    }
+
     await writeRunJson(runDir, {
       runId: id,
       skillId: input.skill.id,
       skillDigest: digest,
       git,
-      provenance: input.provenance,
+      provenance: withAnalysisModes(input.provenance, analysisModes),
       toolLock: toolLockVersions,
     })
 
@@ -5064,7 +6034,6 @@ export function runPipeline(input: RunPipelineInput): RunHandle {
         secrets: input.secrets,
         artefactSizeCapBytes: input.artefactSizeCapBytes,
         timeoutOverridesMs: input.timeoutOverridesMs,
-        credentialsPresent: input.credentialsPresent,
         onOutput: (toolId, stream, chunk) => {
           if (chunk.length > 0) {
             queue.push({ type: 'tool:output', runId: id, stage, toolId, stream, chunk })
@@ -5222,6 +6191,7 @@ async function harness(sarifBody: string) {
         requestedPin: '2.3.7',
         resolvedVersion: '2.3.7',
         bin,
+        integrity: 'n/a',
         installedAt: '2026-08-01T00:00:00Z',
         verifiedAt: '2026-08-01T00:00:00Z',
       },
@@ -5411,7 +6381,6 @@ export function buildProgram(deps: CliDeps): Command {
           ledger,
           env: { ...process.env, ...env.vars },
           secrets: env.secrets,
-          credentialsPresent: env.present,
           provenance: provenanceOf(env.vars),
           artefactSizeCapBytes: config.artefactSizeCapBytes,
           timeoutOverridesMs: config.timeoutOverridesMs,
@@ -5489,11 +6458,12 @@ Each criterion in the requirements milestone table becomes one named test. A cri
 
 ```ts
 import { describe, expect, it } from 'vitest'
-import { mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { buildProgram } from '../../src/cli/run-command.js'
-import { registerRepo, saveToolLock } from '../../src/core/config/config.js'
+import { loadToolLock, registerRepo, saveToolLock } from '../../src/core/config/config.js'
+import { installAndLock } from '../../src/core/tools/install.js'
 import { openLedger } from '../../src/core/ledger/db.js'
 import { SKILL_MD, makeRepo } from '../helpers/tmp-repo.js'
 import { makeFakeTool } from '../helpers/fake-tool.js'
@@ -5546,6 +6516,7 @@ async function harness(script: string, opts: { withEnv?: boolean } = {}): Promis
         requestedPin: '2.3.7',
         resolvedVersion: '2.3.7',
         bin,
+        integrity: 'n/a',
         installedAt: '2026-08-01T00:00:00Z',
         verifiedAt: '2026-08-01T00:00:00Z',
       },
@@ -5567,11 +6538,86 @@ async function harness(script: string, opts: { withEnv?: boolean } = {}): Promis
   }
 }
 
-const runDirOf = async (repoPath: string): Promise<string> => {
-  const runs = join(repoPath, 'declawed-workspace/skillgantry/runs')
+const runDirOf = async (repoPath: string, workspace = 'declawed-workspace'): Promise<string> => {
+  const runs = join(repoPath, `${workspace}/skillgantry/runs`)
   const entries = await readdir(runs, { withFileTypes: true })
   const dirs = entries.filter((e) => e.isDirectory()).map((e) => e.name).sort()
   return join(runs, dirs.at(-1) as string)
+}
+
+const runDigest = async (h: Harness): Promise<string> =>
+  JSON.parse(await readFile(join(await runDirOf(h.repoPath), 'run.json'), 'utf8')).skillDigest
+
+/** A single-skill repo, so its workspace lands inside the tree tools are given. */
+async function rootSkillHarness(script: string): Promise<Harness> {
+  const home = await mkdtemp(join(tmpdir(), 'sg-acc-home-'))
+  const repoPath = await makeRepo({ files: { 'SKILL.md': SKILL_MD('solo', '1.0.0') } })
+  await registerRepo(home, repoPath)
+
+  const bin = await makeFakeTool('skillspector', script)
+  await saveToolLock(home, {
+    version: 1,
+    tools: {
+      skillspector: {
+        installKind: 'uv-tool',
+        requestedPin: '2.3.7',
+        resolvedVersion: '2.3.7',
+        bin,
+        integrity: 'n/a',
+        installedAt: '2026-08-01T00:00:00Z',
+        verifiedAt: '2026-08-01T00:00:00Z',
+      },
+    },
+  })
+
+  const dbPath = join(home, 'gantry.db')
+  const out: string[] = []
+  return {
+    home,
+    repoPath,
+    dbPath,
+    out,
+    exec: async (args) => {
+      const program = buildProgram({ home, dbPath, write: (l) => out.push(l) })
+      await program.exitOverride().parseAsync(['node', 'skillgantry', ...args])
+      return program.exitCode ?? 0
+    },
+  }
+}
+
+/** Path of the `.seen` listing the canary fixture tool wrote beside its report. */
+const latestSeenFile = async (h: Harness): Promise<string> =>
+  join(await runDirOf(h.repoPath, '.skillgantry-workspace'), '03-security/skillspector/findings.sarif.seen')
+
+/** Like `harness`, but installs the real SkillSpector through the tool root. */
+async function harnessWithManagedTool(): Promise<Harness> {
+  const home = await mkdtemp(join(tmpdir(), 'sg-acc-home-'))
+  const repoPath = await makeRepo({
+    files: {
+      'declawed/SKILL.md': SKILL_MD('declawed', '1.1.0'),
+      'declawed/scripts/scan.py': 'print("hi")\n',
+    },
+  })
+  await registerRepo(home, repoPath)
+  await installAndLock(
+    home,
+    { id: 'skillspector', kind: 'uv-tool', spec: 'skillspector', pin: '2.3.7', binName: 'skillspector' },
+    ['--version'],
+  )
+
+  const dbPath = join(home, 'gantry.db')
+  const out: string[] = []
+  return {
+    home,
+    repoPath,
+    dbPath,
+    out,
+    exec: async (args) => {
+      const program = buildProgram({ home, dbPath, write: (l) => out.push(l) })
+      await program.exitOverride().parseAsync(['node', 'skillgantry', ...args])
+      return program.exitCode ?? 0
+    },
+  }
 }
 
 async function walkFiles(dir: string, acc: string[] = []): Promise<string[]> {
@@ -5650,6 +6696,7 @@ describe('M1 exit criterion 3: an errored tool closes no issue', () => {
           requestedPin: '2.3.7',
           resolvedVersion: '2.3.7',
           bin: broken,
+          integrity: 'n/a',
           installedAt: '2026-08-01T00:00:00Z',
           verifiedAt: '2026-08-01T00:00:00Z',
         },
@@ -5716,7 +6763,62 @@ describe('M1 exit criterion 5: a hanging process tree is killed', () => {
     ledger.close()
   })
 })
+
+describe('M1 exit criterion 6: a directory named snapshot-pre is part of the skill', () => {
+  it('changes the digest, so gate evidence cannot survive an edit inside it', async () => {
+    const h = await harness(`printf '%s' '${SARIF([])}' > "$7"`)
+    const notes = join(h.repoPath, 'declawed/snapshot-pre/notes.md')
+    await mkdir(dirname(notes), { recursive: true })
+    await writeFile(notes, 'one\n')
+
+    await h.exec(['run', 'declawed', '--stage', 'security', '--json'])
+    const before = await runDigest(h)
+
+    await writeFile(notes, 'two\n')
+    await h.exec(['run', 'declawed', '--stage', 'security', '--json'])
+    expect(await runDigest(h)).not.toBe(before)
+  })
+})
+
+describe('M1 exit criterion 7: a repo-root skill never exposes its own workspace', () => {
+  it('keeps a canary in a prior artefact out of the tool input', async () => {
+    // The fixture tool copies whatever it can see under its scan target into
+    // its report, which is the behaviour a model-assisted scanner would have.
+    const h = await rootSkillHarness('find "$2" -type f | tr "\\n" " " > "$7".seen; ' +
+      `printf '%s' '${SARIF([])}' > "$7"`)
+
+    const workspace = join(h.repoPath, '.skillgantry-workspace')
+    await mkdir(workspace, { recursive: true })
+    await writeFile(join(workspace, 'old-report.json'), 'CANARY-sk-000111222\n')
+
+    await h.exec(['run', 'solo', '--stage', 'security', '--json'])
+
+    const seen = await readFile(await latestSeenFile(h), 'utf8')
+    expect(seen).not.toContain('.skillgantry-workspace')
+    expect(seen).not.toContain('CANARY')
+  })
+})
+
+describe('M1 exit criterion 8: the managed tool root drives a real scan', () => {
+  it('installs skillspector, locks it, and runs it against a real skill', async () => {
+    const h = await harnessWithManagedTool()
+    const code = await h.exec(['run', 'declawed', '--stage', 'security', '--json'])
+    expect([0, 1]).toContain(code)
+
+    const lock = await loadToolLock(h.home)
+    expect(lock.tools.skillspector?.bin.startsWith(join(h.home, 'tools'))).toBe(true)
+    expect(lock.tools.skillspector?.resolvedVersion).toBe('2.3.7')
+
+    const ledger = openLedger(h.dbPath)
+    expect(ledger.db.prepare('select tool_version from tool_runs').get()).toMatchObject({
+      tool_version: '2.3.7',
+    })
+    ledger.close()
+  }, 300_000)
+})
 ```
+
+Criterion 8 is the one revision 1 of this plan could not express: every other test drives a fake executable, and without it nothing in M1 proves that the install driver, the lock and the runner agree. It runs under `pnpm test:integration` with the other network test.
 
 - [ ] **Step 2: Write the packaging test**
 
@@ -5802,9 +6904,18 @@ Every requirement M1 owns, and the task that satisfies it. A requirement with no
 | R2.5 tolerate missing frontmatter | 3, 4 |
 | R2.6 record git | 4, 5 |
 | R2.7 canonicalise paths | 6 |
-| R2.8 skill digest | 5, 18 |
-| R3.3 lock schema with resolved executable | 6 |
+| R2.8 skill digest over the candidate manifest | 5, 18 |
+| R2.9 candidate manifest is the sole authority | 5 |
+| R2.10 symlink policy | 5 |
+| R2.11 materialise a non-self-contained candidate | 5, 20 |
+| R2.12 gitignore before digest | 18 |
+| R3.1 managed isolated tool root | 6a |
+| R3.2a uv relocation via UV_TOOL_DIR | 6a |
+| R3.3 lock schema with resolved executable | 6, 6a |
+| R3.4 verify by invocation | 6a |
 | R4.1–R4.2 manifest and parse | 10, 12 |
+| R4.2a structured credential requirement | 10, 14 |
+| R4.2b declared analysis mode in provenance | 10, 12, 18 |
 | R4.3 pure parsers | 10 (lint rule), 7 in Task 7 of the contract, 11, 12 |
 | R4.4 shared SARIF parser | 11 |
 | R4.5 adding a tool touches nothing else | 10 (registry), 14 |
@@ -5812,11 +6923,12 @@ Every requirement M1 owns, and the task that satisfies it. A requirement with no
 | R4.10 selection before lockfile | 14 |
 | R4.11 empty selection rejected | 14 |
 | R4.12 oversize artefact | 9, 14 |
+| R4.13 tool classification table | 9, 14 |
 | R5.1 chain and halt | 13, 18 |
 | R5.9 timeout and process-tree kill | 9, 20 |
-| R5.11 total outcome reduction | 13 |
+| R5.11 total outcome reduction, verdict as a field | 13 |
 | R6.1–R6.3 sidecar layout | 15, 18 |
-| R6.4 index.ndjson and latest | 15 |
+| R6.4 index.ndjson durability and reader recovery | 15 |
 | R6.5 leave iteration-N alone | 15 (writes only under `skillgantry/`) |
 | R6.6 gitignore both patterns | 15, 18 |
 | R6.8 workspace path both layouts | 4, 15 |
@@ -5832,10 +6944,10 @@ Every requirement M1 owns, and the task that satisfies it. A requirement with no
 | R8.5 unmapped fallback | 10, 11 |
 | R8.6 cross-tool merge | 16, 17 |
 | R8.7 four states | 17 |
-| R8.8 close only after a competent run | 17, 20 |
+| R8.8 close only when every detector is conclusively absent | 17, 20 |
 | R8.10 full transition table | 17 |
 | R8.11 acknowledged reconciles | 17 |
-| R8.12 unmapped in scope | 17 |
+| R8.12 scope derived from what the tool produced | 17 |
 | R8.13 detection per occurrence | 17 |
 | R8.14 explicit rule-map migration | 10 (map is data; migration lands with M4's second scanner) |
 | R12.1 same pipeline | 19 |
@@ -5846,7 +6958,10 @@ Every requirement M1 owns, and the task that satisfies it. A requirement with no
 | R13.3 fixtures from real runs, scripted | 12 |
 | R13.4 fingerprint and reconciliation tests | 16, 17 |
 | R13.5 npm distribution | 20 |
-| R13.6 a contract test per P1 finding | 9, 13, 14, 15, 16, 17, 20 |
+| R13.6 a contract test per P1 finding of both reviews | 5, 6a, 9, 12, 13, 14, 15, 16, 17, 20 |
+| R13.7 one ownership table, checked coverage | 12 (design example test); the ownership table itself lives only in requirements.md |
+
+**Owned elsewhere but shaped here.** R3.2b (gh-release integrity) is an M3 requirement whose *schema* lands in M1, because `InstallSpec` and the lock entry are defined in Tasks 10 and 6. M1 ships no gh-release driver.
 
 **Deferred within M1, with reasons.** R8.14's migration *runner* is data-only until a second scanner exists to merge against; Task 10 ships the map and its tests, and M4 ships the migration that consumes it. R4.8's concurrency prohibition is structurally satisfied in M1 because no optimise adapter exists; M4 tests it directly.
 
@@ -5856,9 +6971,23 @@ Every requirement M1 owns, and the task that satisfies it. A requirement with no
 
 **Placeholders.** No task contains TBD, TODO, "similar to Task N", or a code step without code. Task 10 ships a deliberate placeholder `skillspector.ts` so the registry compiles; Task 12 replaces it, and both tasks say so explicitly.
 
-**Type consistency.** `ToolResult.outcome` is narrowed to `passed | failed | errored` in the adapter contract (Task 10) and widened to the full `ToolOutcome` on `ToolRunRecord` (Task 14), because only the executor can produce `skipped`. `StageResult.verdict` is `'passed' | 'failed'` everywhere. `fingerprint(skillId, relPath, ruleClass)` keeps the same three parameters in Tasks 16, 17 and 20. `claimRunDir` returns `{ runId, runDir }` in Tasks 15 and 18. `stageDirFor(runDir, index, stage)` is called with `STAGE_ORDER.indexOf(stage) + 1` in Task 18 and with a literal `3` in Task 15's test, both yielding `03-security`.
+**Type consistency.** `ToolResult.outcome` is narrowed to `passed | failed | errored` in the adapter contract (Task 10) and widened to the full `ToolOutcome` on `ToolRunRecord` (Task 14), because only the executor can produce `skipped`. `StageResult.verdict` is `'passed' | 'failed'` everywhere and is a field, never a metric. `fingerprint(skillId, relPath, ruleClass)` keeps the same three parameters in Tasks 16, 17 and 20. `claimRunDir` returns `{ runId, runDir }` in Tasks 15 and 18. `stageDirFor(runDir, index, stage)` is called with `STAGE_ORDER.indexOf(stage) + 1` in Task 18 and with a literal `3` in Task 15's test, both yielding `03-security`. `digestSkill(skill)` takes a `SkillRef` and `skillDigest(manifest)` takes a `CandidateManifest`; Task 18 calls the former. Credential state is derived from `ctx.env` by `credentialsSatisfied`, so no `credentialsPresent` flag is threaded anywhere.
 
-**Scope.** Twenty tasks, one milestone, one working deliverable: a headless engine that runs a real scanner and records the result. No TUI, no tool installer, no mutating stage.
+**Scope.** Twenty-one tasks, one milestone, one working deliverable: a headless engine that installs a real scanner, runs it, and records the result. No TUI, no wizard, no mutating stage.
+
+## What changed in revision 2 of this plan
+
+Aligning to design revision 3, which closed [design-review-2.md](design-review-2.md).
+
+| Finding | Change |
+|---|---|
+| 2, 3 Candidate view and digest | Task 5 rewritten: `candidateManifest()` becomes the single exclusion authority, the `snapshot-pre` basename rule is gone, symlinks are hashed and escapes rejected, `materialiseCandidate()` added for repo-root skills. Task 18 orders the gitignore write before digest capture. Task 20 gains the canary test. |
+| 5 M1 tool bootstrap | New Task 6a: the `uv-tool` driver via `UV_TOOL_DIR`/`UV_TOOL_BIN_DIR`, lock writer and verify-by-invocation. `InstallSpec` gains a declared `Integrity` for `gh-release`; the lock gains `integrity`. Task 20 gains an exit criterion driven by a genuinely managed install. |
+| 6 SkillSpector credentials | `requiresCredentials: boolean` replaced by `CredentialRequirement` throughout Tasks 10 and 14; `analysisMode` added and recorded in provenance; `detects` narrowed to static mode; a test now keeps design.md §7 and the shipped manifest in step. |
+| 7 Classification | Task 14 gains the ordered thirteen-row table as `classifyToolRun`, with missing artefacts classified before the parser is called, `spawn` added to `ErrorKind`, and a test per row. |
+| 8 Detector ownership | `issue_detectors` added in Task 16; Task 17's reconciliation becomes two phases and a conjunction, with scope derived from what a tool has produced. |
+| 9 Durability | Task 15 gains reader-side index recovery, `latest` by greatest run id, and a leased lock that a dead holder cannot keep. |
+| 11 Traceability | The coverage table above is the plan's own check; milestone ownership is not restated here, it lives in requirements.md alone. |
 
 ## Execution
 

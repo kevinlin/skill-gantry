@@ -4,7 +4,7 @@
 
 **Reviewed revision:** `9503fdc`
 
-**Reviewed:** [decision-log.md](decision-log.md), [requirements.md](requirements.md), [design.md](design.md), [design-review.md](design-review.md)
+**Reviewed:** [decision-log.md](decision-log.md), [requirements.md](requirements.md), [design.md](design.md), [design-review-r1.md](design-review-r1.md)
 
 **Verdict:** Substantially improved, but revision is still required before implementation planning
 

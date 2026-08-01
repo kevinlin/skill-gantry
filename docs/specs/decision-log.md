@@ -39,6 +39,8 @@ Established by inspection, not assumption. These constrain several decisions and
 | Eval duration | `declawed` iteration-3: 1m54s for 4 cases |
 | Non-git skills | `~/.claude/skills` holds 54 skills and **is not a git repo** |
 | Reference repo git | `zapac-agent-skills` is git, HEAD `e1847a7`, 2 untracked entries |
+| **uv relocation** | uv 0.7.12 has no `--tool-dir` on `uv tool install`; tool environments and executables relocate through `UV_TOOL_DIR` and `UV_TOOL_BIN_DIR`. Default tool dir is `~/.local/share/uv/tools` |
+| **SkillSpector credentials** | `scan` runs LLM analysis by default and needs one of `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, an AWS chain or `NVIDIA_INFERENCE_KEY`, selected by `SKILLSPECTOR_PROVIDER`. `--no-llm` runs static analysis with no credential. There is no rule-listing subcommand, so the static rule set must come from captured output |
 
 ---
 
@@ -230,7 +232,7 @@ Left rail: repo switcher plus skill list with per-skill status glyph. Right top:
 
 ## 7. Amendments after design review
 
-[design-review.md](design-review.md) (2026-08-01) raised eight blocking and four secondary findings. Ten were accepted and fixed inside [requirements.md](requirements.md) and [design.md](design.md) without disturbing any decision above. Four changed a confirmed decision, and are recorded here so the record stays honest about what moved and why.
+[design-review-r1.md](design-review-r1.md) (2026-08-01) raised eight blocking and four secondary findings. Ten were accepted and fixed inside [requirements.md](requirements.md) and [design.md](design.md) without disturbing any decision above. Four changed a confirmed decision, and are recorded here so the record stays honest about what moved and why.
 
 **A1. Finding identity is merge-first, superseding the message-shape scheme.**
 The fingerprint is now `(skillId, path, ruleClass)` with no message component. The review showed that a message-derived discriminator cannot satisfy R8.6: two scanners describing one problem in different words produce different shapes and therefore two issues. Cross-tool merging and per-occurrence separation cannot both hold without a semantic key neither tool provides. Merging wins; occurrences move into the detections table with an ordinal.
@@ -249,6 +251,25 @@ A sibling `<skill>-workspace/` for a repo-root skill lands outside the repo and 
 
 ---
 
-## 8. Next
+## 8. Amendments after the second design review
+
+[design-review-2.md](design-review-2.md) (2026-08-01) raised seven blocking and four secondary findings against revision 2. All eleven were accepted. Most were absorbed inside [requirements.md](requirements.md) and [design.md](design.md); the four below changed a confirmed decision.
+
+**A5. Release verifies before it writes.**
+D9 ordered the release as apply, then package, then installability check. That released first and validated second: a packaging or install failure had to undo a change already live in the user's repo, and the archive, a required output, sat in neither the mutation scope nor the recovery journal, so an aborted release could leave a zip behind while reporting a rollback. The order is now stage-edits → package in the sandbox → verify install → preview → apply, with the archive in the change set and the journal.
+*Also corrected:* "install the zip via vercel `skills`" is not executable. That tool documents git sources and local directories, not archives. Release now extracts the staged archive and installs the extracted directory, which verifies the same bytes a consumer receives regardless of which sources the tool grows.
+
+**A6. M1 owns a slice of the tool manager.**
+D19 put the tool manager wholly in M3 while asking M1 to run a real scanner. Those cannot both hold: M1's runner resolves its executable from the lockfile, and nothing in M1 could write one. M1 now builds the `uv-tool` install driver, the lock writer and verify-by-invocation. `npm-prefix`, `gh-release`, presets, the wizard and `doctor` stay in M3. The alternative, a dev-only bootstrap script, was rejected because it leaves the lock contract unexercised by shipped code in the milestone whose entire purpose is validating cross-cutting contracts against real tool output.
+
+**A7. Issue closure is a conjunction over detectors, not a single owner.**
+A1 made identity merge-first, so one issue can carry detections from two scanners. D12's closure rule then asked which tool "most recently" detected it — but fan-out tools run concurrently, so two detections from one run have no order, and completion timing decided ownership. Identical runs could disagree on whether an issue closed. Closure now requires every tool that has detected an issue to have since run conclusively without it. Reconciliation scope is likewise derived from what a tool has actually reported, not from what its manifest claims to detect.
+*Consequence:* an issue found by both scanners stays open while either is erroring or deselected. That is the intended fail-safe direction, made per-tool and visible rather than arbitrary.
+
+**A8. One candidate manifest defines what a skill is.**
+A4's in-repo `.skillgantry-workspace/` put the workspace inside the tree a repo-root skill's tools are pointed at, and revision 2 mitigated that by dropping findings after the scan. Too late: a model-assisted scanner can read a prior run's unredacted artefact and transmit it before SkillGantry sees any finding. A single candidate manifest now defines the skill's bytes for digesting, tool input, snapshotting and packaging, with exact owned-path exclusions rather than basename matching and a symlink rule that holds in every consumer. When the candidate root would contain SkillGantry-owned paths, the manifest is materialised into a private copy and the tool is pointed there — so the exposure is removed by construction rather than filtered afterwards.
+*Record correction:* revision 2's digest excluded "any `snapshot-pre/` directory", which would have let a legitimately named skill directory change without invalidating gate evidence.
+
+## 9. Next
 
 Convert the specification set into an implementation plan, M1 first.
