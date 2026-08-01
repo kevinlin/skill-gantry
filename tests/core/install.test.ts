@@ -64,12 +64,6 @@ describe('installAndLock', () => {
 
 describe('installTool against real indexes', () => {
   it('installs every catalogued tool into the tool root and verifies it', async () => {
-    // promptfoo refuses to open its default database when it detects a test
-    // process, and verifyTool spawns with the ambient environment, so vitest's
-    // own markers reach it. Pointing it at a scratch directory is a property of
-    // running this under a test runner, not of the driver.
-    process.env.PROMPTFOO_CONFIG_DIR = await mkdtemp(join(tmpdir(), 'sg-promptfoo-'))
-
     for (const spec of CATALOGUE) {
       const h = await home()
       const entry = await installTool(h, spec)

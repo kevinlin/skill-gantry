@@ -78,14 +78,14 @@ describe('setup driver', () => {
     const root = await makeRepo({ files: { 'a/SKILL.md': SKILL_MD('a') } })
     const driver = buildSetupDriver(h)
 
-    await driver.saveSelection(['skillspector', 'promptfoo'])
+    await driver.saveSelection(['skillspector', 'skill-lint'])
     await driver.registerRepo(root)
 
     const config = await loadConfig(h)
     expect(config.stageTools.security).toEqual(['skillspector'])
-    // promptfoo installs in M3 and gains its parser in M4, so it must not be
-    // selected: AdapterStageExecutor.plan() throws on an unknown id.
-    expect(config.stageTools.evaluate).toEqual([])
+    // skill-lint installs in M3 and gains its parser in M4, so it must not be
+    // selected yet: AdapterStageExecutor.plan() throws on an unknown id.
+    expect(config.stageTools.validate).toEqual([])
     expect(config.repos.map((r) => r.name)).toEqual([root.split('/').at(-1)])
   })
 
