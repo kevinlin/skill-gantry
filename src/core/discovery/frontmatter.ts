@@ -5,9 +5,11 @@ const FRONTMATTER = /^﻿?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/
 export interface Frontmatter {
   name: string | null
   version: string | null
+  /** R1.6: the file is the authority for lifecycle state; the ledger is a cache. */
+  deprecated: boolean
 }
 
-const EMPTY: Frontmatter = { name: null, version: null }
+const EMPTY: Frontmatter = { name: null, version: null, deprecated: false }
 
 function asString(value: unknown): string | null {
   if (typeof value === 'string') return value
@@ -37,5 +39,9 @@ export function parseFrontmatter(source: string): Frontmatter {
       ? (record.metadata as Record<string, unknown>)
       : {}
 
-  return { name: asString(record.name), version: asString(metadata.version) }
+  return {
+    name: asString(record.name),
+    version: asString(metadata.version),
+    deprecated: metadata.deprecated === true,
+  }
 }

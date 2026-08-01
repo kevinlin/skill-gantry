@@ -13,23 +13,28 @@ describe('parseFrontmatter', () => {
       '',
       '# Declawed',
     ].join('\n')
-    expect(parseFrontmatter(src)).toEqual({ name: 'declawed', version: '1.1.0' })
+    expect(parseFrontmatter(src)).toEqual({ name: 'declawed', version: '1.1.0', deprecated: false })
   })
 
   it('returns nulls when there is no frontmatter', () => {
-    expect(parseFrontmatter('# Just a heading\n')).toEqual({ name: null, version: null })
+    expect(parseFrontmatter('# Just a heading\n')).toEqual({ name: null, version: null, deprecated: false })
   })
 
   it('returns nulls when the fields are absent', () => {
-    expect(parseFrontmatter('---\ndescription: x\n---\n')).toEqual({ name: null, version: null })
+    expect(parseFrontmatter('---\ndescription: x\n---\n')).toEqual({ name: null, version: null, deprecated: false })
   })
 
   it('tolerates malformed yaml without throwing', () => {
-    expect(parseFrontmatter('---\nname: [unclosed\n---\n')).toEqual({ name: null, version: null })
+    expect(parseFrontmatter('---\nname: [unclosed\n---\n')).toEqual({ name: null, version: null, deprecated: false })
   })
 
   it('coerces a numeric version to a string', () => {
     expect(parseFrontmatter('---\nmetadata:\n  version: 2\n---\n').version).toBe('2')
+  })
+
+  it('reads metadata.deprecated', () => {
+    const src = '---\nname: x\nmetadata:\n  deprecated: true\n---\n'
+    expect(parseFrontmatter(src)).toEqual({ name: 'x', version: null, deprecated: true })
   })
 
   it('accepts CRLF line endings', () => {
