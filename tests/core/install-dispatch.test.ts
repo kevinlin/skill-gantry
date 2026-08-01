@@ -10,11 +10,11 @@ import { installTool, toolRoot } from '../../src/core/tools/install.js'
 const home = (): Promise<string> => mkdtemp(join(tmpdir(), 'sg-dispatch-'))
 
 const NPM_TOOL: ToolSpec = {
-  id: 'promptfoo',
-  displayName: 'promptfoo',
-  stage: 'evaluate',
+  id: 'skill-lint',
+  displayName: 'skill-lint',
+  stage: 'validate',
   runtime: 'npm',
-  install: { kind: 'npm-prefix', spec: 'promptfoo', pin: '0.100.0', binName: 'promptfoo' },
+  install: { kind: 'npm-prefix', spec: 'skill-lint', pin: '0.100.0', binName: 'skill-lint' },
   versionArgv: ['--version'],
 }
 
@@ -25,8 +25,8 @@ const fakeNpm =
     if (bin !== 'npm') throw new Error(`unexpected ${bin}`)
     const prefix = argv[argv.indexOf('--prefix') + 1] as string
     await mkdir(join(prefix, 'node_modules', '.bin'), { recursive: true })
-    const shim = join(prefix, 'node_modules', '.bin', 'promptfoo')
-    await writeFile(shim, '#!/bin/sh\necho "promptfoo 0.100.0"\n')
+    const shim = join(prefix, 'node_modules', '.bin', 'skill-lint')
+    await writeFile(shim, '#!/bin/sh\necho "skill-lint 0.100.0"\n')
     await chmod(shim, 0o755)
     void dir
     return { stdout: '', stderr: '' }
@@ -38,13 +38,13 @@ describe('installTool', () => {
     const entry = await installTool(h, NPM_TOOL, { exec: fakeNpm(() => h) })
 
     expect(entry.installKind).toBe('npm-prefix')
-    expect(entry.bin.startsWith(join(toolRoot(h), 'promptfoo'))).toBe(true)
+    expect(entry.bin.startsWith(join(toolRoot(h), 'skill-lint'))).toBe(true)
     expect(entry.resolvedVersion).toBe('0.100.0')
     expect(entry.integrity).toBe('n/a')
     expect(entry.verifiedAt).not.toBeNull()
 
     const lock = await loadToolLock(h)
-    expect(lock.tools.promptfoo?.bin).toBe(entry.bin)
+    expect(lock.tools['skill-lint']?.bin).toBe(entry.bin)
   })
 
   it('writes no lock entry when verification fails', async () => {
@@ -58,6 +58,6 @@ describe('installTool', () => {
     await expect(installTool(h, NPM_TOOL, { exec: brokenNpm })).rejects.toThrow(
       /could not be invoked/,
     )
-    expect((await loadToolLock(h)).tools.promptfoo).toBeUndefined()
+    expect((await loadToolLock(h)).tools['skill-lint']).toBeUndefined()
   })
 })

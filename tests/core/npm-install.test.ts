@@ -6,11 +6,11 @@ import type { Exec } from '../../src/core/tools/exec.js'
 import { type NpmInstallSpec, npmInstall } from '../../src/core/tools/npm.js'
 
 const SPEC: NpmInstallSpec = {
-  id: 'promptfoo',
+  id: 'skill-lint',
   kind: 'npm-prefix',
-  spec: 'promptfoo',
+  spec: 'skill-lint',
   pin: '0.100.0',
-  binName: 'promptfoo',
+  binName: 'skill-lint',
 }
 
 describe('npmInstall', () => {
@@ -24,7 +24,7 @@ describe('npmInstall', () => {
 
     const bin = await npmInstall(dir, SPEC, exec)
 
-    expect(bin).toBe(join(dir, 'node_modules', '.bin', 'promptfoo'))
+    expect(bin).toBe(join(dir, 'node_modules', '.bin', 'skill-lint'))
     expect(calls[0]?.bin).toBe('npm')
     expect(calls[0]?.argv).toEqual([
       'install',
@@ -33,7 +33,7 @@ describe('npmInstall', () => {
       '--no-fund',
       '--no-audit',
       '--loglevel=error',
-      'promptfoo@0.100.0',
+      'skill-lint@0.100.0',
     ])
   })
 
@@ -43,7 +43,7 @@ describe('npmInstall', () => {
       throw Object.assign(new Error('exit 1'), { stderr: 'E404 Not Found' })
     }
     await expect(npmInstall(dir, SPEC, exec)).rejects.toThrow(
-      /install failed for promptfoo@0\.100\.0: E404/,
+      /install failed for skill-lint@0\.100\.0: E404/,
     )
   })
 })
