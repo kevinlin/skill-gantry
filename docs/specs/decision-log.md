@@ -21,9 +21,9 @@ Established by inspection, not assumption. These constrain several decisions and
 
 | Fact | Detail |
 |---|---|
-| Repo state | `skill-gantry` is greenfield: only `docs/research/`, not yet a git repo |
+| Repo state | git repo on `main`; the specification set landed in `be0a555` (greenfield at the time of the grilling session) |
 | Tool repos exist | All 12 recommended GitHub repos return 200 |
-| Already installed | `skill-up`, `skillspector` (both `~/.local/bin`) |
+| Already installed | `skill-up`, `skillspector` v2.3.7 (both `~/.local/bin`) |
 | Not installed | `skill-lint`, `skill-scanner`, `SkillOpt`, `SkillHone`, `skillhub`, vercel `skills`, `promptfoo`, `agentskills` |
 | Runtimes present | node 24.15, python 3.13, uv 0.7.12, pipx, bun 1.3.14, cargo, go, rustc |
 | Tool languages | TS/npm: skill-lint, promptfoo, vercel skills · Go: skill-up · Python/pyproject: skill-scanner, SkillSpector, SkillOpt, SkillHone, agentskills · **Java: skillhub** |
@@ -228,6 +228,27 @@ Left rail: repo switcher plus skill list with per-skill status glyph. Right top:
 
 ---
 
-## 7. Next
+## 7. Amendments after design review
 
-Refine requirements and draft the specification set under `docs/specs/`.
+[design-review.md](design-review.md) (2026-08-01) raised eight blocking and four secondary findings. Ten were accepted and fixed inside [requirements.md](requirements.md) and [design.md](design.md) without disturbing any decision above. Four changed a confirmed decision, and are recorded here so the record stays honest about what moved and why.
+
+**A1. Finding identity is merge-first, superseding the message-shape scheme.**
+The fingerprint is now `(skillId, path, ruleClass)` with no message component. The review showed that a message-derived discriminator cannot satisfy R8.6: two scanners describing one problem in different words produce different shapes and therefore two issues. Cross-tool merging and per-occurrence separation cannot both hold without a semantic key neither tool provides. Merging wins; occurrences move into the detections table with an ordinal.
+*Consequence:* three distinct credential findings in one file become one issue with three detections. The issue count reads as "files with a problem of this class", not "occurrences of it".
+*Record correction:* D8 originally specified dedup by file, line and rule class. Revision 1 of the design changed that to message shape without amending this log. This entry closes that gap.
+
+**A2. R7.4 narrowed to streams; artefacts stay in the sidecar.**
+Tools write native artefacts themselves, so those bytes never pass through SkillGantry's redaction transform, and redacting a rollback snapshot would destroy byte-exact restore. Rather than route tools through a private staging directory outside the sidecar, R7.4 now covers stdout and stderr only. Native artefacts, snapshots and evidence bundles are unredacted; the workspace root is mode 0700, both workspace patterns are gitignored, and every unredacted artefact is flagged in the stage summary.
+*Why this way:* keeping every artefact in the sidecar was the original brief. The staging-directory alternative is recorded as deferred.
+
+**A3. Release tolerates a repo with no `versions.json`.**
+D9's dual version bump assumed a repo-root manifest. The 54 skills in `~/.claude/skills` have none. Release now performs the dual write only when `versions.json` exists, and otherwise updates `SKILL.md` alone and records `manifest: none` in the evidence bundle. SkillGantry never creates the file.
+
+**A4. Repo-root skills use an in-repo dotdirectory workspace.**
+A sibling `<skill>-workspace/` for a repo-root skill lands outside the repo and cannot be gitignored by it. Such skills use `.skillgantry-workspace/` inside the repo, excluded from the skill digest and from snapshot copies.
+
+---
+
+## 8. Next
+
+Convert the specification set into an implementation plan, M1 first.
