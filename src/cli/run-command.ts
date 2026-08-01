@@ -8,6 +8,7 @@ import { openLedger } from '../core/ledger/db.js'
 import { runPipeline } from '../core/pipeline/run.js'
 import type { GantryConfig } from '../core/config/schema.js'
 import type { SkillRef, Stage } from '../core/types.js'
+import { startTui, type TuiOptions } from './tui-command.js'
 
 const STAGES: readonly Stage[] = ['validate', 'evaluate', 'security', 'optimise', 'release']
 const MUTATING: ReadonlySet<Stage> = new Set<Stage>(['optimise', 'release'])
@@ -16,6 +17,8 @@ export interface CliDeps {
   home: string
   dbPath: string
   write: (line: string) => void
+  /** Test seam. Defaults to the real terminal interface. */
+  startTui?: (options: TuiOptions) => Promise<void>
 }
 
 /**
@@ -145,6 +148,18 @@ export function buildProgram(deps: CliDeps): GantryProgram {
       } finally {
         ledger.close()
       }
+    })
+
+  program
+    .option('--concurrency <n>', 'worker pool limit for this session', (value) => Number(value))
+    .action(async (opts: { concurrency?: number }) => {
+      // Commander runs this only when no subcommand matched.
+      const launch = deps.startTui ?? startTui
+      await launch({
+        home: deps.home,
+        dbPath: deps.dbPath,
+        ...(opts.concurrency === undefined ? {} : { concurrency: opts.concurrency }),
+      })
     })
 
   return program

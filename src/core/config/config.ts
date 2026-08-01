@@ -12,6 +12,7 @@ export const DEFAULT_CONFIG: GantryConfig = {
   concurrency: 2,
   artefactSizeCapBytes: 32 * 1024 * 1024,
   timeoutOverridesMs: {},
+  mutationTimeoutMs: 300_000,
 }
 
 const configFile = (home: string): string => join(home, 'config.json')

@@ -11,3 +11,5 @@ coverage/
 
 # AGENTS.md
 AGENTS.md
+# Child-process test scratch
+tests/tmp/

@@ -55,9 +55,24 @@ export interface StageResult {
   toolRuns: ToolRunRecord[]
 }
 
+export interface PendingMutation {
+  /** Unified diff for preview. Empty when the change set is binary-only. */
+  diff: string
+  /** Repo-relative paths this mutation would write. */
+  scope: readonly string[]
+}
+
 export interface StageExecutor {
   readonly stage: Stage
   readonly mutating: boolean
   plan(ctx: StageContext): Promise<StagePlan>
   execute(ctx: StageContext, plan: StagePlan): Promise<StageResult>
+  /** Mutating executors only. Null means the tools changed nothing. */
+  prepareMutation?(
+    ctx: StageContext,
+    plan: StagePlan,
+    result: StageResult,
+  ): Promise<PendingMutation | null>
+  applyMutation?(ctx: StageContext, pending: PendingMutation): Promise<void>
+  discardMutation?(ctx: StageContext, pending: PendingMutation): Promise<void>
 }

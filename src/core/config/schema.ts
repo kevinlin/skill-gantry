@@ -21,6 +21,8 @@ export const configSchema = z.object({
   concurrency: z.number().int().min(1).max(16),
   artefactSizeCapBytes: z.number().int().min(1),
   timeoutOverridesMs: z.record(z.string(), z.number().int().min(1)).default({}),
+  /** R5.14: a prompt nobody answers discards after this long. */
+  mutationTimeoutMs: z.number().int().min(1_000).default(300_000),
 })
 
 export type GantryConfig = z.infer<typeof configSchema>
