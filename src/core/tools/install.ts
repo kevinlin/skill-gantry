@@ -3,6 +3,10 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { loadToolLock, saveToolLock } from '../config/config.js'
 import type { ToolLockEntry } from '../config/schema.js'
+import type { ToolSpec } from './catalogue.js'
+import type { Exec } from './exec.js'
+import { type GhReleaseOptions, ghReleaseInstall } from './gh-release.js'
+import { npmInstall } from './npm.js'
 import { type UvInstallSpec, uvInstall } from './uv.js'
 
 const run = promisify(execFile)
@@ -17,11 +21,11 @@ const SEMVER = /\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?/
  */
 export async function verifyTool(
   entry: Pick<ToolLockEntry, 'bin'>,
-  versionArgv: string[],
+  versionArgv: readonly string[],
 ): Promise<string> {
   let output: string
   try {
-    const res = await run(entry.bin, versionArgv)
+    const res = await run(entry.bin, [...versionArgv])
     output = `${res.stdout}${res.stderr}`
   } catch (err) {
     throw new Error(`${entry.bin} could not be invoked: ${(err as Error).message}`)
@@ -31,26 +35,51 @@ export async function verifyTool(
   return match[0]
 }
 
-export async function installAndLock(
+export interface InstallToolOptions extends GhReleaseOptions {
+  exec?: Exec
+}
+
+/** Where a driver placed the executable, and what integrity it could prove. */
+async function drive(
+  dir: string,
+  spec: ToolSpec,
+  options: InstallToolOptions,
+): Promise<{ bin: string; integrity: string }> {
+  switch (spec.install.kind) {
+    case 'uv-tool':
+      return {
+        // uv verifies its own downloads against the index; there is nothing for
+        // us to re-check.
+        integrity: 'n/a',
+        bin: await uvInstall(dir, { id: spec.id, ...spec.install }),
+      }
+    case 'npm-prefix':
+      return {
+        integrity: 'n/a',
+        bin: await npmInstall(dir, { id: spec.id, ...spec.install }, options.exec),
+      }
+    case 'gh-release':
+      return ghReleaseInstall(dir, { id: spec.id, ...spec.install }, options)
+  }
+}
+
+export async function installTool(
   home: string,
-  spec: UvInstallSpec,
-  versionArgv: string[],
+  spec: ToolSpec,
+  options: InstallToolOptions = {},
 ): Promise<ToolLockEntry> {
   const dir = join(toolRoot(home), spec.id)
-  const bin = await uvInstall(dir, spec)
+  const { bin, integrity } = await drive(dir, spec, options)
   const installedAt = new Date().toISOString()
 
-  const resolvedVersion = await verifyTool({ bin }, versionArgv)
+  const resolvedVersion = await verifyTool({ bin }, spec.versionArgv)
 
   const entry: ToolLockEntry = {
-    installKind: 'uv-tool',
-    requestedPin: spec.pin,
+    installKind: spec.install.kind,
+    requestedPin: spec.install.pin,
     resolvedVersion,
     bin,
-    // uv verifies its own downloads against the index; there is nothing for us
-    // to re-check. gh-release, which has no such guarantee, gains a declared
-    // integrity source in M3.
-    integrity: 'n/a',
+    integrity,
     installedAt,
     verifiedAt: new Date().toISOString(),
   }
@@ -58,4 +87,20 @@ export async function installAndLock(
   const lock = await loadToolLock(home)
   await saveToolLock(home, { ...lock, tools: { ...lock.tools, [spec.id]: entry } })
   return entry
+}
+
+/** M1's entry point, kept so its integration test needs no edit. */
+export async function installAndLock(
+  home: string,
+  spec: UvInstallSpec,
+  versionArgv: readonly string[],
+): Promise<ToolLockEntry> {
+  return installTool(home, {
+    id: spec.id,
+    displayName: spec.id,
+    stage: null,
+    runtime: 'uv',
+    install: { kind: 'uv-tool', spec: spec.spec, pin: spec.pin, binName: spec.binName },
+    versionArgv,
+  })
 }
