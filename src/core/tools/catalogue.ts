@@ -20,9 +20,11 @@ export const RELEASE_TOOL_ID = 'skills'
 /**
  * Every entry was probed against its real index before being written here, and
  * every pin is a version that index actually carries — M1 shipped once with a
- * SkillSpector pin upstream never published. Two of D7's eight tools are absent
- * because no public source publishes them in installable form; the probe output
- * behind each omission is recorded in docs/specs/plan-m3.md.
+ * SkillSpector pin upstream never published. Four of D7's eight tools are
+ * absent: agentskills, SkillOpt and SkillHone because no public source
+ * publishes them in installable form, with the probe output behind each
+ * omission recorded in docs/specs/plan-m3.md, and promptfoo because it drives
+ * off a per-skill config no skill carries — docs/specs/decision-log.md §10.
  */
 export const CATALOGUE: readonly ToolSpec[] = [
   {
@@ -46,14 +48,6 @@ export const CATALOGUE: readonly ToolSpec[] = [
       binName: 'skill-up',
       integrity: { kind: 'sha256-asset', assetPattern: 'skill-up_0\\.7\\.0_checksums\\.txt' },
     },
-    versionArgv: ['--version'],
-  },
-  {
-    id: 'promptfoo',
-    displayName: 'promptfoo',
-    stage: 'evaluate',
-    runtime: 'npm',
-    install: { kind: 'npm-prefix', spec: 'promptfoo', pin: '0.121.20', binName: 'promptfoo' },
     versionArgv: ['--version'],
   },
   {
@@ -107,7 +101,10 @@ export type PresetName = 'minimal' | 'recommended' | 'everything'
  * Minimal is the two tools already on the reference machine; Recommended is one
  * per stage; Everything is the catalogue. All three carry the release installer,
  * because a preset that omits it produces a toolchain release cannot gate.
- * Optimise has no member: both of D7's optimise candidates are uninstallable.
+ * Optimise has no member: both of D7's optimise candidates are unpublished.
+ * Evaluate has one candidate rather than two — promptfoo needs a per-skill
+ * promptfooconfig.yaml that no skill in either reference repo carries, so it
+ * would install and then error on every real input. Decision-log section 10.
  */
 export const PRESETS: Readonly<Record<PresetName, readonly string[]>> = {
   minimal: ['skill-up', 'skillspector', RELEASE_TOOL_ID],
