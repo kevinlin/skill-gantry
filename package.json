@@ -16,7 +16,7 @@
     "lint": "eslint src tests",
     "test": "vitest run",
     "acceptance": "SG_ACCEPTANCE=1 vitest run tests/acceptance",
-    "test:integration": "SG_INTEGRATION=1 SG_ACCEPTANCE=1 vitest run tests/core/install.test.ts tests/acceptance/m1.test.ts",
+    "test:integration": "SG_INTEGRATION=1 SG_ACCEPTANCE=1 vitest run tests/core/install.test.ts tests/acceptance",
     "check": "pnpm lint && pnpm build && pnpm test && pnpm acceptance"
   },
   "dependencies": {
