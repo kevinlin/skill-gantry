@@ -24,9 +24,9 @@ Established by inspection, not assumption. These constrain several decisions and
 | Repo state | git repo on `main`; the specification set landed in `be0a555` (greenfield at the time of the grilling session) |
 | Tool repos exist | All 12 recommended GitHub repos return 200 |
 | Already installed | `skill-up`, `skillspector` v2.3.7 (both `~/.local/bin`) |
-| Not installed | `skill-lint`, `skill-scanner`, `SkillOpt`, `SkillHone`, `skillhub`, vercel `skills`, `promptfoo`, `agentskills` |
+| Not installed | `skill-lint`, `skill-scanner`, `SkillOpt`, `SkillHone`, `skillhub`, vercel `skills`, `agentskills` |
 | Runtimes present | node 24.15, python 3.13, uv 0.7.12, pipx, bun 1.3.14, cargo, go, rustc |
-| Tool languages | TS/npm: skill-lint, promptfoo, vercel skills · Go: skill-up · Python/pyproject: skill-scanner, SkillSpector, SkillOpt, SkillHone, agentskills · **Java: skillhub** |
+| Tool languages | TS/npm: skill-lint, vercel skills · Go: skill-up · Python/pyproject: skill-scanner, SkillSpector, SkillOpt, SkillHone, agentskills · **Java: skillhub** |
 | Author's language mix | 51 `package.json` vs 7 `pyproject.toml`, zero `go.mod`, zero `Cargo.toml` under `~/dev` |
 | Reference repo layout | Flat: one skill per top-level dir, `SKILL.md` at its root, sidecar as sibling `<skill>-workspace/` |
 | Discovery trap | `agent-insights-workspace/skill-snapshot/SKILL.md` exists, so recursive `SKILL.md` globs pick up snapshots |
@@ -79,13 +79,14 @@ SkillGantry owns a tool root. Each tool installs via its native manager into its
 
 **D7.** Both candidate tools ship for every stage in v1.
 Validate: skill-lint, agentskills. Evaluate: skill-up, promptfoo. Security: skill-scanner (Cisco), SkillSpector (NVIDIA). Optimise: SkillOpt, SkillHone. Release: native, so eight tool adapters in total. Counting vercel `skills`, which the native release stage invokes for its installability check, nine external tools are installed.
+*Superseded in part:* four of these eight are not shipping. M3 found agentskills, SkillOpt and SkillHone unpublished in installable form (probe output in [plan-m3.md](plan-m3.md)); promptfoo is removed by §10 below. The catalogue is the record of what exists, not this paragraph.
 *Why:* deliberate choice for coverage and fidelity to the research doc. The two scanners are genuinely complementary: Cisco does SARIF, policy checks and data-flow; NVIDIA does taint tracking, dependency checks and signatures.
 *Accepted cost:* roughly double the adapter work and double the install surface that can break. This makes the adapter contract the piece most expensive to get wrong, which is why D19 validates it before widening.
 *Rejected:* one default per stage with the rest as config (leaner, less security coverage); start with only the two installed tools; Optimise-via-Claude-Code instead of SkillOpt (worth revisiting as a third optimise adapter: inspectable, no fifth Python tool, reuses the managed credentials).
 
 **D8.** Per-stage multi-tool policy.
 - Validate, Security: **fan out**: run both, merge findings, dedup by (file, line, rule-class), retain per-finding provenance.
-- Evaluate: **pick one**: skill-up default, promptfoo selectable.
+- Evaluate: **pick one**: skill-up. The policy is what matters and it is unchanged — two eval harnesses measure different things and averaging their scores is meaningless — but skill-up is the only harness that survived probing, so "pick one" has one candidate. See §10.
 - Optimise: **pick one, never concurrent.**
 
 *Why:* the three stages differ in kind. Findings union usefully. Two eval harnesses measure different things and averaging their scores is meaningless. Two LLM optimisers writing one `SKILL.md` concurrently is a corruption bug.
@@ -273,3 +274,15 @@ A4's in-repo `.skillgantry-workspace/` put the workspace inside the tree a repo-
 ## 9. Next
 
 Convert the specification set into an implementation plan, M1 first.
+
+## 10. promptfoo removed from the catalogue
+
+**Date:** 2026-08-02. Supersedes the promptfoo half of D7 and D8.
+
+promptfoo evaluates prompts declared in a per-project `promptfooconfig.yaml`. It has no concept of an agent skill, so a maintainer must author and maintain one config per skill. Probing on 2026-08-01 found zero such configs across both reference repos, 20 skills in `zapac-agent-skills` and 54 in `~/.claude/skills`, while four skills already carry skill-up's `evals/eval.yaml`.
+
+*Why removed rather than deferred:* every other catalogued tool takes a skill directory as its only input, which is what makes a skill orchestrator possible. promptfoo takes a file SkillGantry cannot supply: writing one into the skill directory would be a mutation during a read-only stage, and generating one from `evals/` is a feature no requirement asks for. Its adapter would therefore have installed, verified and locked a tool that reports `errored` against every real skill. Carrying it as "installable, not yet runnable" would have left that promise standing in three spec documents and a `PROMPTFOO_CONFIG_DIR` workaround in the integration suite indefinitely.
+
+*Consequence:* evaluate has exactly one tool, skill-up. D8's pick-one policy is unchanged and is enforced by `AdapterStageExecutor.plan()`, which rejects a selection of more than one tool for a `pick-one` stage regardless of how many candidates exist.
+
+*Reversible:* if a per-skill promptfoo config convention emerges in the skills ecosystem, the tool returns as a catalogue entry plus an adapter, and nothing else about the design has to move.
