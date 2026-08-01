@@ -82,7 +82,10 @@ describe('runTool', () => {
   it('preserves partial output written before the timeout', async () => {
     const bin = await makeFakeTool('partial', 'echo before-hang; sleep 600')
     const dir = await toolDir()
-    const out = await runTool({ ...base, bin, argv: [], toolDir: dir, timeoutMs: 1_000 })
+    // 3s, not 1s: the assertion is that a kill preserves what was written, and
+    // on a cold, loaded machine the shell can take longer than a second to get
+    // its first line out, which made this fail for reasons it does not test.
+    const out = await runTool({ ...base, bin, argv: [], toolDir: dir, timeoutMs: 3_000 })
     expect(out.stdout).toContain('before-hang')
     expect(await readFile(join(dir, 'stdout.log'), 'utf8')).toContain('before-hang')
   })
