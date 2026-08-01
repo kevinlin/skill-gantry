@@ -143,8 +143,29 @@ export function createQueue(options: QueueOptions): QueueHandle {
       }
     },
 
-    async cancelJob(): Promise<void> {
-      // Task 4.
+    async cancelJob(jobId: string): Promise<void> {
+      const index = queued.findIndex((entry) => entry.job.jobId === jobId)
+      if (index !== -1) {
+        const [entry] = queued.splice(index, 1)
+        const job = (entry as Entry).job
+        job.state = 'cancelled'
+        // Design §11.4 row 1: nothing started, so there is no run directory and
+        // no evidence to preserve. `finish` emits and re-pumps.
+        finish(job)
+        // Same reason as settleIdle's deferral: a caller awaiting cancelJob is
+        // entitled to see the cancellation on the event stream once it returns.
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        return
+      }
+
+      const active = running.get(jobId)
+      if (!active) return
+
+      // Set the state first so `drive` reports a cancellation rather than a
+      // completion when the handle settles.
+      active.job.state = 'cancelled'
+      await active.handle.cancel('cancelled from the queue')
+      await active.settled
     },
 
     events,
