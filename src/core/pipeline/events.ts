@@ -16,7 +16,14 @@ export type RunEvent =
     }
   | { type: 'tool:done'; runId: string; stage: Stage; toolId: string; result: ToolRunRecord }
   | { type: 'stage:done'; runId: string; stage: Stage; outcome: StageOutcome; result: StageResult }
-  | { type: 'mutation:pending'; runId: string; stage: Stage; requestId: string; diff: string }
+  | {
+      type: 'mutation:pending'
+      runId: string
+      stage: Stage
+      requestId: string
+      diff: string
+      scope: readonly string[]
+    }
   | {
       type: 'mutation:resolved'
       runId: string

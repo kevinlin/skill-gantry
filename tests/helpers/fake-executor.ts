@@ -1,4 +1,5 @@
 import type {
+  PendingMutation,
   StageContext,
   StageExecutor,
   StagePlan,
@@ -15,6 +16,8 @@ export interface FakeExecutorOptions {
   hold?: Promise<void>
   /** Records each call in order. Task 2 adds the mutation calls. */
   calls?: string[]
+  /** Returned by prepareMutation. Null means the tools changed nothing. */
+  pending?: PendingMutation | null
 }
 
 /**
@@ -62,6 +65,18 @@ export function fakeExecutor(stage: Stage, options: FakeExecutorOptions = {}): S
           },
         ],
       }
+    },
+
+    async prepareMutation(): Promise<PendingMutation | null> {
+      return options.pending ?? null
+    },
+
+    async applyMutation(): Promise<void> {
+      calls.push(`apply:${stage}`)
+    },
+
+    async discardMutation(): Promise<void> {
+      calls.push(`discard:${stage}`)
     },
   }
 }

@@ -116,6 +116,10 @@ export async function runTool(input: RunToolInput): Promise<RunToolOutput> {
     if (child.pid) killTree(child.pid, 'SIGKILL')
   }
   input.signal?.addEventListener('abort', onAbort, { once: true })
+  // An abort that landed between the caller's decision and this listener fires
+  // no event, so the check is what stops a cancelled run waiting out its
+  // timeout with a live process group.
+  if (input.signal?.aborted === true) onAbort()
 
   let spawnError: string | null = null
 

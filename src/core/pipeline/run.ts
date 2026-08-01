@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -10,7 +11,13 @@ import type { Ledger } from '../ledger/db.js'
 import { recordRun } from '../ledger/record.js'
 import { AdapterStageExecutor } from '../stages/adapter-stage.js'
 import { haltsChain } from '../stages/outcome.js'
-import type { StageContext, StageExecutor, StageResult } from '../stages/types.js'
+import type {
+  PendingMutation,
+  StageContext,
+  StageExecutor,
+  StagePlan,
+  StageResult,
+} from '../stages/types.js'
 import type { SkillRef, Stage, StageOutcome } from '../types.js'
 import { STAGE_ORDER } from '../workspace/layout.js'
 import {
@@ -23,6 +30,7 @@ import {
 } from '../workspace/writer.js'
 import { Cancellation } from './cancellation.js'
 import type { RunEvent } from './events.js'
+import { DEFAULT_MUTATION_TIMEOUT_MS, MutationGate } from './mutation-gate.js'
 import { AsyncEventQueue } from './queue.js'
 
 /** Test seam and M5 seam: the pipeline never names a concrete executor. */
@@ -44,6 +52,7 @@ export interface RunPipelineInput {
   artefactSizeCapBytes: number
   timeoutOverridesMs: Readonly<Record<string, number>>
   executorFactory?: StageExecutorFactory
+  mutationTimeoutMs?: number
 }
 
 export interface RunSummary {
@@ -72,7 +81,8 @@ export function runPipeline(input: RunPipelineInput): RunHandle {
   const queue = new AsyncEventQueue<RunEvent>()
   const cancellation = new Cancellation()
   const makeExecutor = input.executorFactory ?? defaultExecutorFactory
-  const pendingMutations = new Map<string, (action: 'apply' | 'discard') => void>()
+  const gate = new MutationGate()
+  const mutationTimeoutMs = input.mutationTimeoutMs ?? DEFAULT_MUTATION_TIMEOUT_MS
 
   let observedRunId: string | null = null
   let resolveRunId: (id: string) => void = () => undefined
@@ -148,6 +158,55 @@ export function runPipeline(input: RunPipelineInput): RunHandle {
       })
     }
 
+    /**
+     * R5.2's ordering, R5.12's correlation and R5.14's timeout in one place.
+     * The diff is emitted before anything is applied, in every mode.
+     */
+    const gateMutation = async (
+      executor: StageExecutor,
+      ctx: StageContext,
+      plan: StagePlan,
+      result: StageResult,
+    ): Promise<StageResult> => {
+      if (!executor.mutating || !executor.prepareMutation) return result
+      const pending: PendingMutation | null = await executor.prepareMutation(ctx, plan, result)
+      if (!pending) return result
+
+      const requestId = randomUUID()
+      cancellation.enter('awaiting-approval')
+      queue.push({
+        type: 'mutation:pending',
+        runId: id,
+        stage: ctx.stage,
+        requestId,
+        diff: pending.diff,
+        scope: pending.scope,
+      })
+
+      // Prompting after cancellation would block on an answer nobody can give.
+      const decision = cancellation.requested
+        ? ({ action: 'discard', reason: 'cancelled' } as const)
+        : await gate.request(requestId, mutationTimeoutMs)
+
+      queue.push({
+        type: 'mutation:resolved',
+        runId: id,
+        stage: ctx.stage,
+        requestId,
+        action: decision.action,
+      })
+      cancellation.enter('running')
+
+      if (decision.action === 'apply') {
+        await executor.applyMutation?.(ctx, pending)
+        return result
+      }
+      await executor.discardMutation?.(ctx, pending)
+      // An unapplied mutating stage did not do its job, whatever its tools
+      // reported, so it cannot report `passed` and cannot continue the chain.
+      return { ...result, outcome: 'skipped' }
+    }
+
     // Stages always run in lifecycle order regardless of the order requested.
     const ordered = STAGE_ORDER.filter((s) => input.stages.includes(s))
     const results: StageResult[] = []
@@ -184,10 +243,12 @@ export function runPipeline(input: RunPipelineInput): RunHandle {
         queue.push({ type: 'tool:start', runId: id, stage, toolId })
       }
 
-      const result = await executor.execute(ctx, plan)
-      for (const toolRun of result.toolRuns) {
+      const executed = await executor.execute(ctx, plan)
+      for (const toolRun of executed.toolRuns) {
         queue.push({ type: 'tool:done', runId: id, stage, toolId: toolRun.toolId, result: toolRun })
       }
+
+      const result = await gateMutation(executor, ctx, plan, executed)
 
       // M1's only adapter declares no binaryArtefacts, so nothing is copied
       // verbatim; stage.json still records redacted:false per tool run (R7.4a).
@@ -247,9 +308,13 @@ export function runPipeline(input: RunPipelineInput): RunHandle {
   return {
     runId,
     events: queue,
-    resolveMutation: (requestId, action) => pendingMutations.get(requestId)?.(action),
+    resolveMutation: (requestId, action) => {
+      gate.resolve(requestId, action)
+    },
     cancel: async (reason = 'cancelled by caller') => {
       cancellation.request(reason)
+      // A run parked on a prompt has no other way back to the finaliser.
+      gate.discardAll('cancelled')
       await done.then(
         () => undefined,
         () => undefined,
