@@ -1,5 +1,6 @@
 import type { StageResult, ToolRunRecord } from '../stages/types.js'
 import type { Stage, StageOutcome } from '../types.js'
+import type { CancelPhase } from './cancellation.js'
 
 export type RunEvent =
   | { type: 'run:start'; runId: string; skillId: string; stages: readonly Stage[]; runDir: string }
@@ -31,5 +32,5 @@ export type RunEvent =
       closed: number
       reopened: number
     }
-  | { type: 'run:cancelled'; runId: string; reason: string }
+  | { type: 'run:cancelled'; runId: string; phase: CancelPhase; reason: string }
   | { type: 'run:error'; runId: string; message: string }

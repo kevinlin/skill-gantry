@@ -10,7 +10,7 @@ import type { Ledger } from '../ledger/db.js'
 import { recordRun } from '../ledger/record.js'
 import { AdapterStageExecutor } from '../stages/adapter-stage.js'
 import { haltsChain } from '../stages/outcome.js'
-import type { StageContext, StageResult } from '../stages/types.js'
+import type { StageContext, StageExecutor, StageResult } from '../stages/types.js'
 import type { SkillRef, Stage, StageOutcome } from '../types.js'
 import { STAGE_ORDER } from '../workspace/layout.js'
 import {
@@ -21,8 +21,15 @@ import {
   writeRunJson,
   writeStageJson,
 } from '../workspace/writer.js'
+import { Cancellation } from './cancellation.js'
 import type { RunEvent } from './events.js'
 import { AsyncEventQueue } from './queue.js'
+
+/** Test seam and M5 seam: the pipeline never names a concrete executor. */
+export type StageExecutorFactory = (stage: Stage) => StageExecutor
+
+export const defaultExecutorFactory: StageExecutorFactory = (stage) =>
+  new AdapterStageExecutor(stage)
 
 export interface RunPipelineInput {
   skill: SkillRef
@@ -36,6 +43,7 @@ export interface RunPipelineInput {
   provenance: Provenance
   artefactSizeCapBytes: number
   timeoutOverridesMs: Readonly<Record<string, number>>
+  executorFactory?: StageExecutorFactory
 }
 
 export interface RunSummary {
@@ -53,7 +61,8 @@ export interface RunHandle {
   runId: Promise<string>
   events: AsyncIterable<RunEvent>
   resolveMutation(requestId: string, action: 'apply' | 'discard'): void
-  cancel(reason?: string): void
+  /** Resolves once the run has finalised. Calling twice is a no-op. */
+  cancel(reason?: string): Promise<void>
   done: Promise<RunSummary>
 }
 
@@ -61,9 +70,11 @@ const nowIso = (): string => new Date().toISOString()
 
 export function runPipeline(input: RunPipelineInput): RunHandle {
   const queue = new AsyncEventQueue<RunEvent>()
-  const controller = new AbortController()
+  const cancellation = new Cancellation()
+  const makeExecutor = input.executorFactory ?? defaultExecutorFactory
   const pendingMutations = new Map<string, (action: 'apply' | 'discard') => void>()
 
+  let observedRunId: string | null = null
   let resolveRunId: (id: string) => void = () => undefined
   const runId: Promise<string> = new Promise((resolve) => {
     resolveRunId = resolve
@@ -72,6 +83,7 @@ export function runPipeline(input: RunPipelineInput): RunHandle {
   const done = (async (): Promise<RunSummary> => {
     const startedAt = nowIso()
     const { runId: id, runDir } = await claimRunDir(input.skill.workspacePath)
+    observedRunId = id
     resolveRunId(id)
 
     // Order matters: R2.12. The gitignore write is itself a change to the repo,
@@ -124,13 +136,28 @@ export function runPipeline(input: RunPipelineInput): RunHandle {
       runDir,
     })
 
+    let cancelEmitted = false
+    const emitCancelled = (): void => {
+      if (cancelEmitted || !cancellation.requested) return
+      cancelEmitted = true
+      queue.push({
+        type: 'run:cancelled',
+        runId: id,
+        phase: cancellation.phase,
+        reason: cancellation.reason,
+      })
+    }
+
     // Stages always run in lifecycle order regardless of the order requested.
     const ordered = STAGE_ORDER.filter((s) => input.stages.includes(s))
     const results: StageResult[] = []
     let outcome: StageOutcome = 'passed'
 
+    cancellation.enter('running')
     for (const stage of ordered) {
-      const executor = new AdapterStageExecutor(stage)
+      if (cancellation.requested) break
+
+      const executor = makeExecutor(stage)
       const stageDir = stageDirFor(runDir, STAGE_ORDER.indexOf(stage) + 1, stage)
 
       const ctx: StageContext = {
@@ -148,7 +175,7 @@ export function runPipeline(input: RunPipelineInput): RunHandle {
             queue.push({ type: 'tool:output', runId: id, stage, toolId, stream, chunk })
           }
         },
-        signal: controller.signal,
+        signal: cancellation.signal,
       }
 
       const plan = await executor.plan(ctx)
@@ -173,6 +200,12 @@ export function runPipeline(input: RunPipelineInput): RunHandle {
       if (haltsChain(result.outcome)) break
     }
 
+    // A run cancelled before any stage produced a result did not do what it was
+    // asked, and there is no 'cancelled' stage outcome to report it with.
+    if (cancellation.requested && results.length === 0) outcome = 'errored'
+    emitCancelled()
+
+    cancellation.enter('finalising')
     const endedAt = nowIso()
     await finalizeRun(input.skill.workspacePath, { runId: id, outcome, endedAt })
 
@@ -191,6 +224,11 @@ export function runPipeline(input: RunPipelineInput): RunHandle {
       stages: results,
     })
 
+    cancellation.enter('done')
+    // A request that arrived while finalisation was in flight is acknowledged
+    // here: design §11.4 makes that phase uncancellable, not unreportable.
+    emitCancelled()
+
     queue.push({ type: 'run:done', runId: id, outcome, ...delta })
     queue.close()
 
@@ -198,7 +236,11 @@ export function runPipeline(input: RunPipelineInput): RunHandle {
   })()
 
   done.catch((err: unknown) => {
-    queue.push({ type: 'run:error', runId: 'unknown', message: (err as Error).message })
+    queue.push({
+      type: 'run:error',
+      runId: observedRunId ?? 'unknown',
+      message: (err as Error).message,
+    })
     queue.close()
   })
 
@@ -206,9 +248,12 @@ export function runPipeline(input: RunPipelineInput): RunHandle {
     runId,
     events: queue,
     resolveMutation: (requestId, action) => pendingMutations.get(requestId)?.(action),
-    cancel: (reason = 'cancelled by caller') => {
-      controller.abort()
-      queue.push({ type: 'run:cancelled', runId: 'unknown', reason })
+    cancel: async (reason = 'cancelled by caller') => {
+      cancellation.request(reason)
+      await done.then(
+        () => undefined,
+        () => undefined,
+      )
     },
     done,
   }
