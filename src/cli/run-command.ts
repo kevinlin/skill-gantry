@@ -44,11 +44,20 @@ export async function resolveSkill(config: GantryConfig, selector: string): Prom
   const exact = all.filter((s) => s.id === selector)
   if (exact.length === 1) return exact[0] as SkillRef
 
-  const byName = all.filter((s) => s.id.split('/').at(-1) === selector)
-  if (byName.length === 1) return byName[0] as SkillRef
-  if (byName.length > 1) {
-    throw new Error(`ambiguous skill "${selector}": ${byName.map((s) => s.id).join(', ')}`)
+  const byDir = all.filter((s) => s.id.split('/').at(-1) === selector)
+  if (byDir.length === 1) return byDir[0] as SkillRef
+  if (byDir.length > 1) {
+    throw new Error(`ambiguous skill "${selector}": ${byDir.map((s) => s.id).join(', ')}`)
   }
+
+  // A repo-root skill takes its id from the repo directory, which is rarely
+  // what the user types, so the declared frontmatter name resolves too.
+  const byFrontmatter = all.filter((s) => s.name === selector)
+  if (byFrontmatter.length === 1) return byFrontmatter[0] as SkillRef
+  if (byFrontmatter.length > 1) {
+    throw new Error(`ambiguous skill "${selector}": ${byFrontmatter.map((s) => s.id).join(', ')}`)
+  }
+
   throw new Error(`no skill matching "${selector}"`)
 }
 
@@ -63,6 +72,7 @@ function parseStages(raw: string): Stage[] {
 export function buildProgram(deps: CliDeps): GantryProgram {
   const program = new Command() as GantryProgram
   program.name('skillgantry').description('SkillOps orchestrator for skill maintainers')
+  program.version('0.1.0')
 
   program
     .command('run')

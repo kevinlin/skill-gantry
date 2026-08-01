@@ -9,8 +9,9 @@
     "build": "tsc -p tsconfig.json",
     "lint": "eslint src tests",
     "test": "vitest run",
-    "test:integration": "SG_INTEGRATION=1 vitest run tests/core/install.test.ts",
-    "check": "pnpm lint && pnpm build && pnpm test"
+    "acceptance": "SG_ACCEPTANCE=1 vitest run tests/acceptance",
+    "test:integration": "SG_INTEGRATION=1 SG_ACCEPTANCE=1 vitest run tests/core/install.test.ts tests/acceptance/m1.test.ts",
+    "check": "pnpm lint && pnpm build && pnpm test && pnpm acceptance"
   },
   "dependencies": {
     "commander": "^14.0.0",

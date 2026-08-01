@@ -18,7 +18,9 @@ describe('import boundary', () => {
     } finally {
       await rm(offender, { force: true })
     }
-  })
+    // Each case spawns a full eslint process, which is slow enough under a
+    // loaded parallel run to reach the default 30s ceiling.
+  }, 60_000)
 
   it('rejects node:fs inside adapters', async () => {
     const offender = join(process.cwd(), 'src/core/adapters/__boundary_probe__.ts')
@@ -31,5 +33,7 @@ describe('import boundary', () => {
     } finally {
       await rm(offender, { force: true })
     }
-  })
+    // Each case spawns a full eslint process, which is slow enough under a
+    // loaded parallel run to reach the default 30s ceiling.
+  }, 60_000)
 })

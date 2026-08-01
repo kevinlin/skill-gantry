@@ -1,7 +1,11 @@
+import { mkdtemp } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { ToolLock } from '../config/schema.js'
 import { type Provenance, withAnalysisModes } from '../config/env.js'
 import { getAdapter } from '../adapters/registry.js'
-import { gitState, digestSkill } from '../discovery/digest.js'
+import { candidateManifest, materialiseCandidate } from '../discovery/candidate.js'
+import { gitState, skillDigest } from '../discovery/digest.js'
 import type { Ledger } from '../ledger/db.js'
 import { recordRun } from '../ledger/record.js'
 import { AdapterStageExecutor } from '../stages/adapter-stage.js'
@@ -74,8 +78,20 @@ export function runPipeline(input: RunPipelineInput): RunHandle {
     // so capturing the digest first would record one its own side effect
     // immediately invalidates.
     await ensureGitignore(input.skill.repo.path)
-    const digest = await digestSkill(input.skill)
+    const manifest = await candidateManifest(input.skill)
+    const digest = await skillDigest(manifest)
     const git = await gitState(input.skill.repo.path, input.skill.relPath)
+
+    // R2.11. A repo-root skill keeps its workspace inside the tree a tool would
+    // otherwise be pointed at, so the manifest is copied somewhere private and
+    // {skillDir} resolves there. Excluding paths after the tool has run is too
+    // late: it could already have read a prior unredacted artefact.
+    let toolFacingSkill = input.skill
+    if (!manifest.selfContained) {
+      const dest = await mkdtemp(join(tmpdir(), 'sg-candidate-'))
+      await materialiseCandidate(manifest, dest)
+      toolFacingSkill = { ...input.skill, dir: dest }
+    }
 
     const toolLockVersions = Object.fromEntries(
       Object.entries(input.lock.tools).map(([toolId, entry]) => [toolId, entry.resolvedVersion]),
@@ -118,7 +134,7 @@ export function runPipeline(input: RunPipelineInput): RunHandle {
       const stageDir = stageDirFor(runDir, STAGE_ORDER.indexOf(stage) + 1, stage)
 
       const ctx: StageContext = {
-        skill: input.skill,
+        skill: toolFacingSkill,
         stage,
         stageDir,
         selectedToolIds: input.stageTools[stage] ?? [],
