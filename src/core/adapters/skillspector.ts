@@ -1,11 +1,29 @@
+import { parseSarif } from './sarif.js'
 import type { AdapterManifest, Parse } from './types.js'
 
+/**
+ * `--no-llm` is not optional, and `credentials`/`analysisMode` must agree with
+ * it. SkillSpector 2.5.1's `scan` runs LLM analysis by default and aborts
+ * unless a provider key is present; its LLM findings are also nondeterministic,
+ * which would make golden fixtures worthless. Declaring static mode makes the
+ * narrower coverage visible in provenance instead of silently degrading.
+ *
+ * `detects` covers static analysis only, and is re-derived by
+ * scripts/capture-fixtures.sh rather than hand-maintained. `vulnerable-dep` is
+ * absent because dependency findings are an LLM-mode analyser in 2.5.1.
+ */
 export const manifest: AdapterManifest = {
   id: 'skillspector',
   stage: 'security',
   policy: 'fan-out',
   mutating: false,
-  detects: [],
+  detects: [
+    'prompt-injection',
+    'credential-access',
+    'unsafe-script',
+    'data-exfiltration',
+    'excessive-permission',
+  ],
   credentials: { kind: 'none' },
   analysisMode: 'static',
   install: {
@@ -14,15 +32,33 @@ export const manifest: AdapterManifest = {
     pin: 'v2.5.1',
     binName: 'skillspector',
   },
-  invoke: { argv: [], cwd: 'repoRoot' },
+  invoke: {
+    argv: [
+      'scan',
+      '{skillDir}',
+      '--no-llm',
+      '--format',
+      'sarif',
+      '--output',
+      '{toolDir}/findings.sarif',
+    ],
+    cwd: 'repoRoot',
+  },
   versionArgv: ['--version'],
-  artefacts: [],
+  artefacts: ['findings.sarif'],
   timeoutMs: 120_000,
 }
 
-export const parse: Parse = () => ({
-  outcome: 'errored',
-  findings: [],
-  metrics: {},
-  summary: 'not implemented',
-})
+export const parse: Parse = (ctx) => {
+  const bytes = ctx.artefacts.get('findings.sarif')
+  if (!bytes) {
+    return {
+      outcome: 'errored',
+      findings: [],
+      metrics: {},
+      summary: 'skillspector produced no findings.sarif',
+    }
+  }
+  const result = parseSarif(bytes, { toolId: manifest.id, skillRelPath: ctx.skill.relPath })
+  return { ...result, metrics: { ...result.metrics, durationMs: ctx.durationMs } }
+}
