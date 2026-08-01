@@ -3111,6 +3111,10 @@ Consequences, all recorded in the specs rather than left implicit:
 - Verify-by-invocation is what rejected SkillOpt. A tool whose executables cannot answer a version argv cannot be locked, since M1's rule is that no lock entry is written before the executable answers. Carrying it would have made every wizard run show a failed install.
 - `promptfoo --version` was not probed by installing it; the package is large and its `--version` flag is long-standing. Task 11's integration run is what confirms it.
 
+### Task 8 Step 3 — `RUNNABLE_STAGES` had to be a literal tuple
+
+As written, `const RUNNABLE_STAGES: readonly Stage[]` widens the element type to `Stage`, so `{ [K in (typeof RUNNABLE_STAGES)[number]]: string[] }` resolves to a record with a `release` key and `tsc` rejects the cast (`TS2352 … Property 'release' is missing`). Shipped as `as const` plus an `isRunnableStage` type guard, which also removes the cast at the `tools[…].push` site.
+
 
 ## Changelog
 

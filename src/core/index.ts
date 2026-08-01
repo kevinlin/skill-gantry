@@ -54,3 +54,16 @@ export {
   type ToolFinding,
 } from './tools/doctor.js'
 export { canonicalisePath, saveConfig, saveToolLock } from './config/config.js'
+export {
+  SETUP_ORDER,
+  canEnter,
+  initialSetupState,
+  missingRuntimesFor,
+  setupReducer,
+  stageToolsFor,
+  type InstallState,
+  type SetupAction,
+  type SetupDriver,
+  type SetupState,
+  type SetupStateName,
+} from './tools/setup.js'
