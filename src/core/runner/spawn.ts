@@ -16,6 +16,8 @@ export interface RunToolInput {
   artefactSizeCapBytes: number
   timeoutMs: number
   signal?: AbortSignal
+  /** Called with redacted text as it arrives, for a live frontend. */
+  onChunk?: (stream: 'stdout' | 'stderr', chunk: string) => void
 }
 
 export interface RunToolOutput {
@@ -99,6 +101,13 @@ export async function runTool(input: RunToolInput): Promise<RunToolOutput> {
     source.on('data', (chunk: string) => {
       capture[stream] += chunk
     })
+    // Chunks are taken downstream of the redactor, so a secret cannot reach a
+    // frontend even though the final capture is redacted separately.
+    redactor.setEncoding('utf8')
+    if (input.onChunk) {
+      const emit = input.onChunk
+      redactor.on('data', (chunk: string) => emit(stream, chunk))
+    }
     source.pipe(redactor).pipe(sink)
     closed.push(new Promise<void>((resolve) => sink.on('close', () => resolve())))
   }

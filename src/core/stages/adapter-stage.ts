@@ -211,10 +211,10 @@ export class AdapterStageExecutor implements StageExecutor {
         artefactSizeCapBytes: ctx.artefactSizeCapBytes,
         timeoutMs: ctx.timeoutOverridesMs[toolId] ?? manifest.timeoutMs,
         ...(ctx.signal ? { signal: ctx.signal } : {}),
+        // Per chunk, not once at the end: a frontend that only learns the whole
+        // capture on exit cannot show a running tool (R11.4).
+        onChunk: (stream, chunk) => ctx.onOutput(toolId, stream, chunk),
       })
-
-      ctx.onOutput(toolId, 'stdout', run.stdout)
-      ctx.onOutput(toolId, 'stderr', run.stderr)
 
       const base = {
         toolId,
