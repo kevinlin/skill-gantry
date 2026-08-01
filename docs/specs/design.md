@@ -5,7 +5,7 @@
 **Layer:** design (layer 2 of 3: [requirements](requirements.md) → design → plan)
 **Traces to:** [requirements.md](requirements.md), [decision-log.md](decision-log.md)
 
-Each section names the requirements it satisfies. Revision 2 closed the twelve findings of the first review; revision 3 closes the eleven of the second. §18 records what changed in each.
+Each section names the requirements it satisfies. Revision 2 closed the twelve findings of the first review; revision 3 closes the eleven of the second. §18 records what changed in each. §18.2 records the three sections M3 planning amended.
 
 ---
 
@@ -218,6 +218,16 @@ For a git repo the run additionally records `gitCommit` (HEAD) and `gitDirty` (w
 
 **Milestone split.** M1 builds the `uv-tool` driver, the lock writer and verify-by-invocation only — enough to produce a real managed SkillSpector install that M1's runner can resolve. `npm-prefix`, `gh-release`, presets, the wizard and `doctor` remain M3. Revision 2 put the whole module in M3 while asking M1 to run a real scanner, which it could not do.
 
+### 5.1a Tool catalogue
+
+*Satisfies R3.5, R3.5a.*
+
+`src/core/tools/catalogue.ts` holds one `ToolSpec` per installable tool: id, display name, the stage that selects it (`null` for vercel `skills`, which release invokes and no stage selects), the runtime its driver needs, its install spec and its version argv.
+
+The catalogue exists separately from the adapter registry because installability and runnability are not the same property. Vercel `skills` is installable with no adapter, and seven adapters arrive in M4 with parsers for tools M3 already installs. The catalogue is the authority for installing, verifying and locking; the adapter registry is the authority for what a run may select. `AdapterManifest.install` is retained as documentation and kept in step by a test asserting the two agree for every tool holding both.
+
+A consequence the wizard must respect: a selection written into `stageTools` names only tools the adapter registry knows, since `AdapterStageExecutor.plan()` rejects an unknown id and would fail every run of that stage. An installed tool with no adapter is reported as installed and not yet runnable.
+
 ### 5.2 Install drivers
 
 | Kind | Mechanism | Executable resolution |
@@ -239,6 +249,8 @@ type Integrity =
 
 `sha256-asset` and `sha256-digest` fail the install on mismatch. `kind: 'none'` requires a written reason, records `integrity: "none"` in the lock entry, and surfaces a warning in `doctor`, so an unverifiable download is a visible standing condition rather than a silent one. Revision 2 promised checksum verification with no field to carry a checksum; this closes that.
 
+`assetPattern` may carry `{os}` and `{arch}`, substituted from the host before matching — `{os}` from `process.platform`, `{arch}` as `arm64` or `amd64`. A single fixed pattern cannot resolve a per-platform release asset on two machines.
+
 ### 5.3 Setup and doctor
 
 Setup is a four-state machine: `probe-runtimes → select-tools → install-and-verify → credentials-and-repo`. Each state is re-enterable, so `doctor` reuses `probe-runtimes` and `install-and-verify` without the rest.
@@ -248,6 +260,10 @@ Presets: **Minimal** is skill-up plus skillspector — the two already present, 
 Every preset includes vercel `skills`, because the release stage cannot run its installability gate without it.
 
 Doctor reports four drift kinds per tool: `missing` (in lock, absent on disk), `unverifiable` (present, will not run), `version-drift` (runs, reports a version other than `resolvedVersion`), and `unlocked` (installed under the tool root but absent from the lock).
+
+Two further conditions are reported and do not fail the report: `integrity-unverified`, a lock entry recording `integrity: "none"` per §5.2, and `lifecycle-drift` per §13. Neither means a tool cannot run.
+
+Doctor reads the skills it checks and the ledger's lifecycle column as data supplied by its caller, so `tools` needs neither discovery's I/O nor a sqlite dependency.
 
 ## 6. Stage execution contract
 
@@ -979,8 +995,8 @@ The mapping is checkable rather than asserted: every `*Satisfies …*` label in 
 |---|---|
 | M1 | `config`, `discovery` (incl. candidate manifest), `tools` (`uv-tool` driver, lock writer, verify), `adapters` (skillspector only), `runner`, `stages`, `pipeline`, `workspace`, `ledger`, headless CLI |
 | M2 | `queue`, `src/tui/` Work screen with the queue panel |
-| M3 | `tools` completed: `npm-prefix`, `gh-release`, presets, setup wizard, doctor |
-| M4 | Remaining seven adapters, fan-out policy, cross-tool merge |
+| M3 | `tools` completed: catalogue, `npm-prefix`, `gh-release`, presets, setup wizard, doctor |
+| M4 | The seven remaining adapters and their parsers, fan-out policy, cross-tool merge |
 | M5 | `isolation`, `release`, retirement, mutating-stage gate |
 | M6 | Dashboard and Issues screens, statistics queries |
 
@@ -1019,6 +1035,17 @@ Closing [design-review-r2.md](design-review-r2.md). Seven P1 and four P2 finding
 | 9 NDJSON and lock durability overstated | One write per record plus fsync, reader-side truncated-tail recovery; `latest` defined as greatest run id; advisory OS lock that dies with its holder, with a documented stale-lease fallback (§9.1, §9.2) |
 | 10 Retirement has no authority | `SKILL.md` frontmatter authoritative, ledger a cache reconciled on discovery; release reads the candidate's frontmatter; mismatch is `doctor` drift, not an error (§13) |
 | 11 Traceability conflicts | Milestone ownership lives only in requirements.md; §17 maps to sections and is checked by a spec test; `verdict` is a stage field, not a metric; satisfaction labels corrected (§8.2, §17) |
+
+## 18.2 What changed in M3 planning
+
+Two problems this document could not have caught before a plan tried to build against it. Both are recorded in [plan-m3.md](plan-m3.md).
+
+| Problem | Resolution |
+|---|---|
+| R3.5 required eight adapters in M3, but R4.1 defines an adapter as manifest plus `parse`, §17 gives the remaining seven parsers to M4, and R3.5a's tool has no adapter at all | R3.5 split into R3.5 (catalogue entry, installable and verifiable) and R3.5b (manifest and `parse`, M4); the catalogue becomes the install authority and the adapter registry the run authority (§5.1a) |
+| A single fixed `assetPattern` cannot resolve a per-platform release asset on two machines | `{os}` and `{arch}` tokens, substituted from the host before matching (§5.2) |
+
+Also made explicit rather than implied: the two doctor conditions that report without failing, and where doctor's skill and ledger inputs come from (§5.3).
 
 ## 19. Risks carried into implementation
 
