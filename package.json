@@ -9,6 +9,7 @@
     "build": "tsc -p tsconfig.json",
     "lint": "eslint src tests",
     "test": "vitest run",
+    "test:integration": "SG_INTEGRATION=1 vitest run tests/core/install.test.ts",
     "check": "pnpm lint && pnpm build && pnpm test"
   },
   "dependencies": {
