@@ -4,9 +4,24 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { buildProgram } from '../../src/cli/run-command.js'
 import { resolveStages } from '../../src/cli/tui-command.js'
-import { DEFAULT_CONFIG } from '../../src/core/config/config.js'
+import { DEFAULT_CONFIG, saveConfig } from '../../src/core/config/config.js'
+import { makeRepo, SKILL_MD } from '../helpers/tmp-repo.js'
 
 const home = async (): Promise<string> => mkdtemp(join(tmpdir(), 'sg-home-'))
+
+/**
+ * The bare command routes a clean machine to the wizard instead, so a home that
+ * expects the Work screen has to carry a registered repo.
+ */
+async function homeWithRepo(): Promise<string> {
+  const h = await home()
+  const repo = await makeRepo({ files: { 'a/SKILL.md': SKILL_MD('a') } })
+  await saveConfig(h, {
+    ...DEFAULT_CONFIG,
+    repos: [{ id: 'r', path: repo, name: 'r', isGit: false }],
+  })
+  return h
+}
 
 describe('resolveStages', () => {
   it('offers only stages with a tool selected', () => {
@@ -36,7 +51,7 @@ describe('resolveStages', () => {
 describe('default command', () => {
   it('starts the terminal interface when no subcommand is given', async () => {
     const startTui = vi.fn(async () => undefined)
-    const h = await home()
+    const h = await homeWithRepo()
     const program = buildProgram({
       home: h,
       dbPath: join(h, 'gantry.db'),
@@ -51,7 +66,7 @@ describe('default command', () => {
 
   it('passes --concurrency through', async () => {
     const startTui = vi.fn(async () => undefined)
-    const h = await home()
+    const h = await homeWithRepo()
     const program = buildProgram({
       home: h,
       dbPath: join(h, 'gantry.db'),

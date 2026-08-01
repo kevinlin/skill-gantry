@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { mkdtemp, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { installAndLock, toolRoot, verifyTool } from '../../src/core/tools/install.js'
+import { installAndLock, installTool, toolRoot, verifyTool } from '../../src/core/tools/install.js'
 import { loadToolLock } from '../../src/core/config/config.js'
+import { CATALOGUE, catalogueEntry } from '../../src/core/tools/catalogue.js'
 
 const home = async (): Promise<string> => mkdtemp(join(tmpdir(), 'sg-tools-'))
 
@@ -58,5 +59,41 @@ describe('installAndLock', () => {
     await expect(
       installAndLock(h, { ...SPEC, pin: 'v0.0.0-does-not-exist' }, ['--version']),
     ).rejects.toThrow(/install failed/)
+  }, 300_000)
+})
+
+describe('installTool against real indexes', () => {
+  it('installs every catalogued tool into the tool root and verifies it', async () => {
+    // promptfoo refuses to open its default database when it detects a test
+    // process, and verifyTool spawns with the ambient environment, so vitest's
+    // own markers reach it. Pointing it at a scratch directory is a property of
+    // running this under a test runner, not of the driver.
+    process.env.PROMPTFOO_CONFIG_DIR = await mkdtemp(join(tmpdir(), 'sg-promptfoo-'))
+
+    for (const spec of CATALOGUE) {
+      const h = await home()
+      const entry = await installTool(h, spec)
+      expect(entry.bin.startsWith(toolRoot(h))).toBe(true)
+      expect(entry.resolvedVersion.length).toBeGreaterThan(0)
+      if (spec.install.kind === 'gh-release' && spec.install.integrity.kind !== 'none') {
+        expect(entry.integrity.startsWith('sha256:')).toBe(true)
+      }
+    }
+  }, 900_000)
+
+  it('leaves the user-global uv tool directory untouched', async () => {
+    // The reference machine already carries a hand-installed skillspector, so
+    // "the path does not exist" would pass for the wrong reason on a clean
+    // machine and fail for the wrong reason here. What R3.1 actually forbids is
+    // our install writing there, so the check is that it did not change.
+    const global = join(process.env.HOME ?? '', '.local/share/uv/tools/skillspector')
+    const before = await stat(global).catch(() => null)
+
+    const h = await home()
+    await installTool(h, catalogueEntry('skillspector')!)
+
+    const after = await stat(global).catch(() => null)
+    if (before === null) expect(after).toBeNull()
+    else expect(after?.mtimeMs).toBe(before.mtimeMs)
   }, 300_000)
 })

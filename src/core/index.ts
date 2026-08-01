@@ -25,3 +25,45 @@ export type {
 } from './stages/types.js'
 export { STAGE_ORDER } from './workspace/layout.js'
 export { readIndex, type IndexEntry } from './workspace/writer.js'
+export {
+  CATALOGUE,
+  PRESETS,
+  RELEASE_TOOL_ID,
+  catalogueEntry,
+  catalogueIds,
+  expandPreset,
+  toolsForStage,
+  type PresetName,
+  type Runtime,
+  type ToolSpec,
+} from './tools/catalogue.js'
+export { installTool, toolRoot, verifyTool } from './tools/install.js'
+export {
+  INSTALL_COMMAND,
+  probeRuntimes,
+  runtimesFor,
+  type RuntimeStatus,
+} from './tools/runtimes.js'
+export {
+  doctor,
+  type DoctorInput,
+  type DoctorReport,
+  type LifecycleFinding,
+  type LifecycleState,
+  type ToolDriftKind,
+  type ToolFinding,
+} from './tools/doctor.js'
+export { canonicalisePath, saveConfig, saveToolLock } from './config/config.js'
+export {
+  SETUP_ORDER,
+  canEnter,
+  initialSetupState,
+  missingRuntimesFor,
+  setupReducer,
+  stageToolsFor,
+  type InstallState,
+  type SetupAction,
+  type SetupDriver,
+  type SetupState,
+  type SetupStateName,
+} from './tools/setup.js'

@@ -114,7 +114,7 @@ docs/specs/
 - Consumes: `InstallSpec` from `src/core/adapters/types.ts`, `Stage` from `src/core/types.ts`.
 - Produces: `Runtime`, `ToolSpec`, `RELEASE_TOOL_ID`, `CATALOGUE`, `PRESETS`, `PresetName`, `catalogueEntry(id)`, `catalogueIds()`, `toolsForStage(stage)`, `expandPreset(name)`.
 
-- [x] **Step 1: Amend the two spec documents** — applied and committed with this plan.
+- [x] **Step 1: Amend the two spec documents**
 
 In `requirements.md`, replace R3.5 and insert R3.5b directly after R3.5a:
 
@@ -145,7 +145,7 @@ Extend §5.3's doctor paragraph: `` Two further conditions are reported and do n
 
 In §17's milestone-modules table, change M3's cell to ``` `tools` completed: catalogue, `npm-prefix`, `gh-release`, presets, setup wizard, doctor ``` and M4's to `The seven remaining adapters and their parsers, fan-out policy, cross-tool merge`.
 
-- [ ] **Step 2: Probe the nine tools and record what they actually are**
+- [x] **Step 2: Probe the nine tools and record what they actually are**
 
 The identity and pin of every tool but SkillSpector is unknown to this plan, and M1 already shipped once with a pin (`2.3.7`) that upstream never carried. So the catalogue is written from probe output, not from memory. For each tool run the recipe for its language, from D-log line 29:
 
@@ -165,7 +165,7 @@ Record, per tool: the command run, its output, and the resulting entry. Determin
 
 **A tool that cannot be resolved from a public source is a spec problem, not an implementation one.** Omit it from `CATALOGUE`, record it under "Deviations found while implementing" at the foot of this plan with the probe output that showed it absent, and continue. The preset tests below are properties, not id lists, so they stay green with a shorter catalogue.
 
-- [ ] **Step 3: Write the failing test**
+- [x] **Step 3: Write the failing test**
 
 `tests/core/catalogue.test.ts`:
 
@@ -250,12 +250,12 @@ describe('presets', () => {
 })
 ```
 
-- [ ] **Step 4: Run it and watch it fail**
+- [x] **Step 4: Run it and watch it fail**
 
 Run: `pnpm vitest run tests/core/catalogue.test.ts`
 Expected: FAIL, cannot resolve `src/core/tools/catalogue.js`.
 
-- [ ] **Step 5: Write the catalogue**
+- [x] **Step 5: Write the catalogue**
 
 `src/core/tools/catalogue.ts`. The SkillSpector entry is shown complete because it is known; the other entries take the same shape with the values Step 2 probed.
 
@@ -334,12 +334,12 @@ export function expandPreset(name: PresetName): readonly ToolSpec[] {
 
 If Step 2 found a preset member unresolvable, drop that id from `PRESETS` in the same edit, so `expandPreset` never silently shrinks a preset the user was shown.
 
-- [ ] **Step 6: Run the tests and the whole suite**
+- [x] **Step 6: Run the tests and the whole suite**
 
 Run: `pnpm vitest run tests/core/catalogue.test.ts && pnpm lint && pnpm build`
 Expected: PASS, clean lint, clean build.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/core/tools/catalogue.ts tests/core/catalogue.test.ts docs/specs/requirements.md docs/specs/design.md
@@ -361,7 +361,7 @@ platform tokens a gh-release asset pattern needs."
 - Consumes: `Runtime` from `catalogue.ts`.
 - Produces: `ExecResult`, `Exec`, `defaultExec`, `EXEC_TIMEOUT_MS`; `RuntimeStatus`, `RUNTIME_PROBE`, `INSTALL_COMMAND`, `probeRuntimes(needed, exec?)`, `runtimesFor(specs)`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `tests/core/runtimes.test.ts`:
 
@@ -420,12 +420,12 @@ describe('runtimesFor', () => {
 })
 ```
 
-- [ ] **Step 2: Run it and watch it fail**
+- [x] **Step 2: Run it and watch it fail**
 
 Run: `pnpm vitest run tests/core/runtimes.test.ts`
 Expected: FAIL, cannot resolve `src/core/tools/exec.js`.
 
-- [ ] **Step 3: Write the exec seam**
+- [x] **Step 3: Write the exec seam**
 
 `src/core/tools/exec.ts`:
 
@@ -467,7 +467,7 @@ export const defaultExec: Exec = async (bin, argv, options = {}) => {
 }
 ```
 
-- [ ] **Step 4: Write the probe**
+- [x] **Step 4: Write the probe**
 
 `src/core/tools/runtimes.ts`:
 
@@ -529,12 +529,12 @@ export async function probeRuntimes(
 }
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `pnpm vitest run tests/core/runtimes.test.ts && pnpm lint`
 Expected: PASS, clean lint.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/core/tools/exec.ts src/core/tools/runtimes.ts tests/core/runtimes.test.ts
@@ -553,7 +553,7 @@ git commit -m "feat(tools): probe runtimes and name their official install comma
 - Consumes: `Exec` from `exec.ts`.
 - Produces: `NpmInstallSpec`, `npmInstall(dir, spec, exec?)` returning the resolved absolute bin path.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `tests/core/npm-install.test.ts`:
 
@@ -609,12 +609,12 @@ describe('npmInstall', () => {
 })
 ```
 
-- [ ] **Step 2: Run it and watch it fail**
+- [x] **Step 2: Run it and watch it fail**
 
 Run: `pnpm vitest run tests/core/npm-install.test.ts`
 Expected: FAIL, cannot resolve `src/core/tools/npm.js`.
 
-- [ ] **Step 3: Write the driver**
+- [x] **Step 3: Write the driver**
 
 `src/core/tools/npm.ts`:
 
@@ -660,12 +660,12 @@ export async function npmInstall(
 }
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `pnpm vitest run tests/core/npm-install.test.ts && pnpm lint`
 Expected: PASS, clean lint.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/tools/npm.ts tests/core/npm-install.test.ts
@@ -685,7 +685,7 @@ git commit -m "feat(tools): add the npm-prefix install driver"
 - Produces: `GhReleaseInstallSpec`, `GhReleaseOptions`, `resolveAssetPattern(pattern, platform, arch)`, `ghReleaseInstall(dir, spec, options?)` returning `{ bin, integrity }`.
 - Test helper produces: `startFakeRelease({ repo, tag, assets })` returning `{ apiBase, close }`.
 
-- [ ] **Step 1: Write the release-server helper**
+- [x] **Step 1: Write the release-server helper**
 
 `tests/helpers/fake-release.ts`:
 
@@ -753,7 +753,7 @@ export async function startFakeRelease(release: FakeRelease): Promise<FakeReleas
 }
 ```
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 `tests/core/gh-release.test.ts`:
 
@@ -903,12 +903,12 @@ describe('ghReleaseInstall', () => {
 })
 ```
 
-- [ ] **Step 3: Run it and watch it fail**
+- [x] **Step 3: Run it and watch it fail**
 
 Run: `pnpm vitest run tests/core/gh-release.test.ts`
 Expected: FAIL, cannot resolve `src/core/tools/gh-release.js`.
 
-- [ ] **Step 4: Write the driver**
+- [x] **Step 4: Write the driver**
 
 `src/core/tools/gh-release.ts`:
 
@@ -1062,12 +1062,12 @@ export async function ghReleaseInstall(
 }
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `pnpm vitest run tests/core/gh-release.test.ts && pnpm lint`
 Expected: PASS, clean lint.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/core/tools/gh-release.ts tests/core/gh-release.test.ts tests/helpers/fake-release.ts
@@ -1089,7 +1089,7 @@ R3.2b: a checksum asset or a pinned digest fails the install on mismatch, and
 - Consumes: `ToolSpec`/`catalogueEntry` from `catalogue.ts`, `uvInstall`, `npmInstall`, `ghReleaseInstall`, `Exec`.
 - Produces: `installTool(home, spec, options?)` returning `ToolLockEntry`; `InstallToolOptions`; `toolRoot`, `verifyTool`, `installAndLock` unchanged in signature.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `tests/core/install-dispatch.test.ts`:
 
@@ -1157,12 +1157,12 @@ describe('installTool', () => {
 })
 ```
 
-- [ ] **Step 2: Run it and watch it fail**
+- [x] **Step 2: Run it and watch it fail**
 
 Run: `pnpm vitest run tests/core/install-dispatch.test.ts`
 Expected: FAIL, `installTool` is not exported.
 
-- [ ] **Step 3: Rewrite install.ts around the dispatch**
+- [x] **Step 3: Rewrite install.ts around the dispatch**
 
 Replace the body of `src/core/tools/install.ts` with the following. `toolRoot` and `verifyTool` are unchanged; `installAndLock` becomes a wrapper so `tests/core/install.test.ts` needs no edit.
 
@@ -1275,12 +1275,12 @@ export async function installAndLock(
 }
 ```
 
-- [ ] **Step 4: Run the tests, including M1's**
+- [x] **Step 4: Run the tests, including M1's**
 
 Run: `pnpm vitest run tests/core/install-dispatch.test.ts && pnpm lint && pnpm build && pnpm test`
 Expected: PASS everywhere. `tests/core/install.test.ts` stays excluded without `SG_INTEGRATION`; Task 11 runs it.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/tools/install.ts tests/core/install-dispatch.test.ts
@@ -1304,7 +1304,7 @@ written only after verification, whichever driver placed the executable."
 - Produces: `ToolDriftKind`, `ToolFinding`, `LifecycleFinding`, `LifecycleState`, `DoctorReport`, `DoctorInput`, `doctor(input)`. `DoctorInput` takes discovered `skills` and a `ledgerLifecycle` map, so `tools` needs neither discovery's I/O nor sqlite.
 - Also produces: `Frontmatter.deprecated: boolean`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `tests/core/doctor.test.ts`:
 
@@ -1430,12 +1430,12 @@ describe('doctor', () => {
 })
 ```
 
-- [ ] **Step 2: Run it and watch it fail**
+- [x] **Step 2: Run it and watch it fail**
 
 Run: `pnpm vitest run tests/core/doctor.test.ts`
 Expected: FAIL, cannot resolve `src/core/tools/doctor.js`.
 
-- [ ] **Step 3: Teach the frontmatter parser about deprecation**
+- [x] **Step 3: Teach the frontmatter parser about deprecation**
 
 In `src/core/discovery/frontmatter.ts`, extend the interface, the `EMPTY` constant and the return:
 
@@ -1469,7 +1469,7 @@ Then update the four whole-object assertions in `tests/core/frontmatter.test.ts`
   })
 ```
 
-- [ ] **Step 4: Write the doctor engine**
+- [x] **Step 4: Write the doctor engine**
 
 `src/core/tools/doctor.ts`:
 
@@ -1632,12 +1632,12 @@ export async function doctor(input: DoctorInput): Promise<DoctorReport> {
 }
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `pnpm vitest run tests/core/doctor.test.ts tests/core/frontmatter.test.ts && pnpm lint && pnpm test`
 Expected: PASS everywhere.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/core/tools/doctor.ts src/core/discovery/frontmatter.ts tests/core/doctor.test.ts tests/core/frontmatter.test.ts
@@ -1660,7 +1660,7 @@ are reported without failing, since neither means a tool cannot run."
 - Consumes: `doctor`, `DoctorReport` from core; `CliDeps`, `GantryProgram` from `run-command.ts`.
 - Produces: `runDoctor(deps, opts)` returning `DoctorReport`; `formatDoctor(report)` returning lines.
 
-- [ ] **Step 1: Export the M3 surface from core**
+- [x] **Step 1: Export the M3 surface from core**
 
 Append to `src/core/index.ts`:
 
@@ -1698,7 +1698,7 @@ export { canonicalisePath, saveConfig, saveToolLock } from './config/config.js'
 
 `loadConfig`, `loadToolLock` and `registerRepo` are already exported from `./config/config.js` on the existing line 6; re-exporting one of them again is a duplicate-export build error. `setup.ts` does not exist until Task 8, so its export block lands there.
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 `tests/cli/doctor-command.test.ts`:
 
@@ -1752,12 +1752,12 @@ describe('skillgantry doctor', () => {
 })
 ```
 
-- [ ] **Step 3: Run it and watch it fail**
+- [x] **Step 3: Run it and watch it fail**
 
 Run: `pnpm vitest run tests/cli/doctor-command.test.ts`
 Expected: FAIL, `error: unknown command 'doctor'`.
 
-- [ ] **Step 4: Write the command**
+- [x] **Step 4: Write the command**
 
 `src/cli/doctor-command.ts`:
 
@@ -1823,7 +1823,7 @@ export async function runDoctor(deps: CliDeps, opts: { json?: boolean }): Promis
 }
 ```
 
-- [ ] **Step 5: Register it**
+- [x] **Step 5: Register it**
 
 In `src/cli/run-command.ts`, add the import and the subcommand before the root `.option`/`.action` pair:
 
@@ -1842,12 +1842,12 @@ import { runDoctor } from './doctor-command.js'
     })
 ```
 
-- [ ] **Step 6: Run the tests**
+- [x] **Step 6: Run the tests**
 
 Run: `pnpm vitest run tests/cli/doctor-command.test.ts && pnpm lint && pnpm build && pnpm test`
 Expected: PASS everywhere.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/cli/doctor-command.ts src/cli/run-command.ts src/core/index.ts tests/cli/doctor-command.test.ts
@@ -1870,7 +1870,7 @@ when the only findings are an unverifiable checksum or lifecycle drift."
 - Consumes: `catalogueEntry`, `expandPreset`, `PRESETS`, `PresetName`, `ToolSpec`, `RuntimeStatus`, `runtimesFor`, `Stage`, `GantryConfig`.
 - Produces: `SetupStateName`, `SETUP_ORDER`, `SetupState`, `InstallState`, `SetupAction`, `initialSetupState()`, `setupReducer(state, action)`, `canEnter(state, target)`, `missingRuntimesFor(selected, runtimes)`, `stageToolsFor(selected, isRunnable)`, `SetupDriver`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `tests/core/setup.test.ts`:
 
@@ -1973,12 +1973,12 @@ describe('stageToolsFor', () => {
 })
 ```
 
-- [ ] **Step 2: Run it and watch it fail**
+- [x] **Step 2: Run it and watch it fail**
 
 Run: `pnpm vitest run tests/core/setup.test.ts`
 Expected: FAIL, cannot resolve `src/core/tools/setup.js`.
 
-- [ ] **Step 3: Write the machine**
+- [x] **Step 3: Write the machine**
 
 `src/core/tools/setup.ts`:
 
@@ -2135,7 +2135,7 @@ export interface SetupDriver {
 }
 ```
 
-- [ ] **Step 4: Export it**
+- [x] **Step 4: Export it**
 
 Append to `src/core/index.ts`:
 
@@ -2155,12 +2155,12 @@ export {
 } from './tools/setup.js'
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `pnpm vitest run tests/core/setup.test.ts && pnpm lint && pnpm build`
 Expected: PASS, clean lint and build.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/core/tools/setup.ts src/core/index.ts tests/core/setup.test.ts
@@ -2183,7 +2183,7 @@ re-enter probe and install alone and a user can back out to reselect."
 - Consumes: `SetupState`, `SetupDriver`, `setupReducer`, `initialSetupState`, `canEnter`, `missingRuntimesFor`, `CATALOGUE`, `PRESETS` — all through `src/core/index.js`.
 - Produces: `Setup({ state, cursor })`, `SetupApp({ driver, intervalMs? })`, `renderSetup(props)`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `tests/tui/setup-wizard.test.tsx`:
 
@@ -2284,12 +2284,12 @@ describe('setup wizard', () => {
 })
 ```
 
-- [ ] **Step 2: Run it and watch it fail**
+- [x] **Step 2: Run it and watch it fail**
 
 Run: `pnpm vitest run tests/tui/setup-wizard.test.tsx`
 Expected: FAIL, cannot resolve `src/tui/setup-app.js`.
 
-- [ ] **Step 3: Write the pure renderer**
+- [x] **Step 3: Write the pure renderer**
 
 `src/tui/components/Setup.tsx`:
 
@@ -2384,7 +2384,7 @@ export function Setup({ state, cursor }: SetupProps): React.ReactElement {
 }
 ```
 
-- [ ] **Step 4: Write the shell that owns the driver**
+- [x] **Step 4: Write the shell that owns the driver**
 
 `src/tui/setup-app.tsx`:
 
@@ -2516,7 +2516,7 @@ export function SetupApp({ driver }: SetupAppProps): React.ReactElement {
 }
 ```
 
-- [ ] **Step 5: Export the renderer**
+- [x] **Step 5: Export the renderer**
 
 Append to `src/tui/index.tsx`:
 
@@ -2532,12 +2532,12 @@ export async function renderSetup(props: SetupAppProps): Promise<void> {
 export type { SetupAppProps } from './setup-app.js'
 ```
 
-- [ ] **Step 6: Run the tests**
+- [x] **Step 6: Run the tests**
 
 Run: `pnpm vitest run tests/tui/setup-wizard.test.tsx && pnpm lint && pnpm build`
 Expected: PASS, clean lint (in particular no deep core import from `src/tui/**`), clean build.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/tui/components/Setup.tsx src/tui/setup-app.tsx src/tui/index.tsx tests/tui/setup-wizard.test.tsx
@@ -2560,7 +2560,7 @@ which is how R3.7's no-silent-runtime-install rule is enforced structurally."
 - Consumes: `installTool`, `catalogueEntry`, `probeRuntimes`, `runtimesFor`, `CATALOGUE`, `loadConfig`, `saveConfig`, `loadEnvFile`, `registerRepo`, `stageToolsFor`, `getAdapter` — via `src/core/index.js`.
 - Produces: `buildSetupDriver(home)`, `startSetup(options: SetupOptions)`, `needsSetup(home)`; `CliDeps.startSetup?` seam.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `tests/cli/setup-command.test.ts`:
 
@@ -2664,12 +2664,12 @@ describe('setup driver', () => {
 })
 ```
 
-- [ ] **Step 2: Run it and watch it fail**
+- [x] **Step 2: Run it and watch it fail**
 
 Run: `pnpm vitest run tests/cli/setup-command.test.ts`
 Expected: FAIL, cannot resolve `src/cli/setup-command.js`.
 
-- [ ] **Step 3: Write the wiring**
+- [x] **Step 3: Write the wiring**
 
 `src/cli/setup-command.ts`:
 
@@ -2740,7 +2740,7 @@ export async function startSetup(options: SetupOptions): Promise<void> {
 }
 ```
 
-- [ ] **Step 4: Register the subcommand and route the bare invocation**
+- [x] **Step 4: Register the subcommand and route the bare invocation**
 
 In `src/cli/run-command.ts`:
 
@@ -2785,14 +2785,14 @@ and replace the root action body so a clean machine lands in the wizard:
     })
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `pnpm vitest run tests/cli && pnpm lint && pnpm build && pnpm test`
 Expected: PASS everywhere, including M2's `tests/cli/tui-command.test.ts`, which registers a repo before asserting the launch.
 
 If `tui-command.test.ts` now lands in the wizard, its fixture has no repo. Fix the test by registering its fixture repo in the config it builds, not by weakening `needsSetup` — the routing rule is the deliverable.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/cli/setup-command.ts src/cli/run-command.ts tests/cli/setup-command.test.ts
@@ -2816,7 +2816,7 @@ whose output nothing parses."
 - Consumes: everything above.
 - Produces: `pnpm acceptance` covering both M3 exit criteria; `pnpm test:integration` covering all three drivers against real indexes.
 
-- [ ] **Step 1: Write the acceptance suite**
+- [x] **Step 1: Write the acceptance suite**
 
 `tests/acceptance/m3.test.tsx`. One test per exit criterion in the requirements milestone table.
 
@@ -2982,12 +2982,12 @@ describe('M3 exit criterion: doctor reports all four drift kinds plus integrity 
 })
 ```
 
-- [ ] **Step 2: Run the acceptance suite**
+- [x] **Step 2: Run the acceptance suite**
 
 Run: `pnpm acceptance`
 Expected: PASS, M1 and M2 suites included and still green.
 
-- [ ] **Step 3: Extend the integration suite to all three drivers**
+- [x] **Step 3: Extend the integration suite to all three drivers**
 
 Append to `tests/core/install.test.ts` one case per remaining driver, using the catalogue rather than literals so a pin correction in Task 1 flows through:
 
@@ -3017,7 +3017,7 @@ describe('installTool against real indexes', () => {
 })
 ```
 
-- [ ] **Step 4: Widen the integration script**
+- [x] **Step 4: Widen the integration script**
 
 In `package.json`, change `test:integration` so the whole install suite runs:
 
@@ -3025,14 +3025,14 @@ In `package.json`, change `test:integration` so the whole install suite runs:
 "test:integration": "SG_INTEGRATION=1 SG_ACCEPTANCE=1 vitest run tests/core/install.test.ts tests/acceptance"
 ```
 
-- [ ] **Step 5: Run everything**
+- [x] **Step 5: Run everything**
 
 Run: `pnpm check`
 Expected: lint, build, offline tests and acceptance all pass.
 
 Then, on a machine with network: `pnpm test:integration`. Every catalogue entry must install and verify. A tool that fails here is a wrong pin or a wrong identity — correct the catalogue and rerun. A tool that cannot be made to install goes in the Deviations section below and out of `CATALOGUE` and `PRESETS`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add tests/acceptance/m3.test.tsx tests/core/install.test.ts vitest.config.ts package.json
@@ -3087,7 +3087,47 @@ Recorded so they are not mistaken for oversights.
 
 ## Deviations found while implementing
 
-Recorded during execution, as plan-m1 and plan-m2 do. Empty until then.
+Recorded during execution, as plan-m1 and plan-m2 do.
+
+### Task 1 Step 2 — three of D7's tools are not installable, so the catalogue holds six
+
+Probe date 2026-08-01. `uv pip index versions` does not exist in uv 0.7.12 (`error: unrecognized subcommand 'index'`), so PyPI was probed through `https://pypi.org/pypi/<name>/json` instead.
+
+| Tool | Probe result | Catalogue entry |
+|---|---|---|
+| skill-lint | `npm view skill-lint version` → `0.2.0`, repo `LichAmnesia/skill-lint`, bin `skill-lint`; installed into a temp prefix, `--version` → `0.2.0` | `npm-prefix`, pin `0.2.0` |
+| promptfoo | `npm view promptfoo version` → `0.121.20`, bins `promptfoo`, `pf` | `npm-prefix`, pin `0.121.20` |
+| skills (vercel) | `npm view skills version` → `1.5.21`, repo `vercel-labs/skills`, bin `skills`; `--version` → `1.5.21`. `@vercel/skills` is 404 | `npm-prefix`, pin `1.5.21`, `stage: null` |
+| skill-up | `gh search` → `alibaba/skill-up` (Go). Latest release `v0.7.0` publishes `skill-up_0.7.0_{os}_{arch}.tar.gz` for darwin/linux/windows × amd64/arm64 plus `skill-up_0.7.0_checksums.txt`; README documents `skill-up --version` | `gh-release`, pin `v0.7.0`, integrity `sha256-asset` |
+| skill-scanner | PyPI `0.3.3`, summary "Security scanner for detecting and remediating malicious AI agent skills"; installed via `uv tool install skill-scanner==0.3.3`, bins `skill-scanner` and `skillscan`, `--version` → `0.3.3` | `uv-tool`, pin `0.3.3` |
+| SkillSpector | known; copied verbatim from `src/core/adapters/skillspector.ts`. `git ls-remote --tags NVIDIA/skillspector` confirms `v2.5.1` | `uv-tool`, pin `v2.5.1` |
+| **SkillOpt** | PyPI `0.2.0`, `microsoft/SkillOpt`. Installed successfully, but its three entry points — `skillopt-train`, `skillopt-eval`, `skillopt-sleep` — are argparse research scripts and **none accepts `--version`**: each answers with a usage error. There is no unified `skillopt` executable. **Omitted** | none |
+| **SkillHone** | Not on PyPI, not on npm. `Tencent/SkillHone` is a skills-and-docs repo: no `pyproject.toml`, no `setup.py`, no tags. **Omitted** | none |
+| **agentskills** | Not on PyPI, not on npm (`npm view agentskills` → 404). `agentskills/agentskills` is the specification/docs repo: `package.json` is `"private": true` with one `dev` script, no `bin`, no tags. **Omitted** | none |
+
+Consequences, all recorded in the specs rather than left implicit:
+
+- Optimise has no catalogued tool, so no preset carries one. §5.3's preset paragraph was rewritten accordingly; the previous wording named `skillopt` and "all eight".
+- Verify-by-invocation is what rejected SkillOpt. A tool whose executables cannot answer a version argv cannot be locked, since M1's rule is that no lock entry is written before the executable answers. Carrying it would have made every wizard run show a failed install.
+- `promptfoo --version` was not probed by installing it; the package is large and its `--version` flag is long-standing. Task 11's integration run is what confirms it.
+
+### Pre-existing flake observed during M3, not caused by it
+
+`tests/core/spawn.test.ts > runTool > kills the whole process tree on timeout` failed three times across roughly a dozen full-suite runs and passed every time it was run in isolation (five consecutive runs). It is an M1 test over `src/core/runner/`, which M3 does not touch, and it fails only under the load of the whole suite — a timing margin, not a regression. Whichever milestone next touches the runner should widen it.
+
+### Task 11 Step 3 — two integration assertions had to change to be about the driver
+
+Both first drafts failed against the real world for reasons that were not the driver's:
+
+1. **promptfoo refuses to run under a test process.** `verifyTool` spawns with the ambient environment, so vitest's markers reach the child and promptfoo aborts with "Refusing to open the default Promptfoo database while running tests". The test now sets `PROMPTFOO_CONFIG_DIR` to a scratch directory. Nothing in the driver changed; `skillgantry setup` carries no such marker.
+2. **`~/.local/share/uv/tools/skillspector` already exists on the reference machine**, hand-installed before SkillGantry existed, so "the global path does not exist" asserted the wrong thing — it would pass on a clean machine for a reason unrelated to our install. Rewritten to capture the path's state before the install and assert it is unchanged, which is what R3.1 actually forbids.
+
+With those two changes `SG_INTEGRATION=1` installs, verifies and locks all six catalogued tools, and skill-up's `sha256-asset` integrity verifies against the published `checksums.txt`.
+
+### Task 8 Step 3 — `RUNNABLE_STAGES` had to be a literal tuple
+
+As written, `const RUNNABLE_STAGES: readonly Stage[]` widens the element type to `Stage`, so `{ [K in (typeof RUNNABLE_STAGES)[number]]: string[] }` resolves to a record with a `release` key and `tsc` rejects the cast (`TS2352 … Property 'release' is missing`). Shipped as `as const` plus an `isRunnableStage` type guard, which also removes the cast at the `tools[…].push` site.
+
 
 ## Changelog
 

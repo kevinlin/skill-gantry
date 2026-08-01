@@ -228,6 +228,8 @@ The catalogue exists separately from the adapter registry because installability
 
 A consequence the wizard must respect: a selection written into `stageTools` names only tools the adapter registry knows, since `AdapterStageExecutor.plan()` rejects an unknown id and would fail every run of that stage. An installed tool with no adapter is reported as installed and not yet runnable.
 
+A tool D7 names but no public source publishes in installable form is omitted from the catalogue rather than carried as an entry that can only fail. The omissions and the probe output behind each are recorded in [plan-m3.md](plan-m3.md).
+
 ### 5.2 Install drivers
 
 | Kind | Mechanism | Executable resolution |
@@ -255,13 +257,11 @@ type Integrity =
 
 Setup is a four-state machine: `probe-runtimes → select-tools → install-and-verify → credentials-and-repo`. Each state is re-enterable, so `doctor` reuses `probe-runtimes` and `install-and-verify` without the rest.
 
-Presets: **Minimal** is skill-up plus skillspector — the two already present, one evaluate and one security tool. **Recommended** is one tool per stage: skill-lint, skill-up, skillspector, skillopt. **Everything** is all eight plus vercel `skills`.
+Presets: **Minimal** is skill-up plus skillspector — the two already present, one evaluate and one security tool. **Recommended** is at most one tool per stage. **Everything** is the whole catalogue. A stage whose D7 candidates are both uninstallable has no tool in any preset; that is visible in the wizard rather than papered over.
 
 Every preset includes vercel `skills`, because the release stage cannot run its installability gate without it.
 
-Doctor reports four drift kinds per tool: `missing` (in lock, absent on disk), `unverifiable` (present, will not run), `version-drift` (runs, reports a version other than `resolvedVersion`), and `unlocked` (installed under the tool root but absent from the lock).
-
-Two further conditions are reported and do not fail the report: `integrity-unverified`, a lock entry recording `integrity: "none"` per §5.2, and `lifecycle-drift` per §13. Neither means a tool cannot run.
+Doctor reports four drift kinds per tool: `missing` (in lock, absent on disk), `unverifiable` (present, will not run), `version-drift` (runs, reports a version other than `resolvedVersion`), and `unlocked` (installed under the tool root but absent from the lock). Two further conditions are reported and do not fail the report: `integrity-unverified`, a lock entry recording `integrity: "none"` per §5.2, and `lifecycle-drift` per §13. Neither means a tool cannot run.
 
 Doctor reads the skills it checks and the ledger's lifecycle column as data supplied by its caller, so `tools` needs neither discovery's I/O nor a sqlite dependency.
 
