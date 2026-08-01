@@ -2,6 +2,7 @@ import { Box, Text } from 'ink'
 import { selectedSkill, type AppState } from '../store.js'
 import { LifecycleRail } from './LifecycleRail.js'
 import { OutputPane } from './OutputPane.js'
+import { QueuePanel } from './QueuePanel.js'
 import { SkillList } from './SkillList.js'
 
 export function Work({ state }: { state: AppState }): React.ReactElement {
@@ -29,6 +30,12 @@ export function Work({ state }: { state: AppState }): React.ReactElement {
           <OutputPane state={state} skill={skill} />
         </Box>
       </Box>
+      <QueuePanel
+        jobs={state.jobs}
+        selected={state.selectedJob}
+        concurrency={state.concurrency}
+        focused={state.focus === 'queue'}
+      />
     </Box>
   )
 }
