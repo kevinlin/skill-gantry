@@ -3464,16 +3464,26 @@ const SARIF_EMPTY = JSON.stringify({
   runs: [{ tool: { driver: { name: 'skillspector', version: '2.5.1' } }, results: [] }],
 })
 
-const skill = {
-  id: 'fx/declawed',
-  relPath: 'declawed',
-  dir: '/repo/declawed',
-  repo: { id: 'fx', path: '/repo', name: 'fx', isGit: false },
-} as unknown as SkillRef
+/**
+ * Real directories, not notional ones: the executor spawns the tool with `cwd`
+ * set to the repo root, and a child cannot start in a cwd that does not exist,
+ * so every case would classify as `spawn` regardless of what it asserts.
+ */
+async function makeSkill(): Promise<SkillRef> {
+  const repoPath = await mkdtemp(join(tmpdir(), 'sg-repo-'))
+  const dir = join(repoPath, 'declawed')
+  await mkdir(dir, { recursive: true })
+  return {
+    id: 'fx/declawed',
+    relPath: 'declawed',
+    dir,
+    repo: { id: 'fx', path: repoPath, name: 'fx', isGit: false },
+  } as unknown as SkillRef
+}
 
 async function context(over: Partial<StageContext> = {}): Promise<StageContext> {
   return {
-    skill,
+    skill: await makeSkill(),
     stage: 'security',
     stageDir: await mkdtemp(join(tmpdir(), 'sg-stage-')),
     selectedToolIds: ['skillspector'],
@@ -3555,7 +3565,8 @@ describe('AdapterStageExecutor.execute', () => {
     const exec = new AdapterStageExecutor('security')
     const ctx = await context({ lock })
     const result = await exec.execute(ctx, await exec.plan(ctx))
-    expect(result.toolRuns[0]).toMatchObject({ outcome: 'errored', errorKind: 'parse' })
+    // Row 7, not row 8: a missing report is not a parser defect.
+    expect(result.toolRuns[0]).toMatchObject({ outcome: 'errored', errorKind: 'missing-artefact' })
     expect(result.outcome).toBe('errored')
   })
 
