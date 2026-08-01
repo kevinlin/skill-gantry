@@ -25,7 +25,7 @@ Each requirement carries the decision it derives from and, where the check is no
 - **R2.1** A user MUST be able to register any number of skill repos by path, persisted across sessions. (D4)
 - **R2.2** Within a registered repo, a skill MUST be identified as a direct child directory containing `SKILL.md`. Only direct children are examined. (D4)
 - **R2.3** Discovery MUST exclude directories matching `*-workspace/`, dotdirectories, and `node_modules`. (D4)
-  *Verify:* discovery over `zapac-agent-skills` returns 22 skills and does not return `agent-insights-workspace/skill-snapshot`.
+  *Verify:* discovery over `zapac-agent-skills` returns every direct child holding `SKILL.md` — 20 as the repo stands at `e1847a7` — and does not return `agent-insights-workspace/skill-snapshot`. The count is a property of the reference repo at a point in time, so the binding half of this check is the exclusion.
 - **R2.4** A repo whose root itself contains `SKILL.md` MUST be treated as a single-skill repo. (D4)
 - **R2.5** Discovery MUST read `name` and `metadata.version` from `SKILL.md` frontmatter, and MUST tolerate their absence without failing the scan. (D4)
 - **R2.6** Discovery MUST record whether each repo is under git, since that selects the mutation isolation strategy. (D17, D18)

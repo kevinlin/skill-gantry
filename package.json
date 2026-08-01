@@ -1,0 +1,29 @@
+{
+  "name": "skillgantry",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": { "skillgantry": "./dist/cli/index.js" },
+  "engines": { "node": ">=24.0.0" },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint src tests",
+    "test": "vitest run",
+    "acceptance": "SG_ACCEPTANCE=1 vitest run tests/acceptance",
+    "test:integration": "SG_INTEGRATION=1 SG_ACCEPTANCE=1 vitest run tests/core/install.test.ts tests/acceptance/m1.test.ts",
+    "check": "pnpm lint && pnpm build && pnpm test && pnpm acceptance"
+  },
+  "dependencies": {
+    "commander": "^14.0.0",
+    "uuid": "^14.0.0",
+    "yaml": "^2.8.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "eslint": "^9.0.0",
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^4.1.0"
+  }
+}
