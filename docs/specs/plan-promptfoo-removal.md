@@ -72,7 +72,7 @@ tests/cli/
 - Consumes: nothing.
 - Produces: the spec text Task 2 deletes code against. No TypeScript symbol.
 
-- [ ] **Step 1: Amend D7 in the decision log**
+- [x] **Step 1: Amend D7 in the decision log**
 
 In `docs/specs/decision-log.md`, replace the first line of D7's body:
 
@@ -87,7 +87,7 @@ Validate: skill-lint, agentskills. Evaluate: skill-up, promptfoo. Security: skil
 *Superseded in part:* five of these eight are not shipping. M3 found agentskills, SkillOpt and SkillHone unpublished in installable form (probe output in [plan-m3.md](plan-m3.md)); promptfoo is removed by §10 below. The catalogue is the record of what exists, not this paragraph.
 ```
 
-- [ ] **Step 2: Amend D8's evaluate policy**
+- [x] **Step 2: Amend D8's evaluate policy**
 
 Replace this line in D8's bullet list:
 
@@ -101,7 +101,7 @@ with:
 - Evaluate: **pick one**: skill-up. The policy is what matters and it is unchanged — two eval harnesses measure different things and averaging their scores is meaningless — but skill-up is the only harness that survived probing, so "pick one" has one candidate. See §10.
 ```
 
-- [ ] **Step 3: Correct the two environment-facts rows**
+- [x] **Step 3: Correct the two environment-facts rows**
 
 Line 27, the "Not installed" row, drops promptfoo:
 
@@ -115,7 +115,7 @@ Line 29, the "Tool languages" row, drops it too:
 | Tool languages | TS/npm: skill-lint, vercel skills · Go: skill-up · Python/pyproject: skill-scanner, SkillSpector, SkillOpt, SkillHone, agentskills · **Java: skillhub** |
 ```
 
-- [ ] **Step 4: Add the decision as a new section**
+- [x] **Step 4: Add the decision as a new section**
 
 Append to `docs/specs/decision-log.md`, after §9:
 
@@ -133,7 +133,7 @@ promptfoo evaluates prompts declared in a per-project `promptfooconfig.yaml`. It
 *Reversible:* if a per-skill promptfoo config convention emerges in the skills ecosystem, the tool returns as a catalogue entry plus an adapter, and nothing else about the design has to move.
 ```
 
-- [ ] **Step 5: Amend R3.5's tool list**
+- [x] **Step 5: Amend R3.5's tool list**
 
 In `docs/specs/requirements.md`, R3.5 currently enumerates the eight D7 tools. Replace its first sentence:
 
@@ -153,7 +153,7 @@ Leave the rest of R3.5 (the adapter-gating sentence, the release-is-native sente
  *(rev 5: agentskills, SkillOpt and SkillHone unpublished — plan-m3.md; promptfoo needs a per-skill config no repo has — decision-log §10.)*
 ```
 
-- [ ] **Step 6: Amend design §5.3's preset paragraph**
+- [x] **Step 6: Amend design §5.3's preset paragraph**
 
 In `docs/specs/design.md` §5.3, replace:
 
@@ -167,7 +167,7 @@ with:
 Presets: **Minimal** is skill-up plus skillspector — the two already present, one evaluate and one security tool. **Recommended** is at most one tool per stage. **Everything** is the whole catalogue. A stage whose D7 candidates are all unavailable has no tool in any preset; that is visible in the wizard rather than papered over. Optimise is that stage: both its candidates are unpublished. Evaluate has one candidate rather than two, because promptfoo needs a per-skill config file no skill carries — decision-log §10.
 ```
 
-- [ ] **Step 7: Verify no spec sentence still promises promptfoo**
+- [x] **Step 7: Verify no spec sentence still promises promptfoo**
 
 Run:
 
@@ -177,12 +177,12 @@ grep -rn "promptfoo\|Promptfoo\|PROMPTFOO" docs/specs/ | grep -v 'plan-m3.md' | 
 
 Expected: only the two intended mentions — decision-log §10 and the D7/D8/§5.3 sentences that explain the removal. No sentence anywhere may still say promptfoo *will* ship.
 
-- [ ] **Step 8: Verify the spec test still passes**
+- [x] **Step 8: Verify the spec test still passes**
 
 Run: `pnpm vitest run tests/core/design-example.test.ts`
 Expected: PASS. This test reads `design.md` §7's skillspector example, which Task 1 does not touch; it is run here to prove the edits did not corrupt the document's structure.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add docs/specs/decision-log.md docs/specs/requirements.md docs/specs/design.md docs/specs/plan-promptfoo-removal.md
@@ -211,12 +211,12 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 Both driver tests use promptfoo purely as a stand-in npm package with a fake pin and a faked `Exec`; neither reaches the network. They re-point at `skill-lint`, which stays in the catalogue, is genuinely `npm-prefix`, and keeps the fake pin `0.100.0` so the 404 assertion still describes an unobtainable version.
 
-- [ ] **Step 1: Run the two driver tests and record that they pass before the change**
+- [x] **Step 1: Run the two driver tests and record that they pass before the change**
 
 Run: `pnpm vitest run tests/core/npm-install.test.ts tests/core/install-dispatch.test.ts`
 Expected: PASS, 4 tests. These are the tests Step 3 rewrites; a green baseline is what makes a later failure attributable to the rewrite.
 
-- [ ] **Step 2: Delete the catalogue entry**
+- [x] **Step 2: Delete the catalogue entry**
 
 In `src/core/tools/catalogue.ts`, delete this element of `CATALOGUE` entirely:
 
@@ -250,7 +250,7 @@ to:
 
 `PRESETS.minimal` and `PRESETS.recommended` do not name promptfoo and need no edit; `PRESETS.everything` is `catalogueIds()` and follows the array.
 
-- [ ] **Step 3: Re-point `npm-install.test.ts` at skill-lint**
+- [x] **Step 3: Re-point `npm-install.test.ts` at skill-lint**
 
 Replace the `SPEC` constant and the two assertions that quote the id:
 
@@ -290,7 +290,7 @@ In the second case, the failure message:
 
 The pin stays the fictional `0.100.0` deliberately: the real catalogue pin is `0.2.0`, and a test asserting a 404 against a version that exists would start passing for the wrong reason if the shipped pin ever changed.
 
-- [ ] **Step 4: Re-point `install-dispatch.test.ts` at skill-lint**
+- [x] **Step 4: Re-point `install-dispatch.test.ts` at skill-lint**
 
 Replace the `NPM_TOOL` fixture:
 
@@ -328,12 +328,12 @@ And the three assertions that name the tool:
 
 Note the bracket form: `skill-lint` is not a valid dotted property name.
 
-- [ ] **Step 5: Run the two driver tests plus the catalogue suite**
+- [x] **Step 5: Run the two driver tests plus the catalogue suite**
 
 Run: `pnpm vitest run tests/core/npm-install.test.ts tests/core/install-dispatch.test.ts tests/core/catalogue.test.ts`
 Expected: PASS. `catalogue.test.ts` asserts preset nesting, unique ids and at most one tool per stage in `recommended`; none of those hold a count, so removing an entry must not disturb them.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/core/tools/catalogue.ts tests/core/npm-install.test.ts tests/core/install-dispatch.test.ts
@@ -359,7 +359,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - Consumes: `CATALOGUE` of five entries from Task 2; `buildSetupDriver(home)` and `stageToolsFor` unchanged.
 - Produces: nothing new.
 
-- [ ] **Step 1: Delete the integration-suite workaround**
+- [x] **Step 1: Delete the integration-suite workaround**
 
 `tests/core/install.test.ts` sets `PROMPTFOO_CONFIG_DIR` before looping over the catalogue, because promptfoo refuses to open its default database under a test runner. With the tool gone the workaround is dead. Replace the opening of the real-index case:
 
@@ -391,7 +391,7 @@ grep -n 'mkdtemp\|tmpdir' tests/core/install.test.ts
 
 `home()` in that file is built from `mkdtemp`/`tmpdir`, so both almost certainly stay. Leave the imports alone if the grep shows any surviving use — an unused-import lint error and a wrongly-deleted import are both failures, and the grep distinguishes them.
 
-- [ ] **Step 2: Re-point the setup-driver test's non-runnable tool**
+- [x] **Step 2: Re-point the setup-driver test's non-runnable tool**
 
 `tests/cli/setup-command.test.ts` proves `stageToolsFor` writes only tools the adapter registry knows, using promptfoo as the installable-but-unparsed example. skill-lint is that example until M4 gives it a parser. Replace the case body:
 
@@ -410,12 +410,12 @@ Note the assertion moves from `stageTools.evaluate` to `stageTools.validate`, be
 
 **This case is scheduled to invert.** [plan-m4.md](plan-m4.md) Task 8 ships skill-lint's parser, at which point `stageTools.validate` becomes `['skill-lint']` and this assertion is rewritten there. It is left as a `[]` assertion here rather than deleted. Deleting it would leave the registry filter untested between the two plans, and that filter is what stops a run failing with `unknown tool`.
 
-- [ ] **Step 3: Run the affected suites**
+- [x] **Step 3: Run the affected suites**
 
 Run: `pnpm vitest run tests/cli/setup-command.test.ts tests/core/setup.test.ts tests/core/doctor.test.ts`
 Expected: PASS. `install.test.ts` is excluded from the default run because it needs `SG_INTEGRATION=1`, so Step 1's edit is verified by Step 5, not here.
 
-- [ ] **Step 4: Prove the removal is total**
+- [x] **Step 4: Prove the removal is total**
 
 Run:
 
@@ -442,7 +442,7 @@ docs/specs/plan-promptfoo-removal.md
 
 `skillops-lifecycles.md` is upstream research and `plan-m3.md` is a point-in-time record of what M3 genuinely installed; neither is a contract, and rewriting either would make the record dishonest.
 
-- [ ] **Step 5: Run the full gate**
+- [x] **Step 5: Run the full gate**
 
 Run: `pnpm check`
 Expected: lint, build, test and acceptance all pass.
@@ -452,7 +452,7 @@ Then, if network is available:
 Run: `SG_INTEGRATION=1 pnpm vitest run tests/core/install.test.ts`
 Expected: PASS, five tools installed and verified against real indexes with no `PROMPTFOO_CONFIG_DIR` in sight. If network is unavailable, record that this step was not run rather than reporting it green.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add tests/core/install.test.ts tests/cli/setup-command.test.ts
@@ -490,6 +490,18 @@ R3.8's three presets, R3.9's four drift kinds, R4.7's pick-one policy and R4.10'
 
 **Scope.** Three tasks. One production file loses seven lines; everything else is spec text and test fixtures. No driver, no adapter, no schema and no CLI surface changes behaviour.
 
+## Deviations found while implementing
+
+Four, all in the plan's own prose rather than in the change it describes. The code and spec edits landed as written.
+
+- **Task 1 Step 1 said "five of these eight are not shipping".** Four do not: agentskills, SkillOpt, SkillHone, promptfoo. Four do: skill-lint, skill-up, skill-scanner, SkillSpector. Written as four.
+- **Task 3 Step 4's expected `grep docs/` list named four files; seven carry the word.** It omitted `design.md` and `requirements.md`, which this plan itself amends in Task 1, and `plan-m4.md`, which cites decision-log §10 in its own rev-5 note on R3.5b. All three are correct mentions, so the expectation was wrong rather than the tree.
+- **Task 3 Step 4's `grep src/ tests/` expected no output, which its own Task 2 Step 2 makes unsatisfiable** by mandating a `PRESETS` comment that names promptfoo. The check that holds is the one the Global Constraints actually mean: no identifier, string literal, fixture or test comment names promptfoo. Only the two rationale comments do.
+- **`CATALOGUE`'s doc comment said "Two of D7's eight tools are absent."** Already wrong at three before this plan, and the removal makes it four. Corrected in the same edit, since the removal is what makes the count visibly wrong. It now names all four and points at the record behind each.
+
+Verified: `pnpm lint`, `pnpm build` and `pnpm acceptance` all pass. `pnpm test` is 337 passed, 1 failed — `spawn.test.ts > kills the whole process tree on timeout`, which fails identically on the base commit under full-suite load and passes on three consecutive isolated runs. Pre-existing timing flake, unrelated to this change. `SG_INTEGRATION=1 pnpm vitest run tests/core/install.test.ts` passes: five catalogued tools installed and verified against real indexes.
+
 ## Changelog
 
 - 2026-08-02 — revision 1, written after probing promptfoo 0.121.20 and finding zero per-skill configs across 74 skills in two reference repos.
+- 2026-08-02 — shipped. Deviations section added; step checkboxes ticked.
