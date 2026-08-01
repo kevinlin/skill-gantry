@@ -8,6 +8,7 @@ import { openLedger } from '../core/ledger/db.js'
 import { runPipeline } from '../core/pipeline/run.js'
 import type { GantryConfig } from '../core/config/schema.js'
 import type { SkillRef, Stage } from '../core/types.js'
+import { runDoctor } from './doctor-command.js'
 import { startTui, type TuiOptions } from './tui-command.js'
 
 const STAGES: readonly Stage[] = ['validate', 'evaluate', 'security', 'optimise', 'release']
@@ -148,6 +149,15 @@ export function buildProgram(deps: CliDeps): GantryProgram {
       } finally {
         ledger.close()
       }
+    })
+
+  program
+    .command('doctor')
+    .description('re-verify every locked tool and report drift')
+    .option('--json', 'emit one JSON report')
+    .action(async (opts: { json?: boolean }) => {
+      const report = await runDoctor(deps, opts)
+      program.exitCode = report.failed ? 1 : 0
     })
 
   program
