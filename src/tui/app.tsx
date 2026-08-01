@@ -4,7 +4,7 @@ import type { QueueHandle, SkillRef, Stage } from '../core/index.js'
 import { Work } from './components/Work.js'
 import { LogPump } from './log-buffer.js'
 import { PANELS, initialState, reducer, selectedSkill } from './store.js'
-import { listArtefacts, loadSkillMd } from './views.js'
+import { listArtefacts, loadSkillMd, loadSkillStatuses } from './views.js'
 
 export interface AppProps {
   skills: readonly SkillRef[]
@@ -55,6 +55,10 @@ export function App({
       active?.stop()
     }
   }, [queue])
+
+  useEffect(() => {
+    void loadSkillStatuses(skills).then((statuses) => dispatch({ type: 'set-statuses', statuses }))
+  }, [skills])
 
   const current = selectedSkill(state)
   useEffect(() => {

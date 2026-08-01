@@ -68,6 +68,7 @@ export type Action =
   | { type: 'cycle-panel'; delta: number }
   | { type: 'set-skill-md'; body: string }
   | { type: 'set-artefacts'; paths: string[] }
+  | { type: 'set-statuses'; statuses: Record<string, string> }
 
 const emptyStages = (): Record<Stage, StageCell> =>
   Object.fromEntries(
@@ -232,5 +233,15 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, skillMd: action.body }
     case 'set-artefacts':
       return { ...state, artefacts: action.paths }
+    case 'set-statuses':
+      return {
+        ...state,
+        skills: state.skills.map((row) => {
+          const recorded = action.statuses[row.skillId]
+          // A live run always wins over a record of an old one.
+          if (recorded === undefined || row.status === 'running') return row
+          return { ...row, status: statusOf(recorded as StageOutcome) }
+        }),
+      }
   }
 }
