@@ -23,9 +23,10 @@ No `better-sqlite3`: `node:sqlite` is built in at our Node floor and avoids ship
 - `src/core/adapters/**` MUST NOT import `node:fs`, `node:child_process`, `node:https` or `node:net`. Enforced by `no-restricted-imports`. This is R4.3.
 - Metric keys are a closed union. Token and cost keys do not exist. This is R1.5.
 - Fingerprints never include a line number or message text. This is R8.4.
-- The pinned SkillSpector version is `2.3.7`, which is the version installed and the version every fixture was captured from.
+- The pinned SkillSpector version is `2.5.1`, installed from the git tag `v2.5.1` and the version every fixture was captured from. SkillSpector is not published to PyPI, so its install spec is the git source `git+https://github.com/NVIDIA/skillspector.git` and its pin is a git ref, not a registry version. Upstream carries no `2.3.7` tag, which is why revision 2's pin was unobtainable.
 - SkillSpector is always invoked with `--no-llm`, declared in the manifest as `analysisMode: 'static'` with `credentials: { kind: 'none' }`. Its LLM mode needs a provider key and produces nondeterministic findings, which would make golden fixtures worthless. There is no fallback between modes; a mode change is a new adapter id. This is R4.2b.
 - Installs relocate through `UV_TOOL_DIR` and `UV_TOOL_BIN_DIR` set on the child. uv 0.7.12 has no `--tool-dir`. Nothing may land in the user's global `~/.local/share/uv/tools`.
+- The uv driver forms a registry requirement as `<spec>==<pin>` and a git requirement as `<spec>@<ref>`. A driver that could form only the first cannot install SkillSpector at all.
 - One candidate manifest defines which bytes are a skill, for the digest, for tool input and for packaging. No consumer applies its own exclusion list, and nothing filters after a tool has run. This is R2.9.
 - Symlinks are hashed as links, never followed. A link escaping the candidate root is an error. This is R2.10.
 - British spelling in identifiers that appear in the spec (`optimise`, `artefact`, `normalise`) to match the requirements documents.
@@ -35,7 +36,7 @@ No `better-sqlite3`: `node:sqlite` is built in at our Node floor and avoids ship
 
 Both were fed back into [design.md](design.md) revision 3; they are repeated here because several tasks depend on them.
 
-1. SkillSpector 2.3.7's `scan` runs LLM analysis by default and aborts unless a provider credential is present. `--no-llm` selects static analysis and needs none. There is no rule-listing subcommand, so the static rule set, and therefore `manifest.detects`, is derived from captured output by `scripts/capture-fixtures.sh`.
+1. SkillSpector 2.5.1's `scan` runs LLM analysis by default and aborts unless a provider credential is present. `--no-llm` selects static analysis and needs none. There is no rule-listing subcommand, so the static rule set, and therefore `manifest.detects`, is derived from captured output by `scripts/capture-fixtures.sh`.
 2. SARIF `artifactLocation.uri` is relative to the **scanned directory**, not the repo root. Verified: scanning `declawed` yields `uri: "SKILL.md"` and `uri: "scripts/scan.py"`. The normaliser rebases onto `skill.relPath` to produce the repo-relative path R8.3 requires. This also makes a materialised candidate and an in-place one yield identical findings.
 
 ## File structure
@@ -826,7 +827,7 @@ console.log(s.length, s.some(x => x.id.includes('skill-snapshot')))
 "
 ```
 
-Expected: `22 false` — matches the R2.3 verification clause.
+Expected: `20 false` — matches the R2.3 verification clause. The count tracks the reference repo rather than the spec: what R2.3 binds is the `false`, meaning the `*-workspace/` snapshot trap is excluded.
 
 - [ ] **Step 6: Commit**
 
@@ -1480,8 +1481,8 @@ const home = async (): Promise<string> => mkdtemp(join(tmpdir(), 'sg-tools-'))
 const SPEC = {
   id: 'skillspector',
   kind: 'uv-tool' as const,
-  spec: 'skillspector',
-  pin: '2.3.7',
+  spec: 'git+https://github.com/NVIDIA/skillspector.git',
+  pin: 'v2.5.1',
   binName: 'skillspector',
 }
 
@@ -1497,8 +1498,8 @@ describe('installAndLock', () => {
   it('records the resolved version, integrity and both timestamps', async () => {
     const h = await home()
     const entry = await installAndLock(h, SPEC, ['--version'])
-    expect(entry.resolvedVersion).toBe('2.3.7')
-    expect(entry.requestedPin).toBe('2.3.7')
+    expect(entry.resolvedVersion).toBe('2.5.1')
+    expect(entry.requestedPin).toBe('v2.5.1')
     expect(entry.integrity).toBe('n/a')
     expect(entry.verifiedAt).not.toBeNull()
   }, 300_000)
@@ -2651,7 +2652,7 @@ export const manifest: AdapterManifest = {
   detects: [],
   credentials: { kind: 'none' },
   analysisMode: 'static',
-  install: { kind: 'uv-tool', spec: 'skillspector', pin: '2.3.7', binName: 'skillspector' },
+  install: { kind: 'uv-tool', spec: 'git+https://github.com/NVIDIA/skillspector.git', pin: 'v2.5.1', binName: 'skillspector' },
   invoke: { argv: [], cwd: 'repoRoot' },
   versionArgv: ['--version'],
   artefacts: [],
@@ -2704,7 +2705,7 @@ const sarif = (results: unknown[], rules: unknown[] = []): Buffer =>
   Buffer.from(
     JSON.stringify({
       version: '2.1.0',
-      runs: [{ tool: { driver: { name: 'skillspector', version: '2.3.7', rules } }, results }],
+      runs: [{ tool: { driver: { name: 'skillspector', version: '2.5.1', rules } }, results }],
     }),
   )
 
@@ -2947,7 +2948,7 @@ git commit -m "feat(adapters): parse SARIF and rebase paths onto the repo root"
 
 - [ ] **Step 1: Add the captured fixture**
 
-`tests/fixtures/sarif/skillspector-declawed.sarif` — this is verbatim output from `skillspector 2.3.7` scanning the real `declawed` skill with `--no-llm`:
+`tests/fixtures/sarif/skillspector-declawed.sarif` — this is verbatim output from `skillspector 2.5.1` scanning the real `declawed` skill with `--no-llm`:
 
 ```json
 {
@@ -2958,7 +2959,7 @@ git commit -m "feat(adapters): parse SARIF and rebase paths onto the repo root"
       "tool": {
         "driver": {
           "name": "skillspector",
-          "version": "2.3.7",
+          "version": "2.5.1",
           "rules": [
             {
               "id": "LP3",
@@ -3017,7 +3018,7 @@ git commit -m "feat(adapters): parse SARIF and rebase paths onto the repo root"
 set -euo pipefail
 
 REPO="${1:?usage: capture-fixtures.sh <skills-repo>}"
-PIN_SKILLSPECTOR="2.3.7"
+PIN_SKILLSPECTOR="2.5.1"
 OUT="$(dirname "$0")/../tests/fixtures/sarif"
 mkdir -p "$OUT"
 
@@ -3068,7 +3069,7 @@ describe('skillspector manifest', () => {
   })
 
   it('is pinned to the version the fixture was captured from', () => {
-    expect(manifest.install.pin).toBe('2.3.7')
+    expect(manifest.install.pin).toBe('v2.5.1')
   })
 
   it('fans out and is read-only', () => {
@@ -3139,14 +3140,14 @@ import type { AdapterManifest, Parse } from './types.js'
 
 /**
  * `--no-llm` is not optional, and `credentials`/`analysisMode` must agree with
- * it. SkillSpector 2.3.7's `scan` runs LLM analysis by default and aborts
+ * it. SkillSpector 2.5.1's `scan` runs LLM analysis by default and aborts
  * unless a provider key is present; its LLM findings are also nondeterministic,
  * which would make golden fixtures worthless. Declaring static mode makes the
  * narrower coverage visible in provenance instead of silently degrading.
  *
  * `detects` covers static analysis only, and is re-derived by
  * scripts/capture-fixtures.sh rather than hand-maintained. `vulnerable-dep` is
- * absent because dependency findings are an LLM-mode analyser in 2.3.7.
+ * absent because dependency findings are an LLM-mode analyser in 2.5.1.
  */
 export const manifest: AdapterManifest = {
   id: 'skillspector',
@@ -3162,7 +3163,7 @@ export const manifest: AdapterManifest = {
   ],
   credentials: { kind: 'none' },
   analysisMode: 'static',
-  install: { kind: 'uv-tool', spec: 'skillspector', pin: '2.3.7', binName: 'skillspector' },
+  install: { kind: 'uv-tool', spec: 'git+https://github.com/NVIDIA/skillspector.git', pin: 'v2.5.1', binName: 'skillspector' },
   invoke: {
     argv: ['scan', '{skillDir}', '--no-llm', '--format', 'sarif', '--output', '{toolDir}/findings.sarif'],
     cwd: 'repoRoot',
@@ -3455,7 +3456,7 @@ import { makeFakeTool } from '../helpers/fake-tool.js'
 
 const SARIF_EMPTY = JSON.stringify({
   version: '2.1.0',
-  runs: [{ tool: { driver: { name: 'skillspector', version: '2.3.7' } }, results: [] }],
+  runs: [{ tool: { driver: { name: 'skillspector', version: '2.5.1' } }, results: [] }],
 })
 
 const skill = {
@@ -3496,8 +3497,8 @@ async function lockWith(script: string) {
     tools: {
       skillspector: {
         installKind: 'uv-tool' as const,
-        requestedPin: '2.3.7',
-        resolvedVersion: '2.3.7',
+        requestedPin: 'v2.5.1',
+        resolvedVersion: '2.5.1',
         bin,
         integrity: 'n/a',
         installedAt: '2026-08-01T00:00:00Z',
@@ -3532,7 +3533,7 @@ describe('AdapterStageExecutor.execute', () => {
     const result = await exec.execute(ctx, await exec.plan(ctx))
     expect(result.outcome).toBe('passed')
     expect(result.toolRuns[0]?.outcome).toBe('passed')
-    expect(result.toolRuns[0]?.toolVersion).toBe('2.3.7')
+    expect(result.toolRuns[0]?.toolVersion).toBe('2.5.1')
   })
 
   it('skips a selected tool that is not installed instead of dropping it', async () => {
@@ -3615,8 +3616,8 @@ describe('AdapterStageExecutor.execute', () => {
       tools: {
         skillspector: {
           installKind: 'uv-tool' as const,
-          requestedPin: '2.3.7',
-          resolvedVersion: '2.3.7',
+          requestedPin: 'v2.5.1',
+          resolvedVersion: '2.5.1',
           bin: '/nonexistent/skillspector',
           integrity: 'n/a',
           installedAt: '2026-08-01T00:00:00Z',
@@ -4036,7 +4037,7 @@ const stageResult = (): StageResult => ({
   toolRuns: [
     {
       toolId: 'skillspector',
-      toolVersion: '2.3.7',
+      toolVersion: '2.5.1',
       outcome: 'failed',
       exitCode: 0,
       durationMs: 1200,
@@ -4084,7 +4085,7 @@ describe('writeRunJson and writeStageJson', () => {
         models: { ANTHROPIC_MODEL: 'x' },
         authTokenHash: 'sha256:1a2b3c4d',
       },
-      toolLock: { skillspector: '2.3.7' },
+      toolLock: { skillspector: '2.5.1' },
     })
     const doc = JSON.parse(await readFile(join(runDir, 'run.json'), 'utf8'))
     expect(Object.keys(doc)).toEqual(
@@ -5008,7 +5009,7 @@ const finding = (over: Partial<RawFinding> = {}): RawFinding => ({
 
 const toolRun = (over: Partial<ToolRunRecord> = {}): ToolRunRecord => ({
   toolId: 'skillspector',
-  toolVersion: '2.3.7',
+  toolVersion: '2.5.1',
   outcome: 'failed',
   exitCode: 0,
   durationMs: 10,
@@ -5683,7 +5684,7 @@ import { makeFakeTool } from '../helpers/fake-tool.js'
 const SARIF = (results: unknown[]): string =>
   JSON.stringify({
     version: '2.1.0',
-    runs: [{ tool: { driver: { name: 'skillspector', version: '2.3.7' } }, results }],
+    runs: [{ tool: { driver: { name: 'skillspector', version: '2.5.1' } }, results }],
   })
 
 const FINDING = {
@@ -5713,8 +5714,8 @@ async function setup(sarifBody: string) {
         tools: {
           skillspector: {
             installKind: 'uv-tool' as const,
-            requestedPin: '2.3.7',
-            resolvedVersion: '2.3.7',
+            requestedPin: 'v2.5.1',
+            resolvedVersion: '2.5.1',
             bin,
             integrity: 'n/a',
             installedAt: '2026-08-01T00:00:00Z',
@@ -5763,7 +5764,7 @@ describe('runPipeline', () => {
     const doc = JSON.parse(await readFile(join(summary.runDir, 'run.json'), 'utf8'))
     expect(doc.skillDigest).toMatch(/^sha256:/)
     expect(doc.provenance).toBeDefined()
-    expect(doc.toolLock.skillspector).toBe('2.3.7')
+    expect(doc.toolLock.skillspector).toBe('2.5.1')
     ledger.close()
   })
 
@@ -6168,7 +6169,7 @@ import { makeFakeTool } from '../helpers/fake-tool.js'
 const SARIF = (results: unknown[]): string =>
   JSON.stringify({
     version: '2.1.0',
-    runs: [{ tool: { driver: { name: 'skillspector', version: '2.3.7' } }, results }],
+    runs: [{ tool: { driver: { name: 'skillspector', version: '2.5.1' } }, results }],
   })
 
 const FINDING = {
@@ -6188,8 +6189,8 @@ async function harness(sarifBody: string) {
     tools: {
       skillspector: {
         installKind: 'uv-tool',
-        requestedPin: '2.3.7',
-        resolvedVersion: '2.3.7',
+        requestedPin: 'v2.5.1',
+        resolvedVersion: '2.5.1',
         bin,
         integrity: 'n/a',
         installedAt: '2026-08-01T00:00:00Z',
@@ -6473,7 +6474,7 @@ const SECRET = 'sk-testtokenvalue000000000000000000'
 const SARIF = (results: unknown[]): string =>
   JSON.stringify({
     version: '2.1.0',
-    runs: [{ tool: { driver: { name: 'skillspector', version: '2.3.7' } }, results }],
+    runs: [{ tool: { driver: { name: 'skillspector', version: '2.5.1' } }, results }],
   })
 
 const FINDING = {
@@ -6513,8 +6514,8 @@ async function harness(script: string, opts: { withEnv?: boolean } = {}): Promis
     tools: {
       skillspector: {
         installKind: 'uv-tool',
-        requestedPin: '2.3.7',
-        resolvedVersion: '2.3.7',
+        requestedPin: 'v2.5.1',
+        resolvedVersion: '2.5.1',
         bin,
         integrity: 'n/a',
         installedAt: '2026-08-01T00:00:00Z',
@@ -6560,8 +6561,8 @@ async function rootSkillHarness(script: string): Promise<Harness> {
     tools: {
       skillspector: {
         installKind: 'uv-tool',
-        requestedPin: '2.3.7',
-        resolvedVersion: '2.3.7',
+        requestedPin: 'v2.5.1',
+        resolvedVersion: '2.5.1',
         bin,
         integrity: 'n/a',
         installedAt: '2026-08-01T00:00:00Z',
@@ -6601,7 +6602,7 @@ async function harnessWithManagedTool(): Promise<Harness> {
   await registerRepo(home, repoPath)
   await installAndLock(
     home,
-    { id: 'skillspector', kind: 'uv-tool', spec: 'skillspector', pin: '2.3.7', binName: 'skillspector' },
+    { id: 'skillspector', kind: 'uv-tool', spec: 'git+https://github.com/NVIDIA/skillspector.git', pin: 'v2.5.1', binName: 'skillspector' },
     ['--version'],
   )
 
@@ -6693,8 +6694,8 @@ describe('M1 exit criterion 3: an errored tool closes no issue', () => {
       tools: {
         skillspector: {
           installKind: 'uv-tool',
-          requestedPin: '2.3.7',
-          resolvedVersion: '2.3.7',
+          requestedPin: 'v2.5.1',
+          resolvedVersion: '2.5.1',
           bin: broken,
           integrity: 'n/a',
           installedAt: '2026-08-01T00:00:00Z',
@@ -6807,11 +6808,11 @@ describe('M1 exit criterion 8: the managed tool root drives a real scan', () => 
 
     const lock = await loadToolLock(h.home)
     expect(lock.tools.skillspector?.bin.startsWith(join(h.home, 'tools'))).toBe(true)
-    expect(lock.tools.skillspector?.resolvedVersion).toBe('2.3.7')
+    expect(lock.tools.skillspector?.resolvedVersion).toBe('2.5.1')
 
     const ledger = openLedger(h.dbPath)
     expect(ledger.db.prepare('select tool_version from tool_runs').get()).toMatchObject({
-      tool_version: '2.3.7',
+      tool_version: '2.5.1',
     })
     ledger.close()
   }, 300_000)

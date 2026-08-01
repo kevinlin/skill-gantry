@@ -201,8 +201,8 @@ For a git repo the run additionally records `gitCommit` (HEAD) and `gitDirty` (w
   "tools": {
     "skillspector": {
       "installKind": "uv-tool",
-      "requestedPin": "2.3.7",
-      "resolvedVersion": "2.3.7",
+      "requestedPin": "v2.5.1",
+      "resolvedVersion": "2.5.1",
       "bin": "/Users/…/.skillgantry/tools/skillspector/bin/skillspector",
       "integrity": "n/a",
       "installedAt": "2026-08-01T09:12:03Z",
@@ -222,7 +222,7 @@ For a git repo the run additionally records `gitCommit` (HEAD) and `gitDirty` (w
 
 | Kind | Mechanism | Executable resolution |
 |---|---|---|
-| `uv-tool` | `uv tool install <spec>==<pin>` with `UV_TOOL_DIR=<toolRoot>/<id>` and `UV_TOOL_BIN_DIR=<toolRoot>/<id>/bin` in the child environment | `<toolRoot>/<id>/bin/<binName>` |
+| `uv-tool` | `uv tool install <requirement>` with `UV_TOOL_DIR=<toolRoot>/<id>` and `UV_TOOL_BIN_DIR=<toolRoot>/<id>/bin` in the child environment, where `<requirement>` is `<spec>==<pin>` for a registry spec and `<spec>@<pin>` for a `git+` spec | `<toolRoot>/<id>/bin/<binName>` |
 | `npm-prefix` | `npm install --prefix <toolRoot>/<id> <spec>@<pin>` | `<toolRoot>/<id>/node_modules/.bin/<binName>` |
 | `gh-release` | download the asset matching `assetPattern` for tag `<pin>`, verify integrity per `integrity`, extract | declared `binName` inside the extracted tree |
 
@@ -390,7 +390,7 @@ export const manifest: AdapterManifest = {
             'data-exfiltration', 'excessive-permission'],
   credentials: { kind: 'none' },
   analysisMode: 'static',
-  install: { kind: 'uv-tool', spec: 'skillspector', pin: '2.3.7',
+  install: { kind: 'uv-tool', spec: 'git+https://github.com/NVIDIA/skillspector.git', pin: 'v2.5.1',
              binName: 'skillspector' },
   invoke: { argv: ['scan', '{skillDir}', '--no-llm', '--format', 'sarif',
                    '--output', '{toolDir}/findings.sarif'], cwd: 'repoRoot' },
@@ -403,7 +403,7 @@ export const parse: Parse = (ctx) =>
   parseSarif(ctx.artefacts.get('findings.sarif')!, { toolId: 'skillspector' })
 ```
 
-**Analysis mode is a declared choice, not a fallback.** SkillSpector 2.3.7's `scan` runs LLM analysis by default and aborts unless one of `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, an AWS credential chain or `NVIDIA_INFERENCE_KEY` is available. Revision 2's example declared `requiresCredentials: false` and omitted `--no-llm`, so the M1 slice would have failed at runtime while the engine believed no credential was needed.
+**Analysis mode is a declared choice, not a fallback.** SkillSpector 2.5.1's `scan` runs LLM analysis by default and aborts unless one of `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, an AWS credential chain or `NVIDIA_INFERENCE_KEY` is available. Revision 2's example declared `requiresCredentials: false` and omitted `--no-llm`, so the M1 slice would have failed at runtime while the engine believed no credential was needed.
 
 v1 pins the static mode: `--no-llm`, `credentials: { kind: 'none' }`, and a `detects` set covering only what static analysis reaches. The reason is comparability. LLM-mode findings are nondeterministic, which makes golden fixtures worthless and makes the two modes' statistics incommensurable, so silently degrading from one to the other is worse than failing. `analysisMode` is copied into `run.json` provenance, so a later mode change appears as a visible boundary in the stats exactly as a provider change does.
 
@@ -433,7 +433,7 @@ credentials: {
 
 SARIF severity normalisation: `error → high`, `warning → medium`, `note → low`, `none → info`.
 
-Path normalisation: a tool reports paths relative to the directory it was pointed at, which is the candidate root, not the repo root. Verified against SkillSpector 2.3.7, which scanning `declawed` emits `uri: "SKILL.md"` and `uri: "scripts/scan.py"`. The normaliser rebases each path onto `skill.relPath` to produce the repo-relative form R8.3 requires, so a materialised candidate and an in-place one yield identical findings.
+Path normalisation: a tool reports paths relative to the directory it was pointed at, which is the candidate root, not the repo root. Verified against SkillSpector 2.5.1, which scanning `declawed` emits `uri: "SKILL.md"` and `uri: "scripts/scan.py"`. The normaliser rebases each path onto `skill.relPath` to produce the repo-relative form R8.3 requires, so a materialised candidate and an in-place one yield identical findings.
 
 Findings whose path still resolves inside a workspace directory are dropped. Under §4.4 no tool can see the workspace at all, so this is a backstop against a tool inventing a path, not the guard it was in revision 2.
 
@@ -626,7 +626,7 @@ The ledger stores no raw tool output; `tool_runs.artefact_dir` points at the sid
     "authTokenHash": "sha256:1a2b3c4d",
     "analysisModes": { "skillspector": "static" }
   },
-  "toolLock": { "skillspector": "2.3.7" }
+  "toolLock": { "skillspector": "2.5.1" }
 }
 ```
 
@@ -1000,7 +1000,7 @@ The mapping is checkable rather than asserted: every `*Satisfies …*` label in 
 | 10 Boundary inconsistencies | `ParseContext` carries bytes; `bin` in the lock; closed `MetricKey` set; `ledger` owned by `pipeline` (§7, §5.1, §3) |
 | 11 Coverage gaps | New sections 4, 5, 13; traceability matrix (§17) |
 | 12 Verification gaps | Contract test per P1 finding (§16) |
-| Drift | SkillSpector pin corrected to 2.3.7, the installed version |
+| Drift | SkillSpector pin corrected to 2.5.1, the installed version |
 
 ## 18.1 What changed in revision 3
 
