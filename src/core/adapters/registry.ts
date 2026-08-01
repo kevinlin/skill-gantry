@@ -1,8 +1,12 @@
 import type { Stage } from '../types.js'
+import * as skillLint from './skill-lint.js'
 import * as skillspector from './skillspector.js'
 import type { Adapter } from './types.js'
 
-const ADAPTERS: readonly Adapter[] = [{ manifest: skillspector.manifest, parse: skillspector.parse }]
+const ADAPTERS: readonly Adapter[] = [
+  { manifest: skillspector.manifest, parse: skillspector.parse },
+  { manifest: skillLint.manifest, parse: skillLint.parse },
+]
 
 const BY_ID = new Map(ADAPTERS.map((a) => [a.manifest.id, a]))
 

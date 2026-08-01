@@ -8,7 +8,7 @@ const KNOWN = new Set<string>(KNOWN_RULE_CLASSES)
  * fingerprint of every issue already recorded under the old unmapped: class.
  * Extending the map without a bump silently orphans a user's triage — R8.14.
  */
-export const RULE_CLASS_MAP_VERSION = 2
+export const RULE_CLASS_MAP_VERSION = 3
 
 /**
  * (toolId, nativeRuleId) -> canonical class. Every entry below was observed in
@@ -34,6 +34,16 @@ export const RULE_CLASS_MAP: Readonly<Record<string, Readonly<Record<string, Kno
     RA2: 'excessive-permission',   // Session Persistence
     RP1: 'vulnerable-dep',         // MCP server referenced without a pinned version
     YR4: 'unsafe-script',          // YARA signature match
+  },
+  // R05 is vulnerable-dep rather than data-exfiltration: it fires on content
+  // pulled *in* from an unpinned host, the same shape as skillspector's RP1,
+  // and exfiltration is content going *out*. Mapping the two together gives the
+  // cross-tool merge a second axis independent of R06/AST4.
+  'skill-lint': {
+    R05: 'vulnerable-dep',          // Runtime external fetch from an unpinned host
+    R06: 'unsafe-script',           // Suspicious file in skill
+    R07: 'excessive-permission',    // Persistence / agent-state tamper
+    R09: 'metadata-invalid',        // Metadata abuse
   },
 }
 

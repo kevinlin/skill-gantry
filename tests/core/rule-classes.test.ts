@@ -60,6 +60,13 @@ describe('skillspector static rule map', () => {
     }
   })
 
+  it('maps every skill-lint rule the pinned version produced', () => {
+    expect(classifyRule('skill-lint', 'R05')).toBe('vulnerable-dep')
+    expect(classifyRule('skill-lint', 'R06')).toBe('unsafe-script')
+    expect(classifyRule('skill-lint', 'R07')).toBe('excessive-permission')
+    expect(classifyRule('skill-lint', 'R09')).toBe('metadata-invalid')
+  })
+
   it('is versioned, so a map change cannot ship without a migration', () => {
     expect(RULE_CLASS_MAP_VERSION).toBeGreaterThanOrEqual(2)
   })

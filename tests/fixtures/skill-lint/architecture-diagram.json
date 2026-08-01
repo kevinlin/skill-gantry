@@ -1,0 +1,254 @@
+{
+  "tool": "skill-lint",
+  "schemaVersion": 1,
+  "origin": "local:/Users/kevinlin/dev/ai-sdlc/zapac-agent-skills/architecture-diagram",
+  "skill": {
+    "name": "architecture-diagram",
+    "description": "Create layered system architecture diagrams using HTML/CSS templates with color-coded tiers and grid layouts. Best for technology stacks, microservices topology, and multi-tier application design.",
+    "files": [
+      {
+        "relPath": ".DS_Store",
+        "size": 6148,
+        "role": "skill-script"
+      },
+      {
+        "relPath": ".playwright-cli/console-2026-07-05T12-30-40-422Z.log",
+        "size": 144,
+        "role": "skill-script"
+      },
+      {
+        "relPath": ".playwright-cli/console-2026-07-05T12-30-43-383Z.log",
+        "size": 144,
+        "role": "skill-script"
+      },
+      {
+        "relPath": ".playwright-cli/console-2026-07-05T12-30-46-201Z.log",
+        "size": 144,
+        "role": "skill-script"
+      },
+      {
+        "relPath": ".playwright-cli/console-2026-07-09T08-57-47-615Z.log",
+        "size": 144,
+        "role": "skill-script"
+      },
+      {
+        "relPath": ".playwright-cli/console-2026-07-09T09-03-32-260Z.log",
+        "size": 144,
+        "role": "skill-script"
+      },
+      {
+        "relPath": ".playwright-cli/page-2026-07-05T12-30-40-482Z.yml",
+        "size": 4221,
+        "role": "skill-script"
+      },
+      {
+        "relPath": ".playwright-cli/page-2026-07-05T12-30-43-437Z.yml",
+        "size": 4199,
+        "role": "skill-script"
+      },
+      {
+        "relPath": ".playwright-cli/page-2026-07-05T12-30-46-389Z.yml",
+        "size": 75565,
+        "role": "skill-script"
+      },
+      {
+        "relPath": ".playwright-cli/page-2026-07-09T08-57-47-750Z.yml",
+        "size": 4685,
+        "role": "skill-script"
+      },
+      {
+        "relPath": ".playwright-cli/page-2026-07-09T09-03-32-410Z.yml",
+        "size": 4685,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "README.md",
+        "size": 4341,
+        "role": "readme"
+      },
+      {
+        "relPath": "SKILL.md",
+        "size": 14516,
+        "role": "skill"
+      },
+      {
+        "relPath": "gallery.html",
+        "size": 116141,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "layouts/banner-center.md",
+        "size": 3429,
+        "role": "skill-doc"
+      },
+      {
+        "relPath": "layouts/connectors.md",
+        "size": 8093,
+        "role": "skill-doc"
+      },
+      {
+        "relPath": "layouts/dashboard.md",
+        "size": 3805,
+        "role": "skill-doc"
+      },
+      {
+        "relPath": "layouts/grid-catalog.md",
+        "size": 3354,
+        "role": "skill-doc"
+      },
+      {
+        "relPath": "layouts/hub-spoke.md",
+        "size": 4683,
+        "role": "skill-doc"
+      },
+      {
+        "relPath": "layouts/layer-layouts.md",
+        "size": 10458,
+        "role": "skill-doc"
+      },
+      {
+        "relPath": "layouts/left-sidebar.md",
+        "size": 4358,
+        "role": "skill-doc"
+      },
+      {
+        "relPath": "layouts/nested-containers.md",
+        "size": 3596,
+        "role": "skill-doc"
+      },
+      {
+        "relPath": "layouts/pipeline.md",
+        "size": 2859,
+        "role": "skill-doc"
+      },
+      {
+        "relPath": "layouts/right-sidebar.md",
+        "size": 4414,
+        "role": "skill-doc"
+      },
+      {
+        "relPath": "layouts/single-stack.md",
+        "size": 3027,
+        "role": "skill-doc"
+      },
+      {
+        "relPath": "layouts/three-column.md",
+        "size": 4734,
+        "role": "skill-doc"
+      },
+      {
+        "relPath": "layouts/two-column-split.md",
+        "size": 3655,
+        "role": "skill-doc"
+      },
+      {
+        "relPath": "scripts/build_gallery.py",
+        "size": 3811,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/html_to_png.py",
+        "size": 12971,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "styles/dusk-glow.md",
+        "size": 8324,
+        "role": "skill-doc"
+      },
+      {
+        "relPath": "styles/ember-warm.md",
+        "size": 8228,
+        "role": "skill-doc"
+      },
+      {
+        "relPath": "styles/frost-clean.md",
+        "size": 8292,
+        "role": "skill-doc"
+      },
+      {
+        "relPath": "styles/indigo-deep.md",
+        "size": 8316,
+        "role": "skill-doc"
+      },
+      {
+        "relPath": "styles/neon-dark.md",
+        "size": 8413,
+        "role": "skill-doc"
+      },
+      {
+        "relPath": "styles/ocean-teal.md",
+        "size": 8271,
+        "role": "skill-doc"
+      },
+      {
+        "relPath": "styles/pastel-mix.md",
+        "size": 8118,
+        "role": "skill-doc"
+      },
+      {
+        "relPath": "styles/rose-bloom.md",
+        "size": 8275,
+        "role": "skill-doc"
+      },
+      {
+        "relPath": "styles/sage-forest.md",
+        "size": 8304,
+        "role": "skill-doc"
+      },
+      {
+        "relPath": "styles/slate-dark.md",
+        "size": 8028,
+        "role": "skill-doc"
+      },
+      {
+        "relPath": "styles/stark-block.md",
+        "size": 7812,
+        "role": "skill-doc"
+      },
+      {
+        "relPath": "styles/steel-blue.md",
+        "size": 8289,
+        "role": "skill-doc"
+      },
+      {
+        "relPath": "styles/zuhlke.md",
+        "size": 10646,
+        "role": "skill-doc"
+      }
+    ]
+  },
+  "findings": [
+    {
+      "ruleId": "R06",
+      "ast": "AST03",
+      "severity": "LOW",
+      "title": "Suspicious file in skill",
+      "file": "scripts/build_gallery.py",
+      "evidence": "",
+      "message": "Bundled script .py — review contents",
+      "role": "skill-script"
+    },
+    {
+      "ruleId": "R06",
+      "ast": "AST03",
+      "severity": "LOW",
+      "title": "Suspicious file in skill",
+      "file": "scripts/html_to_png.py",
+      "evidence": "",
+      "message": "Bundled script .py — review contents",
+      "role": "skill-script"
+    }
+  ],
+  "verdict": {
+    "label": "SAFE",
+    "score": 2,
+    "exitCode": 0
+  },
+  "scoring": {
+    "CRITICAL": 10,
+    "HIGH": 5,
+    "MEDIUM": 2,
+    "LOW": 1
+  }
+}

@@ -22,3 +22,21 @@ fi
 "$BIN" scan "$REPO/declawed" --no-llm --format sarif \
   --output "$OUT/skillspector-declawed.sarif"
 echo "captured $OUT/skillspector-declawed.sarif"
+
+PIN_SKILL_LINT="0.2.0"
+LINT_BIN="${SKILL_LINT_BIN:-skill-lint}"
+LINT_OUT="$(dirname "$0")/../tests/fixtures/skill-lint"
+mkdir -p "$LINT_OUT"
+
+lint_actual="$("$LINT_BIN" --version | tr -d 'v')"
+if [ "$lint_actual" != "$PIN_SKILL_LINT" ]; then
+  echo "skill-lint is $lint_actual, fixtures are pinned to $PIN_SKILL_LINT" >&2
+  exit 1
+fi
+
+for skill in architecture-diagram zuhlke-slides; do
+  # skill-lint exits 1 on WARN and 2 on TOXIC, which are findings rather than
+  # failures, so a non-zero exit here must not abort the capture.
+  "$LINT_BIN" "$REPO/$skill" --json > "$LINT_OUT/$skill.json" || true
+  echo "captured $LINT_OUT/$skill.json"
+done
