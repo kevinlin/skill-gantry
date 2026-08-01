@@ -9,6 +9,7 @@ import { runPipeline } from '../core/pipeline/run.js'
 import type { GantryConfig } from '../core/config/schema.js'
 import type { SkillRef, Stage } from '../core/types.js'
 import { runDoctor } from './doctor-command.js'
+import { needsSetup, startSetup, type SetupOptions } from './setup-command.js'
 import { startTui, type TuiOptions } from './tui-command.js'
 
 const STAGES: readonly Stage[] = ['validate', 'evaluate', 'security', 'optimise', 'release']
@@ -20,6 +21,8 @@ export interface CliDeps {
   write: (line: string) => void
   /** Test seam. Defaults to the real terminal interface. */
   startTui?: (options: TuiOptions) => Promise<void>
+  /** Test seam. Defaults to the real wizard. */
+  startSetup?: (options: SetupOptions) => Promise<void>
 }
 
 /**
@@ -161,9 +164,21 @@ export function buildProgram(deps: CliDeps): GantryProgram {
     })
 
   program
+    .command('setup')
+    .description('probe runtimes, install tools, write credentials and register a repo')
+    .action(async () => {
+      await (deps.startSetup ?? startSetup)({ home: deps.home })
+    })
+
+  program
     .option('--concurrency <n>', 'worker pool limit for this session', (value) => Number(value))
     .action(async (opts: { concurrency?: number }) => {
-      // Commander runs this only when no subcommand matched.
+      // Commander runs this only when no subcommand matched. R3.6 calls this
+      // first-run setup, and a Work screen over no repos and no tools is empty.
+      if (await needsSetup(deps.home)) {
+        await (deps.startSetup ?? startSetup)({ home: deps.home })
+        return
+      }
       const launch = deps.startTui ?? startTui
       await launch({
         home: deps.home,
