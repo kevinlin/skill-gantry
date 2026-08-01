@@ -36,4 +36,21 @@ describe('import boundary', () => {
     // Each case spawns a full eslint process, which is slow enough under a
     // loaded parallel run to reach the default 30s ceiling.
   }, 60_000)
+
+  it(
+    'rejects a deep core import from tui',
+    async () => {
+      const offender = join(process.cwd(), 'src/tui/__boundary_probe__.ts')
+      await writeFile(offender, `import '../core/ledger/db.js'\nexport const x = 1\n`)
+      try {
+        await run('pnpm', ['exec', 'eslint', offender], { cwd: process.cwd() })
+        throw new Error('eslint should have failed')
+      } catch (err) {
+        expect(String((err as { stdout?: string }).stdout)).toContain('no-restricted-imports')
+      } finally {
+        await rm(offender, { force: true })
+      }
+    },
+    60_000,
+  )
 })

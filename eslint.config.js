@@ -19,7 +19,13 @@ export default tseslint.config(
   },
   {
     files: ['src/tui/**/*.ts', 'src/tui/**/*.tsx'],
-    rules: noCrossImport([{ group: ['**/cli/**'], message: 'tui must not import cli' }]),
+    rules: noCrossImport([
+      { group: ['**/cli/**'], message: 'tui must not import cli' },
+      {
+        group: ['**/core/*/**'],
+        message: 'tui imports core only through src/core/index.ts',
+      },
+    ]),
   },
   {
     files: ['src/core/adapters/**/*.ts'],
