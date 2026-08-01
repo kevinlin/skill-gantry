@@ -5,3 +5,6 @@ coverage/
 *.tsbuildinfo
 .env
 *-workspace/
+
+# AGENTS.md
+AGENTS.md
