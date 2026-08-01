@@ -3087,7 +3087,30 @@ Recorded so they are not mistaken for oversights.
 
 ## Deviations found while implementing
 
-Recorded during execution, as plan-m1 and plan-m2 do. Empty until then.
+Recorded during execution, as plan-m1 and plan-m2 do.
+
+### Task 1 Step 2 — three of D7's tools are not installable, so the catalogue holds six
+
+Probe date 2026-08-01. `uv pip index versions` does not exist in uv 0.7.12 (`error: unrecognized subcommand 'index'`), so PyPI was probed through `https://pypi.org/pypi/<name>/json` instead.
+
+| Tool | Probe result | Catalogue entry |
+|---|---|---|
+| skill-lint | `npm view skill-lint version` → `0.2.0`, repo `LichAmnesia/skill-lint`, bin `skill-lint`; installed into a temp prefix, `--version` → `0.2.0` | `npm-prefix`, pin `0.2.0` |
+| promptfoo | `npm view promptfoo version` → `0.121.20`, bins `promptfoo`, `pf` | `npm-prefix`, pin `0.121.20` |
+| skills (vercel) | `npm view skills version` → `1.5.21`, repo `vercel-labs/skills`, bin `skills`; `--version` → `1.5.21`. `@vercel/skills` is 404 | `npm-prefix`, pin `1.5.21`, `stage: null` |
+| skill-up | `gh search` → `alibaba/skill-up` (Go). Latest release `v0.7.0` publishes `skill-up_0.7.0_{os}_{arch}.tar.gz` for darwin/linux/windows × amd64/arm64 plus `skill-up_0.7.0_checksums.txt`; README documents `skill-up --version` | `gh-release`, pin `v0.7.0`, integrity `sha256-asset` |
+| skill-scanner | PyPI `0.3.3`, summary "Security scanner for detecting and remediating malicious AI agent skills"; installed via `uv tool install skill-scanner==0.3.3`, bins `skill-scanner` and `skillscan`, `--version` → `0.3.3` | `uv-tool`, pin `0.3.3` |
+| SkillSpector | known; copied verbatim from `src/core/adapters/skillspector.ts`. `git ls-remote --tags NVIDIA/skillspector` confirms `v2.5.1` | `uv-tool`, pin `v2.5.1` |
+| **SkillOpt** | PyPI `0.2.0`, `microsoft/SkillOpt`. Installed successfully, but its three entry points — `skillopt-train`, `skillopt-eval`, `skillopt-sleep` — are argparse research scripts and **none accepts `--version`**: each answers with a usage error. There is no unified `skillopt` executable. **Omitted** | none |
+| **SkillHone** | Not on PyPI, not on npm. `Tencent/SkillHone` is a skills-and-docs repo: no `pyproject.toml`, no `setup.py`, no tags. **Omitted** | none |
+| **agentskills** | Not on PyPI, not on npm (`npm view agentskills` → 404). `agentskills/agentskills` is the specification/docs repo: `package.json` is `"private": true` with one `dev` script, no `bin`, no tags. **Omitted** | none |
+
+Consequences, all recorded in the specs rather than left implicit:
+
+- Optimise has no catalogued tool, so no preset carries one. §5.3's preset paragraph was rewritten accordingly; the previous wording named `skillopt` and "all eight".
+- Verify-by-invocation is what rejected SkillOpt. A tool whose executables cannot answer a version argv cannot be locked, since M1's rule is that no lock entry is written before the executable answers. Carrying it would have made every wizard run show a failed install.
+- `promptfoo --version` was not probed by installing it; the package is large and its `--version` flag is long-standing. Task 11's integration run is what confirms it.
+
 
 ## Changelog
 

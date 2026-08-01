@@ -218,6 +218,18 @@ For a git repo the run additionally records `gitCommit` (HEAD) and `gitDirty` (w
 
 **Milestone split.** M1 builds the `uv-tool` driver, the lock writer and verify-by-invocation only — enough to produce a real managed SkillSpector install that M1's runner can resolve. `npm-prefix`, `gh-release`, presets, the wizard and `doctor` remain M3. Revision 2 put the whole module in M3 while asking M1 to run a real scanner, which it could not do.
 
+### 5.1a Tool catalogue
+
+*Satisfies R3.5, R3.5a.*
+
+`src/core/tools/catalogue.ts` holds one `ToolSpec` per installable tool: id, display name, the stage that selects it (`null` for vercel `skills`, which release invokes and no stage selects), the runtime its driver needs, its install spec and its version argv.
+
+The catalogue exists separately from the adapter registry because installability and runnability are not the same property. Vercel `skills` is installable with no adapter, and seven adapters arrive in M4 with parsers for tools M3 already installs. The catalogue is the authority for installing, verifying and locking; the adapter registry is the authority for what a run may select. `AdapterManifest.install` is retained as documentation and kept in step by a test asserting the two agree for every tool holding both.
+
+A consequence the wizard must respect: a selection written into `stageTools` names a tool the adapter registry knows, since `AdapterStageExecutor.plan()` rejects an unknown id. An installed tool with no adapter is reported as installed and not yet runnable.
+
+A tool D7 names but no public source publishes in installable form is omitted from the catalogue rather than carried as an entry that can only fail. The omissions and the probe output behind each are recorded in [plan-m3.md](plan-m3.md).
+
 ### 5.2 Install drivers
 
 | Kind | Mechanism | Executable resolution |
@@ -239,15 +251,17 @@ type Integrity =
 
 `sha256-asset` and `sha256-digest` fail the install on mismatch. `kind: 'none'` requires a written reason, records `integrity: "none"` in the lock entry, and surfaces a warning in `doctor`, so an unverifiable download is a visible standing condition rather than a silent one. Revision 2 promised checksum verification with no field to carry a checksum; this closes that.
 
+`assetPattern` may carry `{os}` and `{arch}`, substituted from the host before matching — `{os}` from `process.platform`, `{arch}` as `arm64` or `amd64`. A single fixed pattern cannot resolve a per-platform release asset on two machines.
+
 ### 5.3 Setup and doctor
 
 Setup is a four-state machine: `probe-runtimes → select-tools → install-and-verify → credentials-and-repo`. Each state is re-enterable, so `doctor` reuses `probe-runtimes` and `install-and-verify` without the rest.
 
-Presets: **Minimal** is skill-up plus skillspector — the two already present, one evaluate and one security tool. **Recommended** is one tool per stage: skill-lint, skill-up, skillspector, skillopt. **Everything** is all eight plus vercel `skills`.
+Presets: **Minimal** is skill-up plus skillspector — the two already present, one evaluate and one security tool. **Recommended** is at most one tool per stage. **Everything** is the whole catalogue. A stage whose D7 candidates are both uninstallable has no tool in any preset; that is visible in the wizard rather than papered over.
 
 Every preset includes vercel `skills`, because the release stage cannot run its installability gate without it.
 
-Doctor reports four drift kinds per tool: `missing` (in lock, absent on disk), `unverifiable` (present, will not run), `version-drift` (runs, reports a version other than `resolvedVersion`), and `unlocked` (installed under the tool root but absent from the lock).
+Doctor reports four drift kinds per tool: `missing` (in lock, absent on disk), `unverifiable` (present, will not run), `version-drift` (runs, reports a version other than `resolvedVersion`), and `unlocked` (installed under the tool root but absent from the lock). Two further conditions are reported and do not fail the report: `integrity-unverified`, a lock entry recording `integrity: "none"` per §5.2, and `lifecycle-drift` per §13.
 
 ## 6. Stage execution contract
 
@@ -979,8 +993,8 @@ The mapping is checkable rather than asserted: every `*Satisfies …*` label in 
 |---|---|
 | M1 | `config`, `discovery` (incl. candidate manifest), `tools` (`uv-tool` driver, lock writer, verify), `adapters` (skillspector only), `runner`, `stages`, `pipeline`, `workspace`, `ledger`, headless CLI |
 | M2 | `queue`, `src/tui/` Work screen with the queue panel |
-| M3 | `tools` completed: `npm-prefix`, `gh-release`, presets, setup wizard, doctor |
-| M4 | Remaining seven adapters, fan-out policy, cross-tool merge |
+| M3 | `tools` completed: catalogue, `npm-prefix`, `gh-release`, presets, setup wizard, doctor |
+| M4 | The seven remaining adapters and their parsers, fan-out policy, cross-tool merge |
 | M5 | `isolation`, `release`, retirement, mutating-stage gate |
 | M6 | Dashboard and Issues screens, statistics queries |
 
