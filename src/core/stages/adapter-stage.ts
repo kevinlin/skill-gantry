@@ -1,0 +1,233 @@
+import { join } from 'node:path'
+import { getAdapter } from '../adapters/registry.js'
+import {
+  type Adapter,
+  type AdapterManifest,
+  type CredentialRequirement,
+  credentialsSatisfied,
+  missingCredentials,
+} from '../adapters/types.js'
+import { type RunToolOutput, runTool } from '../runner/spawn.js'
+import type { ErrorKind, SkillRef, Stage } from '../types.js'
+import { reduceStageOutcome } from './outcome.js'
+import type { StageContext, StageExecutor, StagePlan, StageResult, ToolRunRecord } from './types.js'
+
+const FAN_OUT_LIMIT = 2
+
+export interface AdapterStageOptions {
+  /** Test seam: substitute a manifest's credential requirement. */
+  credentialsOverride?: Readonly<Record<string, CredentialRequirement>>
+}
+
+function substitute(argv: readonly string[], vars: Readonly<Record<string, string>>): string[] {
+  return argv.map((arg) =>
+    arg.replace(/\{(skillDir|repoRoot|toolDir)\}/g, (_m, key: string) => vars[key] ?? _m),
+  )
+}
+
+type Classification = Pick<
+  ToolRunRecord,
+  'outcome' | 'errorKind' | 'findings' | 'metrics' | 'summary'
+>
+
+const errored = (kind: ErrorKind, summary: string, durationMs: number): Classification => ({
+  outcome: 'errored',
+  errorKind: kind,
+  findings: [],
+  metrics: { durationMs },
+  summary,
+})
+
+/**
+ * Rows 4 to 13 of the R4.13 table, in order, first match wins. Rows 1 to 3 are
+ * decided before a process is ever spawned, by `skipped()` below.
+ *
+ * The governing rule is that a schema-valid parse is authoritative and the exit
+ * code is fallback evidence only: scanners and linters exit non-zero precisely
+ * because they found something, so treating exit status as primary turns valid
+ * findings into errors. Only rows 10 to 12 reach reconciliation.
+ */
+export function classifyToolRun(
+  adapter: Adapter,
+  skill: SkillRef,
+  run: RunToolOutput,
+): Classification {
+  const { durationMs } = run
+
+  if (run.cancelled) return errored('cancelled', 'cancelled', durationMs)
+  if (run.timedOut) return errored('timeout', 'timed out', durationMs)
+  if (run.oversizeArtefacts.length > 0) {
+    return errored(
+      'artefact-too-large',
+      `artefact over the size cap: ${run.oversizeArtefacts.join(', ')}`,
+      durationMs,
+    )
+  }
+  if (run.spawnFailed) return errored('spawn', `could not spawn: ${run.spawnError}`, durationMs)
+  // Before parse, not after: a missing report is not a parser defect, and
+  // classifying it by whichever exception the parser raised said it was.
+  if (run.missingArtefacts.length > 0) {
+    return errored(
+      'missing-artefact',
+      `declared artefact never written: ${run.missingArtefacts.join(', ')}`,
+      durationMs,
+    )
+  }
+
+  let parsed
+  try {
+    parsed = adapter.parse({
+      skill,
+      artefacts: run.artefacts,
+      stdout: run.stdout,
+      stderr: run.stderr,
+      exitCode: run.exitCode,
+      durationMs,
+    })
+  } catch (err) {
+    return errored('parse', `parse threw: ${(err as Error).message}`, durationMs)
+  }
+
+  if (parsed.outcome === 'errored') {
+    return errored('parse', parsed.summary, durationMs)
+  }
+
+  // Rows 10 to 12. The exit code is recorded but does not vote.
+  return {
+    outcome: parsed.outcome,
+    errorKind: null,
+    findings: parsed.findings,
+    metrics: { ...parsed.metrics, durationMs },
+    summary: parsed.summary,
+  }
+}
+
+/** Rows 1 to 3: decided before a process is spawned. */
+function skipped(toolId: string, artefactDir: string, kind: ErrorKind, detail = ''): ToolRunRecord {
+  const reason: Record<string, string> = {
+    'not-installed': 'tool is not installed',
+    'no-credentials': `needs ${detail}`,
+    'no-authorisation': 'mutating stage without authorisation',
+  }
+  return {
+    toolId,
+    toolVersion: null,
+    outcome: 'skipped',
+    exitCode: null,
+    durationMs: 0,
+    errorKind: kind,
+    artefactDir,
+    findings: [],
+    metrics: {},
+    summary: reason[kind] ?? kind,
+  }
+}
+
+async function mapLimit<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const out: R[] = new Array(items.length)
+  let next = 0
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    for (let i = next++; i < items.length; i = next++) {
+      out[i] = await fn(items[i] as T)
+    }
+  })
+  await Promise.all(workers)
+  return out
+}
+
+export class AdapterStageExecutor implements StageExecutor {
+  readonly mutating = false
+
+  constructor(
+    readonly stage: Stage,
+    private readonly options: AdapterStageOptions = {},
+  ) {}
+
+  private credentialsFor(manifest: AdapterManifest): CredentialRequirement {
+    return this.options.credentialsOverride?.[manifest.id] ?? manifest.credentials
+  }
+
+  /**
+   * Resolves the configured selection and validates it. The lockfile is not
+   * consulted here: a selected tool must survive planning even when it is not
+   * installed, so that execute() can report it as skipped rather than dropping it.
+   */
+  async plan(ctx: StageContext): Promise<StagePlan> {
+    if (ctx.selectedToolIds.length === 0) {
+      throw new Error(`no tools selected for stage ${ctx.stage}`)
+    }
+    let policy: 'fan-out' | 'pick-one' = 'fan-out'
+    for (const id of ctx.selectedToolIds) {
+      const adapter = getAdapter(id)
+      if (!adapter) throw new Error(`unknown tool: ${id}`)
+      if (adapter.manifest.stage !== ctx.stage) {
+        throw new Error(`${id} is not a ${ctx.stage} tool`)
+      }
+      policy = adapter.manifest.policy
+    }
+    if (policy === 'pick-one' && ctx.selectedToolIds.length > 1) {
+      throw new Error(`stage ${ctx.stage} accepts exactly one tool`)
+    }
+    return { toolIds: [...ctx.selectedToolIds], policy, mutationScope: { paths: [] } }
+  }
+
+  async execute(ctx: StageContext, plan: StagePlan): Promise<StageResult> {
+    const limit = plan.policy === 'pick-one' ? 1 : FAN_OUT_LIMIT
+
+    const toolRuns = await mapLimit(plan.toolIds, limit, async (toolId) => {
+      const artefactDir = join(ctx.stageDir, toolId)
+      const adapter = getAdapter(toolId)
+      if (!adapter) return skipped(toolId, artefactDir, 'not-installed')
+
+      const locked = ctx.lock.tools[toolId]
+      if (!locked) return skipped(toolId, artefactDir, 'not-installed')
+
+      // Structured, so the skip summary and the wizard can both name what is
+      // missing. A boolean could only say "something".
+      const required = this.credentialsFor(adapter.manifest)
+      if (!credentialsSatisfied(required, ctx.env)) {
+        return skipped(toolId, artefactDir, 'no-credentials', missingCredentials(required))
+      }
+
+      const { manifest } = adapter
+      const argv = substitute(manifest.invoke.argv, {
+        skillDir: ctx.skill.dir,
+        repoRoot: ctx.skill.repo.path,
+        toolDir: artefactDir,
+      })
+
+      const run = await runTool({
+        bin: locked.bin,
+        argv,
+        cwd: manifest.invoke.cwd === 'skillDir' ? ctx.skill.dir : ctx.skill.repo.path,
+        toolDir: artefactDir,
+        env: ctx.env,
+        secrets: ctx.secrets,
+        artefacts: manifest.artefacts,
+        artefactSizeCapBytes: ctx.artefactSizeCapBytes,
+        timeoutMs: ctx.timeoutOverridesMs[toolId] ?? manifest.timeoutMs,
+        ...(ctx.signal ? { signal: ctx.signal } : {}),
+      })
+
+      ctx.onOutput(toolId, 'stdout', run.stdout)
+      ctx.onOutput(toolId, 'stderr', run.stderr)
+
+      const base = {
+        toolId,
+        toolVersion: locked.resolvedVersion,
+        exitCode: run.exitCode,
+        durationMs: run.durationMs,
+        artefactDir,
+      }
+
+      return { ...base, ...classifyToolRun(adapter, ctx.skill, run) }
+    })
+
+    const { outcome, verdict } = reduceStageOutcome(toolRuns.map((t) => t.outcome))
+    return { stage: ctx.stage, outcome, verdict, toolRuns }
+  }
+}
