@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { applyJournalled, readJournal, rollbackJournal } from '../../src/core/isolation/journal.js'
@@ -111,5 +111,54 @@ describe('applyJournalled', () => {
     await apply(s)
     expect(await rollbackJournal(s.recordDir)).toEqual([])
     expect(await readFile(join(s.live, 'sk/SKILL.md'), 'utf8')).toBe('version: 1.1.0\n')
+  })
+
+  // R10.8 names all five change kinds; the two scenes above already exercise
+  // apply for a deletion, a rename and a mode change (the "applies a deletion
+  // and a rename" case, plus the git/snapshot sandbox suites for the mode
+  // change), but nothing had rolled one back. A reversed rename or a restored
+  // deletion is exactly the kind of bug that would fail silently.
+  it('rolls back a deletion, a rename and a mode change', async () => {
+    const s = await scene()
+    await writeFile(join(s.live, 'sk/old.txt'), 'old\n')
+    await writeFile(join(s.source, 'sk/new.txt'), 'old\n')
+    await writeFile(join(s.live, 'sk/gone.txt'), 'gone\n')
+    await writeFile(join(s.live, 'sk/mode.txt'), 'mode\n')
+    await chmod(join(s.live, 'sk/mode.txt'), 0o644)
+    s.change.entries.push(
+      { path: 'sk/new.txt', kind: 'renamed', from: 'sk/old.txt', binary: false },
+      { path: 'sk/gone.txt', kind: 'deleted', binary: false },
+      { path: 'sk/mode.txt', kind: 'mode-changed', mode: 0o755, binary: false },
+    )
+    s.change.preimages.push(
+      await preimageOf(s.live, 'sk/old.txt'),
+      await preimageOf(s.live, 'sk/new.txt'),
+      await preimageOf(s.live, 'sk/gone.txt'),
+      await preimageOf(s.live, 'sk/mode.txt'),
+    )
+    await apply(s)
+
+    // Confirm the apply actually did the three things being rolled back,
+    // so the rollback assertions below prove a reversal rather than a no-op.
+    expect(await readFile(join(s.live, 'sk/new.txt'), 'utf8')).toBe('old\n')
+    await expect(stat(join(s.live, 'sk/old.txt'))).rejects.toThrow()
+    await expect(stat(join(s.live, 'sk/gone.txt'))).rejects.toThrow()
+    expect((await stat(join(s.live, 'sk/mode.txt'))).mode & 0o777).toBe(0o755)
+
+    // Simulate a crash between the journal write and the final mark.
+    const journal = await readJournal(s.recordDir)
+    await writeFile(join(s.recordDir, 'journal.json'), JSON.stringify({ ...journal, complete: false }))
+    const restored = await rollbackJournal(s.recordDir)
+    expect(restored.sort()).toEqual(
+      ['sk/CHANGELOG.md', 'sk/SKILL.md', 'sk/gone.txt', 'sk/mode.txt', 'sk/new.txt', 'sk/old.txt'].sort(),
+    )
+
+    // Deletion reversed: the file is back with its prior bytes.
+    expect(await readFile(join(s.live, 'sk/gone.txt'), 'utf8')).toBe('gone\n')
+    // Rename reversed: the old path is back, the new one never existed before.
+    expect(await readFile(join(s.live, 'sk/old.txt'), 'utf8')).toBe('old\n')
+    await expect(stat(join(s.live, 'sk/new.txt'))).rejects.toThrow()
+    // Mode change reversed: the original permission bits are restored.
+    expect((await stat(join(s.live, 'sk/mode.txt'))).mode & 0o777).toBe(0o644)
   })
 })

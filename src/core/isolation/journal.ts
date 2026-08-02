@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { chmod, copyFile, mkdir, open, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, open, readFile, rename, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { Exec } from '../tools/exec.js'
 import { preimageOf } from './git-worktree.js'
@@ -37,6 +37,45 @@ export interface ApplyInput {
 const BYTES_DIR = 'journal-bytes'
 
 export const journalPath = (recordDir: string): string => join(recordDir, 'journal.json')
+
+/**
+ * fsyncs a directory. A file's own fsync only guarantees its bytes are
+ * durable; the directory entry that names it (created by `open('w')` or by
+ * `rename`) is a separate write the OS is free to persist on its own
+ * schedule unless the directory itself is fsynced too.
+ */
+async function fsyncDir(dir: string): Promise<void> {
+  const handle = await open(dir, 'r')
+  try {
+    await handle.sync()
+  } finally {
+    await handle.close()
+  }
+}
+
+/**
+ * Write, fsync the file, then fsync its directory — the same durable-write
+ * shape as the sidecar index (R6.4). R10.9 needs the prior-bytes backup and
+ * the journal record to be *durable on disk*, not merely written in program
+ * order, before the first live target is touched: absent this barrier a
+ * power loss can persist the live mutation while the backup or the journal
+ * entry naming it is still sitting in a write-back cache, which is precisely
+ * the crash R10.9 exists to survive.
+ */
+async function writeDurable(path: string, bytes: Buffer | string): Promise<void> {
+  const handle = await open(path, 'w')
+  try {
+    await handle.write(typeof bytes === 'string' ? Buffer.from(bytes) : bytes)
+    await handle.sync()
+  } finally {
+    await handle.close()
+  }
+  await fsyncDir(dirname(path))
+}
+
+async function writeJournalFile(recordDir: string, journal: Journal): Promise<void> {
+  await writeDurable(journalPath(recordDir), `${JSON.stringify(journal, null, 2)}\n`)
+}
 
 export async function readJournal(recordDir: string): Promise<Journal | null> {
   try {
@@ -103,12 +142,19 @@ export async function applyJournalled(input: ApplyInput): Promise<void> {
     const prior = await preimageOf(liveRoot, path)
     let ref: string | null = null
     if (prior.sha256 !== null) {
+      // Keyed by the target's path, not its content: two targets with
+      // identical bytes still get distinct backup files, so nothing here
+      // is deduplicated by content and a rollback never has to reason about
+      // which path a shared blob belongs to.
       ref = createHash('sha256').update(path).digest('hex').slice(0, 16)
-      await copyFile(join(liveRoot, path), join(bytesDir, ref))
+      await writeDurable(join(bytesDir, ref), await readFile(join(liveRoot, path)))
     }
     entries.push({ path, priorSha: prior.sha256, priorMode: prior.mode, priorBytesRef: ref })
   }
 
+  // Everything above this line is durable on disk before the line below runs
+  // (R10.9): the backups and the journal record naming them must survive a
+  // crash that happens the instant after the first live target is mutated.
   const journal: Journal = {
     runId: '',
     stage: '',
@@ -116,7 +162,7 @@ export async function applyJournalled(input: ApplyInput): Promise<void> {
     complete: false,
     entries,
   }
-  await writeFile(journalPath(recordDir), `${JSON.stringify(journal, null, 2)}\n`)
+  await writeJournalFile(recordDir, journal)
 
   const removed = new Set(change.entries.flatMap((e) => (e.from ? [e.from] : [])))
   for (const entry of change.entries) {
@@ -136,7 +182,7 @@ export async function applyJournalled(input: ApplyInput): Promise<void> {
   }
   for (const path of removed) await rm(join(liveRoot, path), { force: true })
 
-  await writeFile(journalPath(recordDir), `${JSON.stringify({ ...journal, complete: true }, null, 2)}\n`)
+  await writeJournalFile(recordDir, { ...journal, complete: true })
 }
 
 /**
@@ -161,6 +207,6 @@ export async function rollbackJournal(recordDir: string): Promise<string[]> {
     }
     restored.push(entry.path)
   }
-  await writeFile(journalPath(recordDir), `${JSON.stringify({ ...journal, complete: true }, null, 2)}\n`)
+  await writeJournalFile(recordDir, { ...journal, complete: true })
   return restored
 }
