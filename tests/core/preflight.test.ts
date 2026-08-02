@@ -30,4 +30,18 @@ describe('requireCommands', () => {
   it('names all three commands a mutating stage needs', () => {
     expect([...MUTATION_COMMANDS]).toEqual(['git', 'zip', 'unzip'])
   })
+
+  it('probes unzip with -v rather than --version, which Info-ZIP mis-parses', async () => {
+    const calls: Array<{ bin: string; argv: readonly string[] }> = []
+    const exec: Exec = async (bin, argv) => {
+      calls.push({ bin, argv })
+      return { stdout: '', stderr: '' }
+    }
+    await requireCommands(MUTATION_COMMANDS, exec)
+    expect(calls).toEqual([
+      { bin: 'git', argv: ['--version'] },
+      { bin: 'zip', argv: ['--version'] },
+      { bin: 'unzip', argv: ['-v'] },
+    ])
+  })
 })
