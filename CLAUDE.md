@@ -97,6 +97,8 @@ Same split as the rest of the engine: `catalogue.ts` and `setup.ts` are pure dec
 
 `src/tui/store.ts` is a reducer over `Action`, and every input — queue events, log flushes, key presses — is an action. The components are thin. `views.ts` holds the reads the store cannot do itself (`SKILL.md`, artefact listing, last outcome per skill from the sidecar `index.ndjson` rather than the ledger, since cross-repo ledger aggregates are M6).
 
+`layout.ts` holds the size decisions, and holds all of them: `layoutFor(columns, rows)` is pure, `Work` calls `useWindowSize()` and passes the result down, and no component carries a fixed height. `components/Panel.tsx` is the one place the `boxed`/`bare` chrome choice is read. Design §14.1 states the three rules a frame has to obey to stay inside its row budget; break one and a panel falls off the bottom of an 80×24.
+
 The setup wizard is a second app, not a screen of the first: `setup-app.tsx` owns input and driver calls, `components/Setup.tsx` is a pure render of `SetupState`. The wizard cannot advance a state without calling an injected driver.
 
 ### Contracts worth knowing before you edit

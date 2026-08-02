@@ -2,6 +2,7 @@ import { getAdapter } from '../core/adapters/registry.js'
 import {
   CATALOGUE,
   catalogueEntry,
+  inspectRepo,
   installTool,
   loadConfig,
   loadEnvFile,
@@ -52,6 +53,8 @@ export function buildSetupDriver(home: string): SetupDriver {
       const env = await loadEnvFile(home)
       return { present: env.present, warnings: env.warnings }
     },
+
+    inspectRepo: (path) => inspectRepo(home, path),
 
     registerRepo: async (path) => {
       await registerRepo(home, path)

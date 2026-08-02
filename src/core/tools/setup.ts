@@ -1,3 +1,4 @@
+import type { RepoInspection } from '../config/config.js'
 import type { GantryConfig } from '../config/schema.js'
 import type { Stage } from '../types.js'
 import { PRESETS, type PresetName, catalogueEntry } from './catalogue.js'
@@ -27,6 +28,8 @@ export interface SetupState {
   installed: Readonly<Record<string, InstallState>>
   errors: Readonly<Record<string, string>>
   repoPath: string | null
+  /** The user chose to finish with no repo registered. */
+  repoSkipped: boolean
   credentials: { present: boolean; warnings: readonly string[] } | null
 }
 
@@ -38,6 +41,7 @@ export function initialSetupState(): SetupState {
     installed: {},
     errors: {},
     repoPath: null,
+    repoSkipped: false,
     credentials: null,
   }
 }
@@ -51,6 +55,7 @@ export type SetupAction =
   | { type: 'install-failed'; toolId: string; error: string }
   | { type: 'credentials'; present: boolean; warnings: readonly string[] }
   | { type: 'repo'; path: string }
+  | { type: 'skip-repo' }
   | { type: 'enter'; state: SetupStateName }
 
 /**
@@ -60,17 +65,34 @@ export type SetupAction =
  * so backing out of an install to reselect keeps the selection.
  */
 export function canEnter(state: SetupState, target: SetupStateName): boolean {
+  return entryBlockedReason(state, target) === null
+}
+
+/**
+ * Why entry is refused, or null when it is not. The message lives beside the
+ * condition rather than in a table in the TUI: the wizard has to say something
+ * when `enter` does nothing — silence read as a frozen screen — and a guard
+ * added here with its explanation elsewhere would have shown the stale one.
+ */
+export function entryBlockedReason(state: SetupState, target: SetupStateName): string | null {
   switch (target) {
     case 'probe-runtimes':
-      return true
+      return null
     case 'select-tools':
-      return state.runtimes.length > 0
+      return state.runtimes.length > 0 ? null : 'no runtimes probed yet — press p'
     case 'install-and-verify':
-      return state.selected.length > 0
+      return state.selected.length > 0 ? null : 'select at least one tool first'
     case 'credentials-and-repo':
       return state.selected.every((id) => state.installed[id] === 'ok')
+        ? null
+        : 'every selected tool has to install before this step'
     case 'done':
-      return state.repoPath !== null
+      // A verified toolchain is the deliverable; a repo can be registered later
+      // from Settings. Requiring one here left the wizard with no exit but
+      // Ctrl+C for anyone setting up before their skills repo exists.
+      return state.repoPath !== null || state.repoSkipped
+        ? null
+        : 'register a repo, or press ctrl-d to finish without one'
   }
 }
 
@@ -99,7 +121,9 @@ export function setupReducer(state: SetupState, action: SetupAction): SetupState
     case 'credentials':
       return { ...state, credentials: { present: action.present, warnings: action.warnings } }
     case 'repo':
-      return { ...state, repoPath: action.path }
+      return { ...state, repoPath: action.path, repoSkipped: false }
+    case 'skip-repo':
+      return { ...state, repoSkipped: true }
     case 'enter':
       return canEnter(state, action.state) ? { ...state, state: action.state } : state
   }
@@ -158,5 +182,7 @@ export interface SetupDriver {
   install(toolId: string): Promise<void>
   saveSelection(selected: readonly string[]): Promise<void>
   credentialStatus(): Promise<{ present: boolean; warnings: readonly string[] }>
+  /** Read-only: what a typed path resolves to, before the user commits it. */
+  inspectRepo(path: string): Promise<RepoInspection>
   registerRepo(path: string): Promise<void>
 }

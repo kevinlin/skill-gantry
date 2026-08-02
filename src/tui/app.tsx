@@ -76,6 +76,16 @@ export function App({
       exit()
       return
     }
+    if (input === '?') {
+      dispatch({ type: 'toggle-help' })
+      return
+    }
+    // Help is modal: swallowing movement while it is open keeps the selection
+    // where the user left it rather than scrolling a screen they cannot see.
+    if (state.help) {
+      if (key.escape) dispatch({ type: 'toggle-help', open: false })
+      return
+    }
     if (key.tab) {
       dispatch({ type: 'cycle-focus', delta: key.shift ? -1 : 1 })
       return

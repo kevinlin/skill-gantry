@@ -95,6 +95,38 @@ describe('Work screen', () => {
     queue.close()
   })
 
+  it('opens full help on ? and closes it on esc', async () => {
+    const { ui, queue } = harness()
+    await ui.settle()
+    expect(ui.lastFrame()).toContain('? help')
+
+    ui.stdin.send('?')
+    await ui.settle()
+    expect(ui.lastFrame()).toContain('SkillGantry — keys')
+    expect(ui.lastFrame()).toContain('cycle focus')
+
+    ui.stdin.send('') // esc
+    await ui.settle()
+    expect(ui.lastFrame()).not.toContain('SkillGantry — keys')
+    expect(ui.lastFrame()).toContain('declawed')
+    ui.unmount()
+    queue.close()
+  })
+
+  it('leaves the selection alone while help is open', async () => {
+    const { ui, queue } = harness()
+    await ui.settle()
+    ui.stdin.send('?')
+    await ui.settle()
+    ui.stdin.send('j')
+    await ui.settle()
+    ui.stdin.send('?')
+    await ui.settle()
+    expect(ui.lastFrame()).toMatch(/›\s*[○◐●!×]\s*declawed/)
+    ui.unmount()
+    queue.close()
+  })
+
   it('renders streamed log lines through the pump, not per chunk', async () => {
     const { ui, queue, runs } = harness()
     await ui.settle()

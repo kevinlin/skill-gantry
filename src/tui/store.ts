@@ -51,6 +51,8 @@ export interface AppState {
   log: { lines: readonly string[]; dropped: number }
   skillMd: string
   artefacts: string[]
+  /** `?` replaces the whole screen; the footer carries only five keys. */
+  help: boolean
 }
 
 export type Action =
@@ -69,6 +71,7 @@ export type Action =
   | { type: 'set-skill-md'; body: string }
   | { type: 'set-artefacts'; paths: string[] }
   | { type: 'set-statuses'; statuses: Record<string, string> }
+  | { type: 'toggle-help'; open?: boolean }
 
 const emptyStages = (): Record<Stage, StageCell> =>
   Object.fromEntries(
@@ -103,6 +106,7 @@ export function initialState(skills: readonly SkillRef[], concurrency: number): 
     log: { lines: [], dropped: 0 },
     skillMd: '',
     artefacts: [],
+    help: false,
   }
 }
 
@@ -233,6 +237,8 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, skillMd: action.body }
     case 'set-artefacts':
       return { ...state, artefacts: action.paths }
+    case 'toggle-help':
+      return { ...state, help: action.open ?? !state.help }
     case 'set-statuses':
       return {
         ...state,

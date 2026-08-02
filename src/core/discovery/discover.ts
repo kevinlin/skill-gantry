@@ -59,6 +59,24 @@ async function toSkill(
 }
 
 /**
+ * How many skills a path holds, without reading or parsing any of them. The
+ * wizard calls this on every pause in typing, where `discoverSkills` would have
+ * read and YAML-parsed one SKILL.md per skill just to produce a number.
+ */
+export async function countSkills(repoPath: string): Promise<number> {
+  if (await exists(join(repoPath, 'SKILL.md'))) return 1
+  const entries = await readdir(repoPath, { withFileTypes: true })
+  const found = await Promise.all(
+    entries.map(async (entry) =>
+      entry.isDirectory() && !isExcludedDir(entry.name)
+        ? exists(join(repoPath, entry.name, 'SKILL.md'))
+        : false,
+    ),
+  )
+  return found.filter(Boolean).length
+}
+
+/**
  * Only direct children are examined, so a nested SKILL.md inside a snapshot or
  * fixture is unreachable by construction rather than by exclusion list.
  */

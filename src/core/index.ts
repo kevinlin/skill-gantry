@@ -9,7 +9,14 @@ export {
   type RuleMapMigrationResult,
 } from './ledger/rule-map-migration.js'
 export { discoverSkills, workspacePath } from './discovery/discover.js'
-export { loadConfig, loadToolLock, registerRepo, type GantryConfig } from './config/config.js'
+export {
+  inspectRepo,
+  loadConfig,
+  loadToolLock,
+  registerRepo,
+  type GantryConfig,
+  type RepoInspection,
+} from './config/config.js'
 export { loadEnvFile, provenanceOf } from './config/env.js'
 export { createQueue, type QueueOptions } from './queue/pool.js'
 export {
@@ -63,6 +70,7 @@ export { canonicalisePath, saveConfig, saveToolLock } from './config/config.js'
 export {
   SETUP_ORDER,
   canEnter,
+  entryBlockedReason,
   initialSetupState,
   missingRuntimesFor,
   setupReducer,

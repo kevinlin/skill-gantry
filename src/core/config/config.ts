@@ -1,6 +1,7 @@
-import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import { basename, join, resolve, sep } from 'node:path'
-import { isGitRepo } from '../discovery/discover.js'
+import { countSkills, isGitRepo } from '../discovery/discover.js'
 import { type GantryConfig, type ToolLock, configSchema, toolLockSchema } from './schema.js'
 
 export type { GantryConfig, ToolLock, ToolLockEntry } from './schema.js'
@@ -18,9 +19,22 @@ export const DEFAULT_CONFIG: GantryConfig = {
 const configFile = (home: string): string => join(home, 'config.json')
 const lockFile = (home: string): string => join(home, 'tools', 'lock.json')
 
-/** Expand, resolve symlinks, strip a trailing separator. */
+/**
+ * `resolve()` treats `~` as an ordinary path segment, so a user who types the
+ * shorthand their shell expands would have registered `<cwd>/~/dev/skills` and
+ * seen a repo with no skills in it rather than an error.
+ */
+function expandHome(input: string): string {
+  if (input === '~') return homedir()
+  if (input.startsWith('~/') || input.startsWith(`~${sep}`)) {
+    return join(homedir(), input.slice(2))
+  }
+  return input
+}
+
+/** Expand `~`, resolve symlinks, strip a trailing separator. */
 export async function canonicalisePath(input: string): Promise<string> {
-  const absolute = resolve(input)
+  const absolute = resolve(expandHome(input.trim()))
   let real: string
   try {
     real = await realpath(absolute)
@@ -53,12 +67,41 @@ function uniqueId(desired: string, taken: ReadonlySet<string>): string {
   }
 }
 
+/** What the caller needs to decide whether a typed path is worth registering. */
+export interface RepoInspection {
+  /** Where the input actually points once `~` and symlinks are resolved. */
+  resolved: string
+  isDirectory: boolean
+  alreadyRegistered: boolean
+  /** Direct children holding a `SKILL.md`, or 1 for a repo-root skill. */
+  skillCount: number
+}
+
+/**
+ * Read-only counterpart to `registerRepo`, so a caller can show the user what a
+ * path resolves to before committing it. An empty repo is reported rather than
+ * refused: registering one before authoring its first skill is legitimate.
+ */
+export async function inspectRepo(home: string, repoPath: string): Promise<RepoInspection> {
+  const resolved = await canonicalisePath(repoPath)
+  const [config, info] = await Promise.all([loadConfig(home), stat(resolved).catch(() => null)])
+  const alreadyRegistered = config.repos.some((r) => r.path === resolved)
+
+  const isDirectory = info?.isDirectory() === true
+  if (!isDirectory) return { resolved, isDirectory, alreadyRegistered, skillCount: 0 }
+  return { resolved, isDirectory, alreadyRegistered, skillCount: await countSkills(resolved) }
+}
+
 export async function registerRepo(home: string, repoPath: string): Promise<GantryConfig> {
-  const path = await canonicalisePath(repoPath)
+  // The same read the wizard's preview uses, so the verdict it showed and the
+  // rule that accepts the path cannot drift apart.
+  const { resolved: path, isDirectory, alreadyRegistered } = await inspectRepo(home, repoPath)
+  if (alreadyRegistered) throw new Error(`already registered: ${path}`)
+  // Discovery over a missing path throws deep in readdir; refusing here names
+  // the path the user actually typed instead.
+  if (!isDirectory) throw new Error(`no such directory: ${path}`)
+
   const config = await loadConfig(home)
-  if (config.repos.some((r) => r.path === path)) {
-    throw new Error(`already registered: ${path}`)
-  }
   const name = basename(path)
   const next: GantryConfig = {
     ...config,

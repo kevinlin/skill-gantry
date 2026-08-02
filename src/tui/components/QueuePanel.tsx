@@ -1,5 +1,7 @@
 import { Box, Text } from 'ink'
 import type { JobRecord } from '../../core/index.js'
+import { innerWidth, truncate, windowFor } from '../layout.js'
+import { Panel } from './Panel.js'
 
 const COLOUR: Record<JobRecord['state'], string> = {
   queued: 'gray',
@@ -9,12 +11,23 @@ const COLOUR: Record<JobRecord['state'], string> = {
   cancelled: 'yellow',
 }
 
+/** Paired with the word, so the state survives a monochrome terminal. */
+const MARK: Record<JobRecord['state'], string> = {
+  queued: '⋯',
+  running: '▶',
+  done: '●',
+  failed: '!',
+  cancelled: '×',
+}
+
 export interface QueuePanelProps {
   jobs: readonly JobRecord[]
   selected: number
   concurrency: number
   focused: boolean
   rows?: number
+  width?: number
+  chrome?: 'boxed' | 'bare'
 }
 
 export function QueuePanel({
@@ -23,21 +36,44 @@ export function QueuePanel({
   concurrency,
   focused,
   rows = 5,
+  width = 80,
+  chrome = 'boxed',
 }: QueuePanelProps): React.ReactElement {
   const active = jobs.filter((job) => job.state === 'running').length
+  const pending = jobs.filter((job) => job.state === 'queued').length
+  const { start, end } = windowFor(jobs.length, selected, Math.max(1, rows))
+  const hidden = jobs.length - (end - start)
+  const cols = Math.max(12, innerWidth(width, chrome))
+
+  const hint = [
+    `${active}/${concurrency} running`,
+    pending > 0 ? `${pending} waiting` : '',
+    hidden > 0 ? `+${hidden} more` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ')
+
   return (
-    <Box flexDirection="column" borderStyle="single" borderColor={focused ? 'cyan' : 'gray'}>
-      <Text bold>
-        Queue {active}/{concurrency} running — x cancels
-      </Text>
-      {jobs.length === 0 && <Text dimColor>nothing queued</Text>}
-      {jobs.slice(-rows).map((job, index) => (
-        <Text key={job.jobId}>
-          {index + Math.max(0, jobs.length - rows) === selected ? '›' : ' '}{' '}
-          <Text color={COLOUR[job.state]}>{job.state}</Text> {job.skillId}{' '}
-          <Text dimColor>{job.stages.join(',')}</Text>
+    <Panel title="Queue" hint={hint} focused={focused} chrome={chrome}>
+      {jobs.length === 0 && (
+        <Text wrap="truncate" dimColor>
+          nothing queued
         </Text>
-      ))}
-    </Box>
+      )}
+      {jobs.slice(start, end).map((job, offset) => {
+        const index = start + offset
+        return (
+          <Box key={job.jobId}>
+            <Text wrap="truncate" bold={index === selected}>
+              {index === selected ? '›' : ' '}{' '}
+              <Text color={COLOUR[job.state]}>
+                {MARK[job.state]} {job.state}
+              </Text>{' '}
+              {truncate(`${job.skillId} ${job.stages.join(',')}`, cols - job.state.length - 5)}
+            </Text>
+          </Box>
+        )
+      })}
+    </Panel>
   )
 }

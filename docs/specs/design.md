@@ -257,7 +257,11 @@ type Integrity =
 
 ### 5.3 Setup and doctor
 
-Setup is a four-state machine: `probe-runtimes → select-tools → install-and-verify → credentials-and-repo`. Each state is re-enterable, so `doctor` reuses `probe-runtimes` and `install-and-verify` without the rest.
+Setup is a four-state machine: `probe-runtimes → select-tools → install-and-verify → credentials-and-repo`, plus a terminal `done` the wizard displays. Each state is re-enterable, so `doctor` reuses `probe-runtimes` and `install-and-verify` without the rest.
+
+`credentials-and-repo` is the only state taking free text, so it is the only one where a single letter is not a command. It resolves the typed path through `inspectRepo`, a read-only counterpart to `registerRepo` returning the canonical path, whether it is a directory, whether it is already registered, and how many skills it holds. That verdict is shown before the user commits. An empty directory is a warning and still registrable: registering a repo before authoring its first skill is legitimate. A path that is not a directory is refused, by `registerRepo` as well as by the wizard, because discovery over a missing path otherwise throws from inside `readdir` without naming what the user typed.
+
+`done` is reachable with a registered repo **or** with the repo step explicitly skipped. A verified toolchain is the deliverable; requiring a repo left a user who set up before their skills repo existed with no exit but Ctrl+C.
 
 Presets: **Minimal** is skill-up plus skillspector — the two already present, one evaluate and one security tool. **Recommended** is at most one tool per stage. **Everything** is the whole catalogue. A stage whose D7 candidates are all unavailable has no tool in any preset; that is visible in the wizard rather than papered over. Optimise is that stage: both its candidates are unpublished. Evaluate has one candidate rather than two, because promptfoo needs a per-skill config file no skill carries — decision-log §10.
 
@@ -932,19 +936,52 @@ The cache still earns its place: the Issues and Dashboard screens filter depreca
 One store fed exclusively by core events; Ink components are pure functions of it. Commands flow back through `RunHandle` and `QueueHandle`.
 
 ```
-┌─ SkillGantry ─ zapac-agent-skills ─ [1]Work [2]Dash [3]Issues [4]Tools ┐
-│ declawed     ● │ Validate ── Evaluate ── Security ── Optimise ── Release│
-│ gap-analysis ○ │    ok         8/10       3 high       ·          ·     │
-│ spec-lint    ! │────────────────────────────────────────────────────────│
-│ zuhlke-slides○ │ Log │ Findings │ Artefacts │ SKILL.md                  │
-│ rfp-daily    ○ │ skillspector: scanning declawed/scripts/scan.py…       │
-│                │ cisco: 2 findings (1 high, 1 medium)                   │
-└────────────────┴────────────────────────────────────────────────────────┘
+SkillGantry 8 skills · 1/2 running
+┌────────────────────┐┌────────────────────────────────────────────────────────┐
+│ Skills 1/8 · 1 ma… ││  Validate  Evaluate  Security  Optimise  Release       │
+│ › ● declawed       ││  passed    failed    running   ·         ·             │
+│   ○ gap-analysis   │└────────────────────────────────────────────────────────┘
+│  *! spec-lint      ││ 1 Log  2 Findings  3 Artefacts  4 SKILL.md             │
+│   ○ zuhlke-slide…  ││ skillspector: scanning declawed/scripts/scan.py        │
+└────────────────────┘└────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ Queue 1/2 running · 2 waiting · +1 more                                      │
+│ › ▶ running declawed validate,security                                       │
+└──────────────────────────────────────────────────────────────────────────────┘
+j/k move · space mark · r run · x cancel · ? help · q quit
 ```
 
 Render discipline, the whole mitigation for choosing Ink: `tool:output` chunks enter a per-tool-run ring buffer of 2000 lines held **outside** React. A 100 ms tick copies the visible window into state. Every other pane re-renders only on discrete state change. Log text never enters component state line by line.
 
 Screens: Work (above), Dashboard (ledger aggregates), Issues (cross-repo table with state transitions), Tools (install, pin, verify, doctor), Settings (repos, concurrency, credentials status). Vim-style movement, `?` for help, `:` for a command palette. The queue is a panel on Work, showing `QueueHandle.snapshot()` with per-job cancel.
+
+#### 14.1 Responsive layout
+
+`layoutFor(columns, rows)` in `src/tui/layout.ts` is the single place pane sizes are decided, and it is pure: `Work` reads `useWindowSize()` and passes the result down. Nothing in the tree carries a fixed height. The fixed sizes it replaced (a 12-row log, a 5-row queue, a 24-cell skill column) rendered 26 rows into an 80×24 window and scrolled the header away.
+
+Three modes, by terminal width, with the skill list, rail and pane visible in all of them (R11.1):
+
+| Mode | Width | Layout |
+|---|---|---|
+| `standard` | ≥ 110 | list beside the rail, 18% of the width as the column, 26–34 cells |
+| `standard` | 76–109 | as above, 22-cell column |
+| `narrow` | 50–75 | list stacked above the rail, borders dropped |
+| `too-small` | < 50 or < 14 rows | the required size, and nothing else |
+
+The two width bands above 76 differ only in how much width the skill column gets, so they are one mode. `mode` names the branches `Work` actually takes; a fourth name that no code read invited a `mode === 'wide'` branch that would have meant nothing.
+
+Narrow drops the borders rather than the panels. Four bordered boxes cost fifteen rows of chrome in a stacked column, which leaves nothing for content in a 60×20 split; titles alone cost eight. That is what `chrome: 'boxed' | 'bare'` selects, and `Panel` is the one component that reads it.
+
+Four rules keep a frame inside its budget, each learned from a row that overflowed it:
+
+- **Every panel renders exactly the rows it was allocated.** An overflow count (`+5 more`) or a footnote (`4 earlier lines dropped`) is counted *against* that allocation, never appended below it. One extra row pushes the panel beneath it off the bottom.
+- **Text truncates, never wraps.** Content rows carry `wrap="truncate"`, and labels are cut with `truncate()`, which measures cells through `string-width` so a CJK skill name cannot overflow its column by its own width. `truncateMiddle()` is its head-elided twin, for paths whose basename is what identifies them.
+- **What the chrome costs is `layout.ts`'s to know, not each pane's.** `innerWidth(width, chrome)` is the single expression of `Panel`'s border and padding. Three panes each re-deriving `width - 4` meant a change to `Panel`'s padding would silently truncate every label to the wrong width, with nothing failing.
+- **The rail and the output pane share one horizontal rule** (`borderTop={false}`), because two adjacent boxes each drawing their own spent two rows on one seam.
+
+Every full-screen view obeys the budget, including the help screen: it renders through `Panel`, windows its binding list against `layout.rows`, and reports what it cut. Drawing its own fixed-size frame scrolled its own title away on a 50×14 terminal. The wizard is the one view sized independently — it is inline rather than full-screen — but its width is still a `layout.ts` decision (`setupWidth`), never a constant in the component.
+
+Discoverability is layered rather than crammed into the header: a five-key footer hint bar, `?` for the full binding list. The old header spent 118 characters on keys and wrapped to three lines in a 60-column split. The Work screen renders on the alternate screen so a session does not bury the user's scrollback; the setup wizard stays inline, because it is summon-choose-exit and its result should remain in scrollback.
 
 ## 15. Headless interface
 

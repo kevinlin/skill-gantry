@@ -3,9 +3,13 @@ import type { ReactElement } from 'react'
 import { render } from 'ink'
 
 class FakeStdout extends EventEmitter {
-  readonly columns = 100
-  readonly rows = 30
   readonly frames: string[] = []
+  constructor(
+    readonly columns: number,
+    readonly rows: number,
+  ) {
+    super()
+  }
   write(data: string): boolean {
     this.frames.push(data)
     return true
@@ -65,8 +69,11 @@ export interface InkHarness {
  * `debug: true` makes Ink write a complete frame per render instead of ANSI
  * deltas, so a frame is directly assertable.
  */
-export function renderInk(node: ReactElement): InkHarness {
-  const stdout = new FakeStdout()
+export function renderInk(
+  node: ReactElement,
+  { columns = 100, rows = 30 }: { columns?: number; rows?: number } = {},
+): InkHarness {
+  const stdout = new FakeStdout(columns, rows)
   const stdin = new FakeStdin()
   const instance = render(node, {
     stdout: stdout as unknown as NodeJS.WriteStream,
