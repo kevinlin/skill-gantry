@@ -15,6 +15,11 @@ describe('unifiedDiffFor', () => {
     expect(diff).toContain('-two')
     expect(diff).toContain('+TWO')
     expect(diff).toContain('sk/SKILL.md')
+    // Full header lines, not just a substring match: `ask/SKILL.md` also
+    // contains `sk/SKILL.md`, which is exactly the bug a loose assertion hid.
+    expect(diff).toContain('--- a/sk/SKILL.md')
+    expect(diff).toContain('+++ b/sk/SKILL.md')
+    expect(diff).toContain('diff --git a/sk/SKILL.md b/sk/SKILL.md')
     // A reviewer reads repo-relative paths, never our temp directories.
     expect(diff).not.toContain(dir)
   })
@@ -25,12 +30,17 @@ describe('unifiedDiffFor', () => {
     const diff = await unifiedDiffFor(null, join(dir, 'b'), 'sk/CHANGELOG.md')
     expect(diff).toContain('+new')
     expect(diff).toContain('sk/CHANGELOG.md')
+    expect(diff).toContain('--- /dev/null')
+    expect(diff).toContain('+++ b/sk/CHANGELOG.md')
   })
 
   it('renders a deletion when the new side is absent', async () => {
     const dir = await scratch()
     await writeFile(join(dir, 'a'), 'gone\n')
-    expect(await unifiedDiffFor(join(dir, 'a'), null, 'sk/old.txt')).toContain('-gone')
+    const diff = await unifiedDiffFor(join(dir, 'a'), null, 'sk/old.txt')
+    expect(diff).toContain('-gone')
+    expect(diff).toContain('--- a/sk/old.txt')
+    expect(diff).toContain('+++ /dev/null')
   })
 
   it('returns an empty string for two identical files', async () => {
