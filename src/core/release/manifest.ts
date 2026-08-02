@@ -18,6 +18,17 @@ export async function readVersionsManifest(repoPath: string): Promise<VersionsMa
   const path = join(repoPath, 'versions.json')
   let parsed: unknown
   try {
+    // File-absent and file-present-but-unparseable both land here as one
+    // `null`, so a corrupt versions.json currently reads identically to the
+    // no-manifest case and release proceeds down the SKILL.md-only path
+    // instead of refusing. That is the brief's shape as given — its own test
+    // only exercises "parses to something that isn't the skills shape", not a
+    // read/parse failure — carried forward rather than silently changed here.
+    // Task 11 (the release state machine, which is release's caller and the
+    // only place with authority to refuse a run) should decide whether a
+    // corrupt manifest ought to be a hard refusal rather than a silent
+    // best-effort skip: a repo that has a versions.json but SkillGantry can't
+    // read it is closer to R9.2's "already disagree" than to "no manifest".
     parsed = JSON.parse(await readFile(path, 'utf8'))
   } catch {
     return null

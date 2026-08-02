@@ -10,7 +10,12 @@ function editBlock(source: string, edit: (lines: string[]) => string[]): string 
   const match = BLOCK.exec(source)
   if (!match) throw new Error('no frontmatter: refusing to invent one')
   const [, open, body, close] = match as unknown as [string, string, string, string]
-  const edited = edit(body.split(/\r?\n/)).join('\n')
+  // Rejoin with whatever the block itself uses. A bare '\n' here would strip
+  // '\r' from every internal line of a CRLF file while the delimiters (taken
+  // verbatim from the source) kept theirs — a mixed-ending block whose diff
+  // would show every line as changed for one field that actually moved.
+  const eol = body.includes('\r\n') ? '\r\n' : '\n'
+  const edited = edit(body.split(/\r?\n/)).join(eol)
   return `${open}${edited}${close}${source.slice(match[0].length)}`
 }
 

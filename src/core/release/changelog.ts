@@ -22,7 +22,11 @@ export function prependChangelogEntry(
     const firstBreak = existing.indexOf('\n', existing.indexOf(HEADING))
     const head = existing.slice(0, firstBreak + 1)
     const tail = existing.slice(firstBreak + 1).replace(/^\n+/, '')
-    return `${head}\n${entry}\n${tail}`
+    // entry already ends "\n\n" with no notes or "notes\n" with them; strip
+    // whichever trailing newlines it has and add back exactly one blank line,
+    // or the notes-less case would leave three newlines before the next
+    // heading and grow by one every release.
+    return `${head}\n${entry.replace(/\n+$/, '')}\n\n${tail}`
   }
   return `${HEADING}\n\n${entry}${existing.length > 0 ? `\n${trimmed}` : ''}`
 }

@@ -45,6 +45,21 @@ describe('setFrontmatterVersion', () => {
   it('refuses a file with no frontmatter rather than inventing one', () => {
     expect(() => setFrontmatterVersion('# sk\n', '1.0.0')).toThrow('no frontmatter')
   })
+
+  it('preserves CRLF line endings, changing only the version line', () => {
+    const source = '---\r\nname: sk\r\nmetadata:\r\n  version: 1.0.0\r\n---\r\n\r\n# sk\r\n'
+    const out = setFrontmatterVersion(source, '1.1.0')
+    // Exact text, not a substring: a bare '\n' join would strip '\r' from every
+    // internal line of the block while the delimiters kept theirs, so the diff
+    // the user is asked to approve would show every line as changed.
+    expect(out).toBe('---\r\nname: sk\r\nmetadata:\r\n  version: 1.1.0\r\n---\r\n\r\n# sk\r\n')
+  })
+
+  it('preserves a leading BOM, which the block regex allows optionally', () => {
+    const source = '﻿---\nname: sk\nmetadata:\n  version: 1.0.0\n---\n\n# sk\n'
+    const out = setFrontmatterVersion(source, '1.1.0')
+    expect(out).toBe('﻿---\nname: sk\nmetadata:\n  version: 1.1.0\n---\n\n# sk\n')
+  })
 })
 
 describe('setDeprecated', () => {
