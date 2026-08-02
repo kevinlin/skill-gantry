@@ -510,12 +510,23 @@ Evaluated in order; the first row that matches wins.
 | 9 | `parse` returns `errored` | `errored` | `parse` | no |
 | 10 | `parse` succeeds, no findings, exit code 0 | `passed` | — | yes |
 | 11 | `parse` succeeds, no findings, exit code non-zero | `passed` | — | yes |
-| 12 | `parse` succeeds, findings present | `failed` | — | yes |
+| 12 | `parse` succeeds, a finding at or above the fail floor | `failed` | — | yes |
+| 12b | `parse` succeeds, findings present, every one below the fail floor | `passed` | — | yes |
 | 13 | Spawn itself failed (ENOENT, EACCES) | `errored` | `spawn` | no |
 
 Rows 7 and 8 are ordered so a missing report is classified before the parser is ever handed an empty map; revision 2 left this to whichever error the parser happened to throw. Row 11 is the rule that matters most in practice: a scanner exiting 1 with a clean report has passed, and the parse says so.
 
-Only rows 10 to 12 feed issue reconciliation: the tool actually ran and its output was understood. Every other row leaves the ledger's issue states untouched, which is the fail-safe that stops a crashed or absent scanner from closing everything it once found.
+Only rows 10 to 12b feed issue reconciliation: the tool actually ran and its output was understood. Every other row leaves the ledger's issue states untouched, which is the fail-safe that stops a crashed or absent scanner from closing everything it once found.
+
+**The fail floor is `medium`.** Revision 3's row 12 read "findings present" with no severity dimension, so an advisory failed a gate as hard as a critical. Observed: skill-lint 0.2.0 over `zapac-agent-skills/declawed` exited 0, called the skill `SAFE`, and reported two `LOW` `R06` findings — "bundled script, review contents carefully" against a `.sh` and a `.py` that are the skill's own content. Validate failed and R5.1 halted the lifecycle on a tool that had found nothing wrong.
+
+`medium` rather than `high`, because §7.1 normalises SARIF `warning → medium` and `medium` is also the fallback for a result carrying no level, while a failing eval case is `medium` under §7.2. A `high` floor would pass most scanner findings and every failing eval case, which is the opposite defect.
+
+Row 12b keeps the findings. They are returned verbatim, so §10.4 files them as issues and reconciles them exactly as row 12's do — a sub-floor finding is tracked and closes when it goes away, it merely stops halting the chain. Dropping the findings instead would make every issue the tool had ever filed look absent, and close all of them.
+
+The floor is a uniform rule over normalised severity, not a reproduction of each tool's own verdict. skill-lint bands a weighted score (`CRITICAL 10 / HIGH 5 / MEDIUM 2 / LOW 1`), so two `LOW`s and one `MEDIUM` both score 2 and one of those crosses the floor while the other does not. Matching every tool's scoring formula would put a per-tool policy in the engine and re-tune it on each upstream release.
+
+The floor is a constant, deliberately not configurable. A per-skill or per-repo threshold would make two runs of one tool incomparable in the ledger, which §10 exists to prevent.
 
 The parser's own verdict is confined to `passed | failed | errored`; `skipped` is producible only by the executor, since a tool that never ran has no parser to speak for it.
 
@@ -1004,7 +1015,7 @@ Consumes the same event stream, rendering line output or newline-delimited JSON.
 |---|---|---|
 | `adapters` | Golden fixtures captured from real runs at the pinned versions; pure bytes → `ToolResult` | Upstream schema drift; the highest-value suite |
 | SkillSpector manifest | Clean-environment smoke test invoking the exact manifest argv, no provider key set | The declared `credentials`/`analysisMode` pair is the one the tool actually accepts |
-| Tool classification | One case per row of the §8.1 table, each asserting the reconciliation effect | A non-zero exit with a clean report passes; nothing else closes an issue |
+| Tool classification | One case per row of the §8.1 table, each asserting the reconciliation effect | A non-zero exit with a clean report passes; a sub-floor finding passes and stays filed; nothing else closes an issue |
 | Install drivers | `uv-tool` install into a scoped `UV_TOOL_DIR` at the pinned version; `gh-release` integrity mismatch, and `kind: 'none'` recorded | The uv invocation runs on the pinned runtime; a bad checksum fails the install |
 | `ledger` | In-memory SQLite; fingerprint stability under whitespace and line-shift edits; every row of the §10.5 transition table; unmapped-class closure; rule-map migration merge including `issue_detectors` | The subtlest rules in the design |
 | Reconciliation fail-safe | A run whose security tool `errored`, and one where it is `skipped` | Neither closes any issue |

@@ -2,6 +2,28 @@ export type Stage = 'validate' | 'evaluate' | 'security' | 'optimise' | 'release
 
 export type Severity = 'critical' | 'high' | 'medium' | 'low' | 'info'
 
+/**
+ * The one severity ordering. It lives here rather than in either consumer
+ * because the ledger aggregates severities and the outcome model compares them
+ * against a floor, and a second copy of this table would go stale the day
+ * `Severity` gains a member.
+ */
+const SEVERITY_RANK: Readonly<Record<Severity, number>> = {
+  critical: 5,
+  high: 4,
+  medium: 3,
+  low: 2,
+  info: 1,
+}
+
+export function maxSeverity(a: Severity, b: Severity): Severity {
+  return SEVERITY_RANK[a] >= SEVERITY_RANK[b] ? a : b
+}
+
+export function atLeastSeverity(s: Severity, floor: Severity): boolean {
+  return SEVERITY_RANK[s] >= SEVERITY_RANK[floor]
+}
+
 export type ToolOutcome = 'passed' | 'failed' | 'errored' | 'skipped'
 
 export type StageOutcome = 'passed' | 'failed' | 'degraded' | 'errored' | 'skipped'

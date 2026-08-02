@@ -9,7 +9,7 @@ import {
 } from '../adapters/types.js'
 import { type RunToolOutput, runTool } from '../runner/spawn.js'
 import type { ErrorKind, SkillRef, Stage } from '../types.js'
-import { reduceStageOutcome } from './outcome.js'
+import { highestSeverity, meetsFailFloor, reduceStageOutcome } from './outcome.js'
 import type { StageContext, StageExecutor, StagePlan, StageResult, ToolRunRecord } from './types.js'
 
 const FAN_OUT_LIMIT = 2
@@ -51,7 +51,7 @@ const errored = (kind: ErrorKind, summary: string, durationMs: number): Classifi
  * The governing rule is that a schema-valid parse is authoritative and the exit
  * code is fallback evidence only: scanners and linters exit non-zero precisely
  * because they found something, so treating exit status as primary turns valid
- * findings into errors. Only rows 10 to 12 reach reconciliation.
+ * findings into errors. Only rows 10 to 12b reach reconciliation.
  */
 export function classifyToolRun(
   adapter: Adapter,
@@ -96,6 +96,22 @@ export function classifyToolRun(
 
   if (parsed.outcome === 'errored') {
     return errored('parse', parsed.summary, durationMs)
+  }
+
+  // Row 12b: the parse found things, but nothing that reaches the fail floor.
+  // The findings pass through untouched, so they are still filed and still
+  // reconciled — dropping them would make every issue this tool ever filed look
+  // absent and close all of them. Only the gate softens.
+  const highest = highestSeverity(parsed.findings)
+  if (parsed.outcome === 'failed' && highest !== null && !meetsFailFloor(highest)) {
+    return {
+      outcome: 'passed',
+      errorKind: null,
+      findings: parsed.findings,
+      metrics: { ...parsed.metrics, durationMs },
+      // Named, because "2 findings" beside `passed` otherwise reads as a bug.
+      summary: `${parsed.summary}, highest ${highest}`,
+    }
   }
 
   // Rows 10 to 12. The exit code is recorded but does not vote.

@@ -49,8 +49,12 @@ const toolRun = (toolId: string, findings: RawFinding[], outcome: ToolRunRecord[
   summary: '',
 })
 
+// skill-lint's findings here are LOW only, so §8.1 row 12b passes its tool run
+// while keeping the findings. Recording it as `passed` is what the executor
+// would actually produce, and it proves a sub-floor advisory still merges across
+// tools and still closes — reconciliation is keyed on `passed | failed` alike.
 const stages = (spector: RawFinding[], lint: RawFinding[]): StageResult[] => [
-  { stage: 'validate', outcome: 'failed', verdict: 'failed', toolRuns: [toolRun('skill-lint', lint)] },
+  { stage: 'validate', outcome: 'passed', verdict: 'passed', toolRuns: [toolRun('skill-lint', lint, 'passed')] },
   { stage: 'security', outcome: 'failed', verdict: 'failed', toolRuns: [toolRun('skillspector', spector)] },
 ]
 

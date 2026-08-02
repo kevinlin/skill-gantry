@@ -1,18 +1,9 @@
-import type { Severity } from '../types.js'
-
 export type IssueState = 'open' | 'acknowledged' | 'wontfix' | 'fixed'
 
-const SEVERITY_RANK: Readonly<Record<Severity, number>> = {
-  critical: 5,
-  high: 4,
-  medium: 3,
-  low: 2,
-  info: 1,
-}
-
-export function maxSeverity(a: Severity, b: Severity): Severity {
-  return SEVERITY_RANK[a] >= SEVERITY_RANK[b] ? a : b
-}
+// Re-exported, not redefined: the ordering moved to types.ts once the outcome
+// model needed it too, and the ledger must not be the place a stage reaches for
+// a comparison.
+export { maxSeverity } from '../types.js'
 
 /** State after the issue is detected again in a later run. */
 export function stateOnDetection(current: IssueState): IssueState {

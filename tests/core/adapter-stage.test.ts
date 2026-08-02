@@ -13,7 +13,7 @@ const SARIF_EMPTY = JSON.stringify({
   runs: [{ tool: { driver: { name: 'skillspector', version: '2.5.1' } }, results: [] }],
 })
 
-const SARIF_ONE = (ruleId: string): string =>
+const SARIF_ONE = (ruleId: string, level = 'warning'): string =>
   JSON.stringify({
     version: '2.1.0',
     runs: [
@@ -22,7 +22,7 @@ const SARIF_ONE = (ruleId: string): string =>
         results: [
           {
             ruleId,
-            level: 'warning',
+            level,
             message: { text: ruleId },
             locations: [{ physicalLocation: { artifactLocation: { uri: 'SKILL.md' } } }],
           },
@@ -223,6 +223,73 @@ describe('AdapterStageExecutor.execute', () => {
     const ctx = await context({ lock })
     const result = await exec.execute(ctx, await exec.plan(ctx))
     expect(result.toolRuns[0]).toMatchObject({ outcome: 'passed', exitCode: 1, errorKind: null })
+  })
+
+  it('passes findings that stay below the fail floor, keeping them — R4.13 row 12b', async () => {
+    // SARIF `note` normalises to `low`, under the `medium` floor.
+    const lock = await lockWith(`printf '%s' '${SARIF_ONE('AST4', 'note')}' > "$7"`)
+    const exec = new AdapterStageExecutor('security')
+    const ctx = await context({ lock })
+    const result = await exec.execute(ctx, await exec.plan(ctx))
+
+    const run = result.toolRuns[0]
+    expect(run).toMatchObject({ outcome: 'passed', errorKind: null })
+    // The finding survives, which is what keeps it filed and reconcilable.
+    expect(run?.findings).toHaveLength(1)
+    expect(run?.findings[0]?.severity).toBe('low')
+    expect(run?.summary).toMatch(/highest low/)
+    expect(result.outcome).toBe('passed')
+  })
+
+  it('still fails on one finding at the floor among sub-floor ones — R4.13 row 12', async () => {
+    const mixed = JSON.stringify({
+      version: '2.1.0',
+      runs: [
+        {
+          tool: { driver: { name: 'fixture', version: '1.0.0' } },
+          results: [
+            { ruleId: 'AST4', level: 'note', message: { text: 'a' } },
+            { ruleId: 'P2', level: 'warning', message: { text: 'b' } },
+          ],
+        },
+      ],
+    })
+    const lock = await lockWith(`printf '%s' '${mixed}' > "$7"`)
+    const exec = new AdapterStageExecutor('security')
+    const ctx = await context({ lock })
+    const result = await exec.execute(ctx, await exec.plan(ctx))
+    expect(result.toolRuns[0]?.outcome).toBe('failed')
+  })
+
+  it('passes real skill-lint output whose only findings are LOW — run 019fc2e4', async () => {
+    // The reported defect: skill-lint 0.2.0 exited 0 calling declawed SAFE, and
+    // its two LOW `R06` "bundled script" advisories failed validate anyway.
+    const fixture = join(process.cwd(), 'tests/fixtures/skill-lint/architecture-diagram.json')
+    const bin = await makeFakeTool('skill-lint', `cat ${fixture}`)
+    const exec = new AdapterStageExecutor('validate')
+    const ctx = await context({
+      stage: 'validate',
+      selectedToolIds: ['skill-lint'],
+      lock: {
+        version: 1,
+        tools: {
+          'skill-lint': {
+            installKind: 'npm-prefix',
+            requestedPin: '0.2.0',
+            resolvedVersion: '0.2.0',
+            bin,
+            integrity: 'n/a',
+            installedAt: '2026-08-01T00:00:00Z',
+            verifiedAt: '2026-08-01T00:00:00Z',
+          },
+        },
+      },
+    })
+    const result = await exec.execute(ctx, await exec.plan(ctx))
+
+    expect(result.toolRuns[0]?.outcome).toBe('passed')
+    expect(result.toolRuns[0]?.findings).toHaveLength(2)
+    expect(result.outcome).toBe('passed')
   })
 
   it('classifies an absent declared artefact before invoking the parser — R4.13 row 7', async () => {

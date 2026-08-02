@@ -205,10 +205,11 @@ const runInput = (runId: string, stages: StageResult[]) => ({
 describe('M4 exit criteria', () => {
   it('two tools reporting one class in one file produce one issue with two detections', async () => {
     const h = await harness()
-    // Two single-stage runs, not one chained run: R5.1 halts the chain on the
-    // first stage that does not pass, and skill-lint's findings fail validate.
-    // The merge therefore accumulates across runs, which is exactly what a
-    // fingerprint with no stage component is for. R5.3 makes it observable.
+    // Two single-stage runs, not one chained run: each stage is exercised on its
+    // own so the merge is observed accumulating across runs, which is exactly
+    // what a fingerprint with no stage component is for. R5.3 allows it. (A
+    // chained run would now reach security too — skill-lint's findings here are
+    // LOW only, so §8.1 row 12b passes validate while keeping them.)
     await h.exec(['run', SKILL, '--stage', 'validate', '--json'])
     await h.exec(['run', SKILL, '--stage', 'security', '--json'])
 

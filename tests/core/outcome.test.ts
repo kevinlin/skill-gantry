@@ -1,6 +1,22 @@
 import { describe, expect, it } from 'vitest'
-import { TOOL_OUTCOMES, haltsChain, reduceStageOutcome } from '../../src/core/stages/outcome.js'
-import type { StageOutcome, ToolOutcome } from '../../src/core/types.js'
+import {
+  FAIL_SEVERITY_FLOOR,
+  TOOL_OUTCOMES,
+  haltsChain,
+  highestSeverity,
+  meetsFailFloor,
+  reduceStageOutcome,
+} from '../../src/core/stages/outcome.js'
+import { atLeastSeverity } from '../../src/core/types.js'
+import type { RawFinding, Severity, StageOutcome, ToolOutcome } from '../../src/core/types.js'
+
+const finding = (severity: Severity): RawFinding => ({
+  ruleClass: 'unsafe-script',
+  nativeRuleId: 'R06',
+  severity,
+  path: 'declawed/scripts/scan.py',
+  message: 'bundled script',
+})
 
 const VALID_STAGE: ReadonlySet<StageOutcome> = new Set([
   'passed',
@@ -74,6 +90,31 @@ describe('reduceStageOutcome', () => {
     for (const o of TOOL_OUTCOMES) {
       expect(reduceStageOutcome([o]).outcome).toBe(o)
     }
+  })
+})
+
+describe('the fail floor', () => {
+  it('sits at medium, so only low and info are advisory', () => {
+    expect(FAIL_SEVERITY_FLOOR).toBe('medium')
+    for (const s of ['critical', 'high', 'medium'] as Severity[]) {
+      expect(meetsFailFloor(s), s).toBe(true)
+    }
+    for (const s of ['low', 'info'] as Severity[]) {
+      expect(meetsFailFloor(s), s).toBe(false)
+    }
+  })
+
+  it('orders severity strictly', () => {
+    expect(atLeastSeverity('critical', 'info')).toBe(true)
+    expect(atLeastSeverity('medium', 'medium')).toBe(true)
+    expect(atLeastSeverity('low', 'medium')).toBe(false)
+  })
+
+  it('reports the highest of a mixed set, and null for none', () => {
+    expect(highestSeverity([finding('low'), finding('high'), finding('info')])).toBe('high')
+    expect(highestSeverity([finding('low'), finding('low')])).toBe('low')
+    // null rather than 'info', so an empty set cannot read as a real severity.
+    expect(highestSeverity([])).toBeNull()
   })
 })
 
