@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "skill-scanner",
+          "rules": [
+            {
+              "id": "skill-scanner/credential_leak",
+              "name": "Agent may be tricked into reading and exposing live credentials from session.env",
+              "shortDescription": {
+                "text": "Agent may be tricked into reading and exposing live credentials from session.env"
+              }
+            },
+            {
+              "id": "skill-scanner/command_execution",
+              "name": "Command injection via shell command construction from unsanitized user input",
+              "shortDescription": {
+                "text": "Command injection via shell command construction from unsanitized user input"
+              }
+            },
+            {
+              "id": "skill-scanner/indirect_injection",
+              "name": "Indirect prompt injection via Insight employee and project records",
+              "shortDescription": {
+                "text": "Indirect prompt injection via Insight employee and project records"
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "skill-scanner/credential_leak",
+          "level": "error",
+          "message": {
+            "text": "The script constructs output directories using `join(outRoot, code)` without sanitizing `code`. A malicious short code containing `../` can traverse outside the intended temp directory, writing `session.env` (containing live bearer token and cookie) to an arbitrary file system location with permissions `0700`/`0600`. This enables exfiltration or overwrite of sensitive credentials."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "scripts/capture.mjs"
+                },
+                "region": {
+                  "startLine": 210
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "skill-scanner/command_execution",
+          "level": "error",
+          "message": {
+            "text": "The SKILL.md instructs the LLM to execute `node capture.mjs --name \"<Full Name>\"` with the user\u2011provided name directly embedded in the shell command. Without proper escaping, an attacker can inject shell metacharacters (e.g., `$(malicious)`) that execute arbitrary commands on the host before the script runs."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "SKILL.md"
+                },
+                "region": {
+                  "startLine": 65
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "skill-scanner/indirect_injection",
+          "level": "warning",
+          "message": {
+            "text": "The agent is instructed to read `employee.json` and `project.json` and surface fields such as name, title, and description directly into the conversation. These strings originate from an internal data source that may contain prompt\u2011injection payloads capable of hijacking the LLM\u2019s behavior."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "SKILL.md"
+                },
+                "region": {
+                  "startLine": 95
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "skill-scanner/credential_leak",
+          "level": "warning",
+          "message": {
+            "text": "The skill writes captured bearer tokens and session cookies to `session.env` and instructs the agent not to echo them, but the agent can still read the file if prompted by a malicious user. This creates a path for credential leakage through conversation responses."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "SKILL.md"
+                },
+                "region": {
+                  "startLine": 130
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

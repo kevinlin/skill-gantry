@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { mkdir, mkdtemp } from 'node:fs/promises'
+import { mkdir, mkdtemp, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { AdapterStageExecutor } from '../../src/core/stages/adapter-stage.js'
@@ -12,6 +12,24 @@ const SARIF_EMPTY = JSON.stringify({
   version: '2.1.0',
   runs: [{ tool: { driver: { name: 'skillspector', version: '2.5.1' } }, results: [] }],
 })
+
+const SARIF_ONE = (ruleId: string): string =>
+  JSON.stringify({
+    version: '2.1.0',
+    runs: [
+      {
+        tool: { driver: { name: 'fixture', version: '1.0.0' } },
+        results: [
+          {
+            ruleId,
+            level: 'warning',
+            message: { text: ruleId },
+            locations: [{ physicalLocation: { artifactLocation: { uri: 'SKILL.md' } } }],
+          },
+        ],
+      },
+    ],
+  })
 
 /**
  * Real directories, not notional ones: the executor spawns the tool with
@@ -132,6 +150,50 @@ describe('AdapterStageExecutor.execute', () => {
     const ctx = await context({ lock })
     const result = await exec.execute(ctx, await exec.plan(ctx))
     expect(result.toolRuns[0]?.artefactDir).toBe(join(ctx.stageDir, 'skillspector'))
+  })
+
+  it('gives two real scanners writing findings.sarif their own file — R4.9', async () => {
+    // Both manifests end in `--output {toolDir}/findings.sarif`, at different
+    // argv positions: $7 for skillspector, $8 for skill-scanner.
+    const spectorBin = await makeFakeTool(
+      'skillspector',
+      `printf '%s' '${SARIF_ONE('AST4')}' > "$7"; exit 1`,
+    )
+    const scannerBin = await makeFakeTool(
+      'skill-scanner',
+      `printf '%s' '${SARIF_ONE('skill-scanner/credential_leak')}' > "$8"; exit 1`,
+    )
+    const lockEntry = (bin: string) => ({
+      installKind: 'uv-tool' as const,
+      requestedPin: 'v1',
+      resolvedVersion: '1.0.0',
+      bin,
+      integrity: 'n/a',
+      installedAt: '2026-08-01T00:00:00Z',
+      verifiedAt: '2026-08-01T00:00:00Z',
+    })
+
+    const exec = new AdapterStageExecutor('security')
+    const ctx = await context({
+      selectedToolIds: ['skillspector', 'skill-scanner'],
+      lock: {
+        version: 1,
+        tools: { skillspector: lockEntry(spectorBin), 'skill-scanner': lockEntry(scannerBin) },
+      },
+      env: { SKILLSCAN_API_KEY: 'k', SKILLSCAN_MODEL: 'm' },
+    })
+    const result = await exec.execute(ctx, await exec.plan(ctx))
+
+    expect(result.toolRuns.map((t) => t.artefactDir)).toEqual([
+      join(ctx.stageDir, 'skillspector'),
+      join(ctx.stageDir, 'skill-scanner'),
+    ])
+    // Same filename, two files, both parsed.
+    for (const run of result.toolRuns) {
+      await expect(stat(join(run.artefactDir, 'findings.sarif'))).resolves.toBeTruthy()
+      expect(run.findings).toHaveLength(1)
+    }
+    expect(result.outcome).toBe('failed')
   })
 
   it('skips a credential-requiring tool and names what is missing', async () => {

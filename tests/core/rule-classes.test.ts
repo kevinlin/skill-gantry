@@ -67,6 +67,12 @@ describe('skillspector static rule map', () => {
     expect(classifyRule('skill-lint', 'R09')).toBe('metadata-invalid')
   })
 
+  it('maps every skill-scanner rule the pinned version produced', () => {
+    expect(classifyRule('skill-scanner', 'skill-scanner/credential_leak')).toBe('credential-access')
+    expect(classifyRule('skill-scanner', 'skill-scanner/command_execution')).toBe('unsafe-script')
+    expect(classifyRule('skill-scanner', 'skill-scanner/indirect_injection')).toBe('prompt-injection')
+  })
+
   it('is versioned, so a map change cannot ship without a migration', () => {
     expect(RULE_CLASS_MAP_VERSION).toBeGreaterThanOrEqual(2)
   })

@@ -8,7 +8,7 @@ const KNOWN = new Set<string>(KNOWN_RULE_CLASSES)
  * fingerprint of every issue already recorded under the old unmapped: class.
  * Extending the map without a bump silently orphans a user's triage — R8.14.
  */
-export const RULE_CLASS_MAP_VERSION = 3
+export const RULE_CLASS_MAP_VERSION = 4
 
 /**
  * (toolId, nativeRuleId) -> canonical class. Every entry below was observed in
@@ -44,6 +44,15 @@ export const RULE_CLASS_MAP: Readonly<Record<string, Readonly<Record<string, Kno
     R06: 'unsafe-script',           // Suspicious file in skill
     R07: 'excessive-permission',    // Persistence / agent-state tamper
     R09: 'metadata-invalid',        // Metadata abuse
+  },
+  // Its rule ids carry the tool's own prefix, so they are written out in full.
+  // LLM analysis names a rule per finding rather than from a fixed catalogue,
+  // so this covers what the pinned version produced over the reference repo and
+  // an unseen id degrades to unmapped: as designed.
+  'skill-scanner': {
+    'skill-scanner/credential_leak': 'credential-access',
+    'skill-scanner/command_execution': 'unsafe-script',
+    'skill-scanner/indirect_injection': 'prompt-injection',
   },
 }
 

@@ -14,8 +14,7 @@ const withPolicy = (id: string, stage: string, policy: 'fan-out' | 'pick-one'): 
 
 describe('plan() policy resolution', () => {
   it('fans out when every selected tool fans out — R4.6', async () => {
-    const lookup = (id: string): Adapter | undefined => withPolicy(id, 'security', 'fan-out')
-    const plan = await new AdapterStageExecutor('security', { lookup }).plan(
+    const plan = await new AdapterStageExecutor('security').plan(
       ctx('security', ['skillspector', 'skill-scanner']),
     )
     expect(plan.policy).toBe('fan-out')
