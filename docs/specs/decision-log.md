@@ -254,7 +254,7 @@ A sibling `<skill>-workspace/` for a repo-root skill lands outside the repo and 
 
 ## 8. Amendments after the second design review
 
-[design-review-2.md](design-review-2.md) (2026-08-01) raised seven blocking and four secondary findings against revision 2. All eleven were accepted. Most were absorbed inside [requirements.md](requirements.md) and [design.md](design.md); the four below changed a confirmed decision.
+[design-review-r2.md](design-review-r2.md) (2026-08-01) raised seven blocking and four secondary findings against revision 2. All eleven were accepted. Most were absorbed inside [requirements.md](requirements.md) and [design.md](design.md); the four below changed a confirmed decision.
 
 **A5. Release verifies before it writes.**
 D9 ordered the release as apply, then package, then installability check. That released first and validated second: a packaging or install failure had to undo a change already live in the user's repo, and the archive, a required output, sat in neither the mutation scope nor the recovery journal, so an aborted release could leave a zip behind while reporting a rollback. The order is now stage-edits → package in the sandbox → verify install → preview → apply, with the archive in the change set and the journal.

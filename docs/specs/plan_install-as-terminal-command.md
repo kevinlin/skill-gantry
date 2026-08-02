@@ -18,7 +18,7 @@ This is a deliberate exception to R3.1 ("never into the user's global environmen
 
 ### 1. `scripts/install-cli.sh` (new)
 
-Match the style of the one existing script, [capture-fixtures.sh](scripts/capture-fixtures.sh): `#!/usr/bin/env bash`, `set -euo pipefail`, header comment stating purpose and env overrides, plain `echo` progress, non-zero exit with a message on failure.
+Match the style of the one existing script, [capture-fixtures.sh](../../scripts/capture-fixtures.sh): `#!/usr/bin/env bash`, `set -euo pipefail`, header comment stating purpose and env overrides, plain `echo` progress, non-zero exit with a message on failure.
 
 Steps, in order:
 
@@ -28,8 +28,8 @@ Steps, in order:
 4. **Pack.** `pnpm pack --pack-destination "$staging"` into a `mktemp -d`; find the single `.tgz`.
 5. **Wipe and install.** `rm -rf "$SG_CLI_PREFIX"`, `mkdir -p`, then `npm install --prefix "$SG_CLI_PREFIX" "$tarball"`. The wipe is what guarantees "overwrites the runtime based on the latest codebase" — it removes any chance of a stale dependency tree or a cache hit surviving a re-run.
 6. **Link.** `mkdir -p "$SG_BIN_DIR"`, `ln -sfn "$SG_CLI_PREFIX/node_modules/.bin/skillgantry" "$SG_BIN_DIR/skillgantry"`. `-f` is what makes re-running idempotent; `-n` stops a second run nesting the link inside the first when the target is a directory symlink.
-7. **Verify by invocation.** Run `"$SG_BIN_DIR/skillgantry" --version` and require a semver-shaped output. This is the same rule the tool installer already enforces — `verifyTool` in [install.ts:22](src/core/tools/install.ts#L22) refuses to write a lock entry before the binary answers. An install that produced an unrunnable binary must report failure, not success.
-8. **PATH advice.** If `$SG_BIN_DIR` is not in `$PATH`, print the `export PATH="$SG_BIN_DIR:$PATH"` line for the user to add. Print it, never edit a shell rc — same posture as `INSTALL_COMMAND` in [runtimes.ts](src/core/tools/runtimes.ts), which is displayed for the user to run rather than executed (R3.7).
+7. **Verify by invocation.** Run `"$SG_BIN_DIR/skillgantry" --version` and require a semver-shaped output. This is the same rule the tool installer already enforces — `verifyTool` in [install.ts:22](../../src/core/tools/install.ts#L22) refuses to write a lock entry before the binary answers. An install that produced an unrunnable binary must report failure, not success.
+8. **PATH advice.** If `$SG_BIN_DIR` is not in `$PATH`, print the `export PATH="$SG_BIN_DIR:$PATH"` line for the user to add. Print it, never edit a shell rc — same posture as `INSTALL_COMMAND` in [runtimes.ts](../../src/core/tools/runtimes.ts), which is displayed for the user to run rather than executed (R3.7).
 9. Final line: installed version and resolved link path.
 
 Make the file executable (`chmod +x`).
@@ -46,7 +46,7 @@ Add to `scripts`:
 
 ### 3. `tests/acceptance/install-cli.test.ts` (new)
 
-Mirrors [packaging.test.ts](tests/acceptance/packaging.test.ts) — same `promisify(execFile)` shape, same 180 s timeout, gated by `SG_ACCEPTANCE=1` via [vitest.config.ts](vitest.config.ts).
+Mirrors [packaging.test.ts](../../tests/acceptance/packaging.test.ts) — same `promisify(execFile)` shape, same 180 s timeout, gated by `SG_ACCEPTANCE=1` via [vitest.config.ts](../../vitest.config.ts).
 
 Run `scripts/install-cli.sh` with `SG_HOME` and `SG_BIN_DIR` pointed at `mkdtemp` dirs, then assert:
 
@@ -57,8 +57,8 @@ Run `scripts/install-cli.sh` with `SG_HOME` and `SG_BIN_DIR` pointed at `mkdtemp
 
 ### 4. Docs
 
-- [design.md](docs/specs/design.md) §2 — the distribution paragraph currently ends at "`npm pack` output is installed into a clean temp prefix in CI". Add one sentence: local installation is `pnpm run install:cli`, which packs the working tree into `~/.skillgantry/cli` and links `~/.local/bin/skillgantry`, verified by invocation. Add a row to the §16 test-strategy table beside the existing Packaging row.
-- [CLAUDE.md](CLAUDE.md) — add `pnpm install:cli` to the Commands block with a one-line gloss.
+- [design.md](design.md) §2 — the distribution paragraph currently ends at "`npm pack` output is installed into a clean temp prefix in CI". Add one sentence: local installation is `pnpm run install:cli`, which packs the working tree into `~/.skillgantry/cli` and links `~/.local/bin/skillgantry`, verified by invocation. Add a row to the §16 test-strategy table beside the existing Packaging row.
+- [CLAUDE.md](../../CLAUDE.md) — add `pnpm install:cli` to the Commands block with a one-line gloss.
 
 No requirement change: R13.5 already owns npm distribution, and this is a local install path under it, not a new product capability. Nothing in the milestone ownership table moves.
 

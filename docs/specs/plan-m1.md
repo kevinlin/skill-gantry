@@ -313,7 +313,7 @@ Every requirement M1 owns, and the task that satisfies it. A requirement with no
 
 ## What changed in revision 2 of this plan
 
-Aligning to design revision 3, which closed [design-review-2.md](design-review-2.md).
+Aligning to design revision 3, which closed [design-review-r2.md](design-review-r2.md).
 
 | Finding | Change |
 |---|---|

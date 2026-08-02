@@ -40,17 +40,16 @@ The CLI has three subcommands plus a root action, all built by `buildProgram(dep
 
 ## Specs are the source of truth
 
-`docs/specs/` holds three layers, and code follows them:
+`docs/specs/` holds three layers, and code follows them. **[docs/specs/index.md](docs/specs/index.md) is the catalogue** — every spec file, its layer, and its ship status live there and nowhere else. Start there to find a document; this section only says how to *use* what you find.
 
-- [requirements.md](docs/specs/requirements.md) — numbered `R*` requirements, each tracing to a decision. Code comments and commit messages cite these ids.
-- [design.md](docs/specs/design.md) — module map, stage contract, outcome classification table (§8.1), ledger schema and reconciliation (§10), sidecar layout (§9). Read the relevant section before changing a contract.
-- [plan-m1.md](docs/specs/plan-m1.md) / [plan-m2.md](docs/specs/plan-m2.md) / [plan-m3.md](docs/specs/plan-m3.md) / [plan-m4.md](docs/specs/plan-m4.md) — task-by-task implementation plans with checkboxes. Two out-of-band plans sit alongside them: [plan-promptfoo-removal.md](docs/specs/plan-promptfoo-removal.md) (why promptfoo is dropped, not deferred — it has no notion of a skill) and [plan_install-as-terminal-command.md](docs/specs/plan_install-as-terminal-command.md) (`pnpm install:cli`).
-- [decision-log.md](docs/specs/decision-log.md) — `D*` decisions the requirements derive from.
-- `design-review-r1.md` / `design-review-r2.md` — point-in-time reviews against a named commit. Historical; not a contract.
+Precedence, highest first:
 
-Merged: M1 (engine + headless CLI), M2 (queue + Ink TUI), M3 (full `tools` module, setup wizard, doctor), M4 (the three remaining adapters, cross-tool merge, rule-map migration). Milestone ownership lives in exactly one table, [requirements.md § Milestone ownership](docs/specs/requirements.md); `design.md` deliberately no longer carries a second copy. M5 is `release` + retirement, M6 the dashboard.
+1. [requirements.md](docs/specs/requirements.md) — numbered `R*` requirements, each tracing to a `D*` decision. Code comments and commit messages cite these ids. Its § Milestone ownership is the single authority for which milestone owns which requirement and what "shipped" meant; `design.md` deliberately carries no second copy.
+2. [design.md](docs/specs/design.md) — module map, stage contract, outcome classification table (§8.1), ledger schema and reconciliation (§10), sidecar layout (§9). Read the relevant section before changing a contract.
+3. The code.
+4. The plans. Each ends with a "Deviations found while implementing" section recording where the shipped code diverged from it, and shipped plans are compacted so they hold the why and not the how. A plan is a record of intent, never a contract.
 
-Each plan ends with a "Deviations found while implementing" section recording where the shipped code diverged from it; `plan-m1.md`, `plan-m2.md` and `plan-m4.md` have been compacted post-ship, so they hold the why and not the how. Trust the code over any plan; trust `design.md` and `requirements.md` over the code.
+Design reviews are point-in-time findings against a named commit. Historical; not a contract.
 
 When implementation proves a spec wrong, amend the spec doc in the same branch rather than letting the two diverge.
 
