@@ -6,6 +6,7 @@ import {
   loadConfig,
   migrateRuleMap,
   openLedger,
+  readLifecycleCache,
   type DoctorReport,
   type LifecycleState,
   type SkillRef,
@@ -16,12 +17,7 @@ import type { CliDeps } from './run-command.js'
 function lifecycleCache(dbPath: string): ReadonlyMap<string, LifecycleState> {
   const ledger = openLedger(dbPath)
   try {
-    const rows = ledger.db
-      .prepare('select id, lifecycle_state as state from skills')
-      .all() as Array<{ id: string; state: string }>
-    return new Map(
-      rows.map((row) => [row.id, row.state === 'deprecated' ? 'deprecated' : 'active'] as const),
-    )
+    return readLifecycleCache(ledger.db)
   } finally {
     ledger.close()
   }

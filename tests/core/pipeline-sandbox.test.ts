@@ -45,6 +45,8 @@ async function harness(replacement: string = OPTIMISED) {
     repo: { id: 'repo', path: repo, name: 'repo', isGit: true },
     rootSkill: false,
     workspacePath: workspacePath(repo, 'sk', false),
+    deprecated: false,
+    supersededBy: null,
   }
   const tool = await makeFakeMutatingTool(replacement)
   const adapter = fakeAdapter(tool.bin)

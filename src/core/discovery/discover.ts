@@ -40,7 +40,12 @@ async function toSkill(
   relPath: string,
   rootSkill: boolean,
 ): Promise<SkillRef> {
-  let front = { name: null as string | null, version: null as string | null }
+  let front = {
+    name: null as string | null,
+    version: null as string | null,
+    deprecated: false,
+    supersededBy: null as string | null,
+  }
   try {
     front = parseFrontmatter(await readFile(join(dir, 'SKILL.md'), 'utf8'))
   } catch {
@@ -55,6 +60,8 @@ async function toSkill(
     repo,
     rootSkill,
     workspacePath: workspacePath(repo.path, relPath, rootSkill),
+    deprecated: front.deprecated,
+    supersededBy: front.supersededBy,
   }
 }
 

@@ -7,9 +7,11 @@ export interface Frontmatter {
   version: string | null
   /** R1.6: the file is the authority for lifecycle state; the ledger is a cache. */
   deprecated: boolean
+  /** R1.4's optional pointer at the replacement. */
+  supersededBy: string | null
 }
 
-const EMPTY: Frontmatter = { name: null, version: null, deprecated: false }
+const EMPTY: Frontmatter = { name: null, version: null, deprecated: false, supersededBy: null }
 
 function asString(value: unknown): string | null {
   if (typeof value === 'string') return value
@@ -43,5 +45,6 @@ export function parseFrontmatter(source: string): Frontmatter {
     name: asString(record.name),
     version: asString(metadata.version),
     deprecated: metadata.deprecated === true,
+    supersededBy: asString(metadata.superseded_by),
   }
 }

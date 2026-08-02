@@ -8,6 +8,7 @@ import {
   provenanceOf,
   runPipeline,
   STAGE_ORDER,
+  syncLifecycle,
   type GantryConfig,
   type SkillRef,
   type Stage,
@@ -39,6 +40,9 @@ export async function startTui(options: TuiOptions): Promise<void> {
   for (const repo of config.repos) skills.push(...(await discoverSkills(repo)))
 
   const ledger = openLedger(options.dbPath)
+  // R1.6: the file is the authority, so every launch self-heals a cache a
+  // crashed-between-write left stale rather than needing manual recovery.
+  syncLifecycle(ledger.db, skills)
   const concurrency = options.concurrency ?? config.concurrency
 
   const queue = createQueue({

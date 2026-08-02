@@ -45,6 +45,8 @@ const skillFor = (found: InterruptedMutation): SkillRef => ({
   rootSkill: false,
   repo: { id: '', path: found.record.repoPath, name: '', isGit: false },
   workspacePath: workspacePathOf(found.recordDir),
+  deprecated: false,
+  supersededBy: null,
 })
 
 /**

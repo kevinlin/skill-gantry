@@ -122,6 +122,9 @@ export interface SkillRef {
   rootSkill: boolean
   /** Absolute path to the sidecar workspace root. */
   workspacePath: string
+  /** R1.6: read from SKILL.md frontmatter, which is the authority. */
+  deprecated: boolean
+  supersededBy: string | null
 }
 
 export interface RawFinding {

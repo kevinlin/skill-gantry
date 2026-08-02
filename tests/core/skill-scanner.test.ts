@@ -13,6 +13,8 @@ const skill: SkillRef = {
   repo: { id: 'zapac', path: '/tmp/zapac', name: 'zapac', isGit: true },
   rootSkill: false,
   workspacePath: '/tmp/zapac/insight-profile-workspace',
+  deprecated: false,
+  supersededBy: null,
 }
 
 describe('skill-scanner manifest', () => {

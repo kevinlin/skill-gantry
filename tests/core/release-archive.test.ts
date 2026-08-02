@@ -26,6 +26,8 @@ async function scene(rootSkill = false) {
     repo: { id: 'repo', path: repo, name: 'repo', isGit: false },
     rootSkill,
     workspacePath: workspacePath(repo, rootSkill ? '.' : 'sk', rootSkill),
+    deprecated: false,
+    supersededBy: null,
   }
   return { repo, skill, stagingDir: await mkdtemp(join(tmpdir(), 'sg-stage-')) }
 }

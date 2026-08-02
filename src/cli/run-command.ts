@@ -5,8 +5,8 @@ import { loadConfig, loadToolLock } from '../core/config/config.js'
 import { loadEnvFile, provenanceOf } from '../core/config/env.js'
 import { discoverSkills } from '../core/discovery/discover.js'
 import { openLedger } from '../core/ledger/db.js'
+import { syncLifecycle } from '../core/ledger/lifecycle.js'
 import { runPipeline } from '../core/pipeline/run.js'
-import type { GantryConfig } from '../core/config/schema.js'
 import type { SkillRef, Stage } from '../core/types.js'
 import { runDoctor } from './doctor-command.js'
 import { detectInterrupted, formatInterrupted, runRecover } from './recover-command.js'
@@ -44,10 +44,7 @@ export function defaultDeps(): CliDeps {
 }
 
 /** Accepts `<repoId>/<name>` or a bare `<name>` when it is unambiguous. */
-export async function resolveSkill(config: GantryConfig, selector: string): Promise<SkillRef> {
-  const all: SkillRef[] = []
-  for (const repo of config.repos) all.push(...(await discoverSkills(repo)))
-
+export function resolveSkill(all: readonly SkillRef[], selector: string): SkillRef {
   const exact = all.filter((s) => s.id === selector)
   if (exact.length === 1) return exact[0] as SkillRef
 
@@ -102,13 +99,18 @@ export function buildProgram(deps: CliDeps): GantryProgram {
       await noticeInterrupted(deps)
       const requested = parseStages(opts.stage)
       const config = await loadConfig(deps.home)
-      const skill = await resolveSkill(config, selector)
+      const allSkills: SkillRef[] = []
+      for (const repo of config.repos) allSkills.push(...(await discoverSkills(repo)))
+      const skill = resolveSkill(allSkills, selector)
       const lock = await loadToolLock(deps.home)
       const env = await loadEnvFile(deps.home)
 
       for (const warning of env.warnings) deps.write(`warning: ${warning}`)
 
       const ledger = openLedger(deps.dbPath)
+      // R1.6: reconciled on every scan, so a stale cache self-heals here too,
+      // not only from the TUI's launch path.
+      syncLifecycle(ledger.db, allSkills)
       try {
         const handle = runPipeline({
           skill,

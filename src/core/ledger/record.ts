@@ -39,13 +39,26 @@ export function recordRun(ledger: Ledger, input: RunRecordInput): RunDelta {
     ).run(skill.repo.id, skill.repo.path, skill.repo.name, skill.repo.isGit ? 1 : 0)
 
     db.prepare(
-      `insert into skills (id, repo_id, name, rel_path, current_version, lifecycle_state)
-       values (?, ?, ?, ?, ?, 'active')
+      `insert into skills (id, repo_id, name, rel_path, current_version,
+                           lifecycle_state, deprecated_at, superseded_by)
+       values (?, ?, ?, ?, ?, ?, case when ? = 'deprecated' then datetime('now') end, ?)
        on conflict(id) do update set
          name = excluded.name,
          current_version = excluded.current_version,
+         -- The file is the authority, and this run just read it (R1.6).
+         lifecycle_state = excluded.lifecycle_state,
+         superseded_by = excluded.superseded_by,
          last_seen = datetime('now')`,
-    ).run(skill.id, skill.repo.id, skill.name, skill.relPath, skill.version)
+    ).run(
+      skill.id,
+      skill.repo.id,
+      skill.name,
+      skill.relPath,
+      skill.version,
+      skill.deprecated ? 'deprecated' : 'active',
+      skill.deprecated ? 'deprecated' : 'active',
+      skill.supersededBy,
+    )
 
     db.prepare(
       `insert into runs (id, skill_id, trigger, started_at, ended_at, outcome,

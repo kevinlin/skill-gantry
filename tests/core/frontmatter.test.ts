@@ -13,19 +13,39 @@ describe('parseFrontmatter', () => {
       '',
       '# Declawed',
     ].join('\n')
-    expect(parseFrontmatter(src)).toEqual({ name: 'declawed', version: '1.1.0', deprecated: false })
+    expect(parseFrontmatter(src)).toEqual({
+      name: 'declawed',
+      version: '1.1.0',
+      deprecated: false,
+      supersededBy: null,
+    })
   })
 
   it('returns nulls when there is no frontmatter', () => {
-    expect(parseFrontmatter('# Just a heading\n')).toEqual({ name: null, version: null, deprecated: false })
+    expect(parseFrontmatter('# Just a heading\n')).toEqual({
+      name: null,
+      version: null,
+      deprecated: false,
+      supersededBy: null,
+    })
   })
 
   it('returns nulls when the fields are absent', () => {
-    expect(parseFrontmatter('---\ndescription: x\n---\n')).toEqual({ name: null, version: null, deprecated: false })
+    expect(parseFrontmatter('---\ndescription: x\n---\n')).toEqual({
+      name: null,
+      version: null,
+      deprecated: false,
+      supersededBy: null,
+    })
   })
 
   it('tolerates malformed yaml without throwing', () => {
-    expect(parseFrontmatter('---\nname: [unclosed\n---\n')).toEqual({ name: null, version: null, deprecated: false })
+    expect(parseFrontmatter('---\nname: [unclosed\n---\n')).toEqual({
+      name: null,
+      version: null,
+      deprecated: false,
+      supersededBy: null,
+    })
   })
 
   it('coerces a numeric version to a string', () => {
@@ -34,7 +54,17 @@ describe('parseFrontmatter', () => {
 
   it('reads metadata.deprecated', () => {
     const src = '---\nname: x\nmetadata:\n  deprecated: true\n---\n'
-    expect(parseFrontmatter(src)).toEqual({ name: 'x', version: null, deprecated: true })
+    expect(parseFrontmatter(src)).toEqual({
+      name: 'x',
+      version: null,
+      deprecated: true,
+      supersededBy: null,
+    })
+  })
+
+  it('reads metadata.superseded_by', () => {
+    const src = '---\nname: x\nmetadata:\n  superseded_by: repo/other\n---\n'
+    expect(parseFrontmatter(src).supersededBy).toBe('repo/other')
   })
 
   it('accepts CRLF line endings', () => {

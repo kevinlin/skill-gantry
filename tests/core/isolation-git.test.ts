@@ -46,6 +46,8 @@ async function fixture(): Promise<{ repo: string; skill: SkillRef; recordDir: st
     repo: { id: 'repo', path: repo, name: 'repo', isGit: true },
     rootSkill: false,
     workspacePath: workspacePath(repo, 'sk', false),
+    deprecated: false,
+    supersededBy: null,
   }
   return { repo, skill, recordDir: await mkdtemp(join(tmpdir(), 'sg-run-')) }
 }

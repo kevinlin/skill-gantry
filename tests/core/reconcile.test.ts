@@ -13,6 +13,8 @@ const SKILL = {
   relPath: 'declawed',
   rootSkill: false,
   workspacePath: '/repo/declawed-workspace',
+  deprecated: false,
+  supersededBy: null,
   repo: { id: 'fx', path: '/repo', name: 'fx', isGit: false },
 } as SkillRef
 

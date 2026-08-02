@@ -22,6 +22,8 @@ const skill = (id: string): SkillRef => ({
   repo: { id: 'fx', path: '/repo', name: 'fx', isGit: false },
   rootSkill: false,
   workspacePath: `/repo/${id}-workspace`,
+  deprecated: false,
+  supersededBy: null,
 })
 
 const NAMES = [

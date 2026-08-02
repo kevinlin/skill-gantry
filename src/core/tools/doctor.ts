@@ -2,6 +2,7 @@ import { readFile, readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { loadToolLock } from '../config/config.js'
 import { parseFrontmatter } from '../discovery/frontmatter.js'
+import type { LifecycleState } from '../ledger/lifecycle.js'
 import type { SkillRef } from '../types.js'
 import { CATALOGUE, catalogueEntry } from './catalogue.js'
 import type { Exec } from './exec.js'
@@ -32,8 +33,6 @@ export interface ToolFinding {
   actualVersion: string | null
   detail: string
 }
-
-export type LifecycleState = 'active' | 'deprecated'
 
 export interface LifecycleFinding {
   skillId: string

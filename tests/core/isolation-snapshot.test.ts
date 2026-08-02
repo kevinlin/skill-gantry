@@ -29,6 +29,8 @@ async function open(scope: readonly string[] = SCOPE) {
     repo: { id: 'repo', path: repo, name: 'repo', isGit: false },
     rootSkill: false,
     workspacePath: workspacePath(repo, 'sk', false),
+    deprecated: false,
+    supersededBy: null,
   }
   const recordDir = await mkdtemp(join(tmpdir(), 'sg-run-'))
   const sandbox = await openSnapshotSandbox({
@@ -131,6 +133,8 @@ describe('SnapshotSandbox', () => {
       repo: { id: 'repo', path: repo, name: 'repo', isGit: false },
       rootSkill: false,
       workspacePath: workspacePath(repo, 'sk', false),
+      deprecated: false,
+      supersededBy: null,
     }
     const recordDir = await mkdtemp(join(tmpdir(), 'sg-run-'))
     const sandbox = await openSnapshotSandbox({
@@ -169,6 +173,8 @@ describe('SnapshotSandbox', () => {
       repo: { id: 'repo', path: repo, name: 'repo', isGit: false },
       rootSkill: false,
       workspacePath: workspacePath(repo, 'sk', false),
+      deprecated: false,
+      supersededBy: null,
     }
     const recordDir = await mkdtemp(join(tmpdir(), 'sg-run-'))
     await expect(
@@ -201,6 +207,8 @@ describe('SnapshotSandbox', () => {
       repo: { id: 'repo', path: repo, name: 'repo', isGit: false },
       rootSkill: true,
       workspacePath: workspacePath(repo, '.', true),
+      deprecated: false,
+      supersededBy: null,
     }
     const recordDir = join(repo, ROOT_WORKSPACE_DIR, 'skillgantry', 'runs', 'run-1')
     await mkdir(recordDir, { recursive: true })

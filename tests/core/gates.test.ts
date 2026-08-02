@@ -14,6 +14,8 @@ const skill: SkillRef = {
   repo: { id: 'repo', path: '/repo', name: 'repo', isGit: false },
   rootSkill: false,
   workspacePath: workspacePath('/repo', 'sk', false),
+  deprecated: false,
+  supersededBy: null,
 }
 
 const run = (

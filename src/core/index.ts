@@ -2,6 +2,8 @@ export * from './types.js'
 export * from './pipeline/events.js'
 export { runPipeline, type RunHandle, type RunSummary } from './pipeline/run.js'
 export { openLedger, type Ledger } from './ledger/db.js'
+export { readLifecycleCache, syncLifecycle, type LifecycleState } from './ledger/lifecycle.js'
+export { GATE_STAGES, latestGateOutcomes, type GateOutcome } from './ledger/gates.js'
 export { RULE_CLASS_MAP_VERSION } from './adapters/rule-classes.js'
 export {
   appliedRuleMapVersion,
@@ -62,7 +64,6 @@ export {
   type DoctorInput,
   type DoctorReport,
   type LifecycleFinding,
-  type LifecycleState,
   type ToolDriftKind,
   type ToolFinding,
 } from './tools/doctor.js'

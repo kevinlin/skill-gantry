@@ -40,6 +40,8 @@ async function archive() {
     repo: { id: 'repo', path: repo, name: 'repo', isGit: false },
     rootSkill: false,
     workspacePath: workspacePath(repo, 'sk', false),
+    deprecated: false,
+    supersededBy: null,
   }
   const stagingDir = await mkdtemp(join(tmpdir(), 'sg-stage-'))
   const packaged = await packageCandidate({

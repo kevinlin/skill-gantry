@@ -160,6 +160,8 @@ const skillRef: SkillRef = {
   repo: { id: 'zapac', path: '/tmp/zapac', name: 'zapac', isGit: true },
   rootSkill: false,
   workspacePath: `/tmp/zapac/${SKILL}-workspace`,
+  deprecated: false,
+  supersededBy: null,
 }
 
 const finding = (ruleClass: string, path: string, nativeRuleId: string): RawFinding => ({

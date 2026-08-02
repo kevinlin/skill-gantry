@@ -12,6 +12,8 @@ const skill = (relPath: string): SkillRef => ({
   repo: { id: 'zapac', path: '/tmp/zapac', name: 'zapac', isGit: true },
   rootSkill: false,
   workspacePath: `/tmp/zapac/${relPath}-workspace`,
+  deprecated: false,
+  supersededBy: null,
 })
 
 const ctx = (stdout: string, relPath: string, exitCode: number) => ({
