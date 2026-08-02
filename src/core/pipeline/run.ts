@@ -207,7 +207,15 @@ export function runPipeline(input: RunPipelineInput): RunHandle {
     ): Promise<StageResult> => {
       if (!executor.mutating || !executor.prepareMutation || !ctx.authorised) return result
       const pending: PendingMutation | null = await executor.prepareMutation(ctx, plan, result)
-      if (!pending) return result
+      if (!pending) {
+        // Nothing to approve is not nothing to settle: a sandbox was opened
+        // before the tool ran (R10.10), and only apply/discard mark it
+        // resolved. Left `active`, a later `skillgantry run` reports it as a
+        // crash interrupted mid-mutation, and recovery on the snapshot
+        // strategy would restore a pre-tool state over a tree nothing touched.
+        await executor.discardMutation?.(ctx, { diff: '', scope: [] })
+        return result
+      }
 
       const requestId = randomUUID()
       cancellation.enter('awaiting-approval')
@@ -328,15 +336,24 @@ export function runPipeline(input: RunPipelineInput): RunHandle {
         break
       }
 
-      const executed = await executor.execute(ctx, plan)
-      for (const toolRun of executed.toolRuns) {
-        queue.push({ type: 'tool:done', runId: id, stage, toolId: toolRun.toolId, result: toolRun })
-      }
-
+      // execute() lives inside this try too: a sandbox opens above, and a
+      // release-stage executor (Task 11) is free to throw out of execute()
+      // the same way an apply can abort out of gateMutation. Either way the
+      // finally has to run to settle the sandbox — a throw that skipped it
+      // would leave the worktree registered and the record `active` forever.
+      let executed: StageResult | undefined
       let result: StageResult
       try {
+        executed = await executor.execute(ctx, plan)
+        for (const toolRun of executed.toolRuns) {
+          queue.push({ type: 'tool:done', runId: id, stage, toolId: toolRun.toolId, result: toolRun })
+        }
         result = await gateMutation(executor, ctx, plan, executed)
       } catch (err) {
+        // No sandbox means this stage never touched isolation (not mutating,
+        // or not authorised), so there is nothing of row 3b's to report —
+        // the error is the run's, same as before this task.
+        if (!sandbox) throw err
         // Row 3b. R10.11 aborts an authorised apply on drift, and R5.13 requires
         // the run to finalise anyway so its partial evidence survives.
         await executor.discardMutation?.(ctx, { diff: '', scope: [] }).catch(() => undefined)

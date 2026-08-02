@@ -7,6 +7,7 @@ import { workspacePath } from '../../src/core/discovery/discover.js'
 import { AdapterStageExecutor } from '../../src/core/stages/adapter-stage.js'
 import { scanSandboxRecords } from '../../src/core/isolation/record.js'
 import type { RunEvent } from '../../src/core/pipeline/events.js'
+import type { StageExecutor, StageResult } from '../../src/core/stages/types.js'
 import type { SkillRef } from '../../src/core/types.js'
 import { SKILL_MD_FULL, makeGitRepo } from '../helpers/tmp-repo.js'
 import { makeFakeMutatingTool } from '../helpers/fake-mutating-tool.js'
@@ -33,7 +34,7 @@ const fakeAdapter = (bin: string) => ({
   bin,
 })
 
-async function harness() {
+async function harness(replacement: string = OPTIMISED) {
   const repo = await makeGitRepo({ files: { 'sk/SKILL.md': SKILL_MD_FULL('sk') } })
   const skill: SkillRef = {
     id: 'repo/sk',
@@ -45,7 +46,7 @@ async function harness() {
     rootSkill: false,
     workspacePath: workspacePath(repo, 'sk', false),
   }
-  const tool = await makeFakeMutatingTool(OPTIMISED)
+  const tool = await makeFakeMutatingTool(replacement)
   const adapter = fakeAdapter(tool.bin)
   const ledger = openLedger(':memory:')
 
@@ -80,11 +81,11 @@ async function harness() {
       ...over,
     })
 
-  return { repo, skill, start }
+  return { repo, skill, ledger, start }
 }
 
 describe('a mutating stage through the pipeline', () => {
-  it('points the tool inside the sandbox and leaves the live tree untouched until apply', async () => {
+  it('shows the diff before writing anything, then leaves the tree untouched on discard', async () => {
     const { repo, start } = await harness()
     const handle = start({ authorised: true })
     const seen: RunEvent[] = []
@@ -172,5 +173,91 @@ describe('a mutating stage through the pipeline', () => {
     })()
     await handle.done
     expect(await scanSandboxRecords(skill.workspacePath)).toEqual([])
+  })
+
+  it('settles the sandbox record even when the tool changed nothing', async () => {
+    // The fake tool writes back the exact bytes already on disk, so the
+    // sandbox's change set is empty and prepareMutation returns null —
+    // there is no mutation:pending to resolve, but the record still opened
+    // (R10.10) and has to settle to something other than `active`.
+    const { skill, start } = await harness(SKILL_MD_FULL('sk'))
+    const handle = start({ authorised: true })
+    const seen: RunEvent[] = []
+    void (async () => {
+      for await (const event of handle.events) seen.push(event)
+    })()
+    const summary = await handle.done
+    expect(seen.some((e) => e.type === 'mutation:pending')).toBe(false)
+    expect(summary.stages[0]?.outcome).toBe('passed')
+    expect(await scanSandboxRecords(skill.workspacePath)).toEqual([])
+  })
+
+  it('records the aborted stage in the ledger without tripping a constraint', async () => {
+    const { repo, ledger, start } = await harness()
+    const handle = start({ authorised: true })
+    void (async () => {
+      for await (const event of handle.events) {
+        if (event.type === 'mutation:pending') {
+          await writeFile(join(repo, 'sk/SKILL.md'), 'hand-edited\n')
+          handle.resolveMutation(event.requestId, 'apply')
+        }
+      }
+    })()
+    const summary = await handle.done
+
+    const row = ledger.db
+      .prepare(
+        `select tr.error_kind as errorKind, tr.artefact_dir as artefactDir, tr.outcome as outcome
+         from tool_runs tr
+         join stages s on s.id = tr.stage_id
+         join runs r on r.id = s.run_id
+         where r.id = ?`,
+      )
+      .get(summary.runId) as
+      | { errorKind: string | null; artefactDir: string; outcome: string }
+      | undefined
+    expect(row).toMatchObject({ errorKind: 'mutation-aborted', artefactDir: '', outcome: 'errored' })
+  })
+
+  it('reports mutation-aborted and disposes the sandbox when the sandbox refuses to open', async () => {
+    const { repo, skill, start } = await harness()
+    // Dirty the scope path without committing: openSandbox refuses rather
+    // than silently seeding the worktree over, or losing, the user's own
+    // uncommitted edit (R10.3) — a sandbox that will not open is row 3b.
+    await writeFile(join(repo, 'sk/SKILL.md'), 'dirty, uncommitted\n')
+    const summary = await start({ authorised: true }).done
+    expect(summary.stages[0]?.outcome).toBe('errored')
+    expect(summary.stages[0]?.toolRuns[0]?.errorKind).toBe('mutation-aborted')
+    expect(summary.stages[0]?.toolRuns[0]?.summary).toMatch(/^sandbox: /)
+    // Nothing opened, so nothing was left registered either.
+    expect(await scanSandboxRecords(skill.workspacePath)).toEqual([])
+    expect(await readFile(join(repo, 'sk/SKILL.md'), 'utf8')).toBe('dirty, uncommitted\n')
+  })
+
+  it('disposes and settles the sandbox when execute() itself throws', async () => {
+    // AdapterStageExecutor cannot throw out of execute() today, but
+    // StageExecutor is an interface any stage can implement (a release-stage
+    // executor is next), so the pipeline has to cover this path too.
+    const { repo, skill, start } = await harness()
+    const throwingExecutor: StageExecutor = {
+      stage: 'optimise',
+      mutating: true,
+      async plan() {
+        return { toolIds: ['boom'], policy: 'pick-one', mutationScope: { paths: ['sk'] } }
+      },
+      async execute(): Promise<StageResult> {
+        throw new Error('tool exploded')
+      },
+      async discardMutation(ctx) {
+        await ctx.sandbox?.discard()
+      },
+    }
+    const summary = await start({ authorised: true, executorFactory: () => throwingExecutor }).done
+
+    expect(summary.stages[0]?.outcome).toBe('errored')
+    expect(summary.stages[0]?.toolRuns[0]?.errorKind).toBe('mutation-aborted')
+    expect(summary.stages[0]?.toolRuns[0]?.summary).toBe('tool exploded')
+    expect(await scanSandboxRecords(skill.workspacePath)).toEqual([])
+    expect(await readFile(join(repo, 'sk/SKILL.md'), 'utf8')).toBe(SKILL_MD_FULL('sk'))
   })
 })

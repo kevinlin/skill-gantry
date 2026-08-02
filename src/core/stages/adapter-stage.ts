@@ -201,6 +201,18 @@ export class AdapterStageExecutor implements StageExecutor {
    */
   async plan(ctx: StageContext): Promise<StagePlan> {
     if (ctx.selectedToolIds.length === 0) {
+      // R12.4: an unauthorised mutating stage skips regardless of what (if
+      // anything) is configured for it. Optimise ships no adapter yet, so
+      // its shipped default is an empty selection — treating that as a
+      // planning error here would make `--stage optimise` without `--yes`
+      // reject under the default config instead of producing R12.4's skip.
+      if (this.mutating && !ctx.authorised) {
+        return {
+          toolIds: [],
+          policy: 'pick-one',
+          mutationScope: { paths: [ctx.skill.relPath === '.' ? '.' : ctx.skill.relPath] },
+        }
+      }
       throw new Error(`no tools selected for stage ${ctx.stage}`)
     }
     const policies = new Set<'fan-out' | 'pick-one'>()
@@ -252,6 +264,11 @@ export class AdapterStageExecutor implements StageExecutor {
       const toolRuns = plan.toolIds.map((toolId) =>
         skipped(toolId, join(ctx.stageDir, toolId), 'no-authorisation'),
       )
+      // reduceStageOutcome throws on an empty selection (nothing to reduce);
+      // an unauthorised stage with nothing configured is still R12.4's skip.
+      if (toolRuns.length === 0) {
+        return { stage: ctx.stage, outcome: 'skipped', verdict: 'passed', toolRuns }
+      }
       const { outcome, verdict } = reduceStageOutcome(toolRuns.map((t) => t.outcome))
       return { stage: ctx.stage, outcome, verdict, toolRuns }
     }

@@ -119,4 +119,61 @@ describe('skillgantry run', () => {
     expect(stageDone?.outcome).toBe('skipped')
     expect(stageDone?.result.toolRuns[0]?.errorKind).toBe('no-authorisation')
   })
+
+  it('skips a mutating stage without --yes under the shipped default config', async () => {
+    // Optimise ships no adapter, so the shipped default is an empty
+    // selection (`optimise: []`) — the request must still reach a real
+    // stage:done rather than rejecting `plan()`'s "no tools selected" check.
+    const h = await harness(SARIF([]))
+    await run(h.program, ['run', 'declawed', '--stage', 'optimise', '--json'])
+    const events = h.out.map((line) => JSON.parse(line))
+    const stageDone = events.find((e) => e.type === 'stage:done')
+    expect(stageDone?.outcome).toBe('skipped')
+    expect(stageDone?.result.toolRuns).toEqual([])
+    expect(events.at(-1)?.type).toBe('run:done')
+  })
+
+  it('finalises a mixed validate,optimise run against the shipped default config', async () => {
+    // validate genuinely runs and passes; optimise is skipped for want of
+    // --yes. Before R12.4 moved into the engine, a throw out of plan() for
+    // the empty optimise selection would have escaped the stage loop before
+    // finalizeRun/recordRun ran, leaving an unfinalised run for the next
+    // invocation to report as interrupted.
+    const h = await harness(SARIF([]))
+    const skillLintBin = await makeFakeTool(
+      'skill-lint',
+      `printf '%s' '{"schemaVersion":1,"skill":{"files":[]},"findings":[]}'`,
+    )
+    const config = await loadConfig(h.home)
+    await saveConfig(h.home, {
+      ...config,
+      stageTools: { ...config.stageTools, validate: ['skill-lint'] },
+    })
+    await saveToolLock(h.home, {
+      version: 1,
+      tools: {
+        'skill-lint': {
+          installKind: 'npm-prefix',
+          requestedPin: '0.2.0',
+          resolvedVersion: '0.2.0',
+          bin: skillLintBin,
+          integrity: 'n/a',
+          installedAt: '2026-08-01T00:00:00Z',
+          verifiedAt: '2026-08-01T00:00:00Z',
+        },
+      },
+    })
+
+    await run(h.program, ['run', 'declawed', '--stage', 'validate,optimise', '--json'])
+    const events = h.out.map((line) => JSON.parse(line))
+    const stagesDone = events.filter((e) => e.type === 'stage:done')
+    expect(stagesDone.map((e) => e.stage)).toEqual(['validate', 'optimise'])
+    expect(stagesDone[0]?.outcome).toBe('passed')
+    expect(stagesDone[1]?.outcome).toBe('skipped')
+    expect(stagesDone[1]?.result.toolRuns).toEqual([])
+    // The run finalised: recordRun and finalizeRun both ran despite optimise
+    // having nothing configured for it.
+    expect(events.at(-1)?.type).toBe('run:done')
+    expect(typeof h.program.exitCode).toBe('number')
+  })
 })
