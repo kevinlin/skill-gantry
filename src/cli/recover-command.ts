@@ -31,10 +31,20 @@ export function formatInterrupted(found: readonly InterruptedMutation[]): string
   )
 }
 
+/**
+ * Returns the *current* state (a fresh scan after the requested action, when
+ * one runs), not the snapshot `found` was read from — a programmatic caller
+ * acting on the return value would otherwise see a record this call itself
+ * just settled as still `active`.
+ */
 export async function runRecover(
   deps: CliDeps,
   opts: { restore?: string; forget?: string; json?: boolean },
 ): Promise<InterruptedMutation[]> {
+  if (opts.restore !== undefined && opts.forget !== undefined) {
+    throw new Error('pass either --restore or --forget, not both')
+  }
+
   const found = await detectInterrupted(deps.home)
 
   const target = opts.restore ?? opts.forget
@@ -52,7 +62,7 @@ export async function runRecover(
       await forgetInterrupted(item)
       deps.write(`forgot ${item.record.runId}; the working tree is unchanged`)
     }
-    return found
+    return detectInterrupted(deps.home)
   }
 
   if (opts.json) {

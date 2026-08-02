@@ -77,21 +77,41 @@ export async function scanInterrupted(
  * were immediately before the apply, which is later evidence than the snapshot
  * taken before the tool ran, and restoring the older copy would discard changes
  * the user had already approved.
+ *
+ * A *complete* journal is a third case, distinct from "no journal at all":
+ * `openSnapshotSandbox.apply` calls `applyJournalled` (which durably marks the
+ * journal complete) and only then `markSandboxRecord(recordDir, 'applied')`. A
+ * crash between those two lines leaves an `active` record sitting over a
+ * finished apply — `rollbackJournal` correctly does nothing for it (there is
+ * nothing to compensate), but treating that the same as "apply never started"
+ * would fall through to a full snapshot restore and discard a mutation the
+ * user already approved. Recovery's job here is to settle the record, not
+ * undo the apply.
  */
 export async function restoreInterrupted(
   found: InterruptedMutation,
   exec: Exec = defaultExec,
 ): Promise<string[]> {
-  const restored = await rollbackJournal(found.recordDir)
-  if (restored.length > 0) {
+  const journal = await readJournal(found.recordDir)
+
+  if (journal?.complete) {
+    await markSandboxRecord(found.recordDir, 'applied')
+    return []
+  }
+
+  if (journal && !journal.complete) {
+    const restored = await rollbackJournal(found.recordDir)
     await markSandboxRecord(found.recordDir, 'discarded')
     return restored
   }
 
   if (found.record.strategy === 'git-worktree') {
     // The user's tree was never touched, so recovery is a prune. Anything odd
-    // in the tree predates us and is not ours to revert.
-    await markSandboxRecord(found.recordDir, 'discarded')
+    // in the tree predates us and is not ours to revert. Mark the record only
+    // after the prune succeeds, matching the other two branches: a crash
+    // mid-prune should leave the record `active` so a later scan finds the
+    // worktree again, rather than settling the record over a leaked directory
+    // nothing will ever revisit.
     // A `git-worktree` sandbox always opens its work root as a fresh
     // `mkdtemp` under the system temp dir (`git-worktree.ts`), distinct from
     // `repoPath` by construction. A record where the two coincide is
@@ -101,6 +121,7 @@ export async function restoreInterrupted(
       await rm(found.record.workRoot, { recursive: true, force: true })
       await exec('git', ['worktree', 'prune'], { cwd: found.record.repoPath }).catch(() => undefined)
     }
+    await markSandboxRecord(found.recordDir, 'discarded')
     return []
   }
 

@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { buildProgram } from '../../src/cli/run-command.js'
+import { runRecover } from '../../src/cli/recover-command.js'
 import { DEFAULT_CONFIG, registerRepo, saveConfig } from '../../src/core/config/config.js'
 import { writeSandboxRecord } from '../../src/core/isolation/record.js'
 import { workspacePath } from '../../src/core/discovery/discover.js'
@@ -76,5 +77,26 @@ describe('skillgantry recover', () => {
     const { out, program } = await harness()
     await program.parseAsync(['node', 'skillgantry', 'recover', '--json'])
     expect(JSON.parse(out[0] as string)).toMatchObject([{ record: { runId: 'run-a' } }])
+  })
+
+  it('rejects --restore and --forget together rather than picking one', async () => {
+    const { repo, program } = await harness()
+    await expect(
+      program
+        .exitOverride()
+        .parseAsync(['node', 'skillgantry', 'recover', '--restore', 'run-a', '--forget', 'run-a']),
+    ).rejects.toThrow('pass either --restore or --forget, not both')
+    // Neither action ran: the file is untouched.
+    expect(await readFile(join(repo, 'sk/SKILL.md'), 'utf8')).toBe('half-written\n')
+  })
+
+  it('returns freshly-scanned state after --restore, not the pre-action snapshot', async () => {
+    const { home, out } = await harness()
+    const result = await runRecover({ home, dbPath: join(home, 'gantry.db'), write: (l) => out.push(l) }, {
+      restore: 'run-a',
+    })
+    // The record `runRecover` just settled must not still read `active` in
+    // the value handed back to a programmatic caller.
+    expect(result).toEqual([])
   })
 })

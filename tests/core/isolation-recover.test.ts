@@ -93,6 +93,34 @@ describe('startup recovery', () => {
     expect(await readFile(join(repo, 'sk/SKILL.md'), 'utf8')).toBe('from the journal\n')
   })
 
+  it('settles an already-applied mutation without reverting it', async () => {
+    const { repo, skill, recordDir } = await interrupted()
+    // The crash R10.10's Important finding names: `openSnapshotSandbox.apply`
+    // calls `applyJournalled` (durably marks the journal complete, live bytes
+    // already written) and only then `markSandboxRecord(recordDir, 'applied')`.
+    // A crash between those two lines leaves the record `active` over a
+    // *complete* journal — indistinguishable from "unresolved" unless recovery
+    // checks `complete` before falling through to a snapshot restore.
+    await writeFile(join(repo, 'sk/SKILL.md'), 'applied by the optimiser\n')
+    await writeFile(
+      join(recordDir, 'journal.json'),
+      JSON.stringify({
+        runId: 'run-a',
+        stage: 'optimise',
+        liveRoot: repo,
+        complete: true,
+        entries: [{ path: 'sk/SKILL.md', priorSha: 'x', priorMode: 33188, priorBytesRef: 'aa' }],
+      }),
+    )
+    const found = await scanInterrupted([skill])
+    expect(found[0]?.journalIncomplete).toBe(false)
+    const restored = await restoreInterrupted(found[0]!)
+    expect(restored).toEqual([])
+    // Must still hold the approved bytes, not the snapshot's pre-stage ones.
+    expect(await readFile(join(repo, 'sk/SKILL.md'), 'utf8')).toBe('applied by the optimiser\n')
+    expect((await readSandboxRecord(recordDir))?.state).toBe('applied')
+  })
+
   it('restores a git-strategy record by pruning, leaving the tree alone', async () => {
     const { repo, skill, recordDir } = await interrupted()
     const record = await readSandboxRecord(recordDir)
