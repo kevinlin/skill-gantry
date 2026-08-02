@@ -220,4 +220,17 @@ describe('SnapshotSandbox', () => {
     await expect(stat(join(repo, ROOT_WORKSPACE_DIR, 'skillgantry', 'runs', 'run-1', 'sandbox.json'))).resolves.toBeDefined()
     await sandbox.dispose()
   })
+
+  it('accepts the live bytes on apply and records the prior ones', async () => {
+    const { repo, recordDir, sandbox } = await open()
+    await writeFile(sandbox.resolve('sk/SKILL.md'), SKILL_MD_FULL('sk', '1.1.0'))
+    const change = await sandbox.changeSet()
+    await sandbox.apply(change)
+    expect(await readFile(join(repo, 'sk/SKILL.md'), 'utf8')).toContain('1.1.0')
+    const journal = JSON.parse(await readFile(join(recordDir, 'journal.json'), 'utf8')) as {
+      complete: boolean
+    }
+    expect(journal.complete).toBe(true)
+    await sandbox.dispose()
+  })
 })

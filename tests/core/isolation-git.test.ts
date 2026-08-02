@@ -173,4 +173,25 @@ describe('GitWorktreeSandbox', () => {
     expect(() => sandbox.resolve('../outside')).toThrow('scope-escapes-root')
     await sandbox.dispose()
   })
+
+  it('applies the sandbox bytes into the live tree', async () => {
+    const { repo, sandbox } = await open()
+    await writeFile(sandbox.resolve('sk/SKILL.md'), SKILL_MD_FULL('sk', '1.1.0'))
+    await writeFile(sandbox.resolve('sk/CHANGELOG.md'), '# Changelog\n')
+    const change = await sandbox.changeSet()
+    await sandbox.apply(change)
+    expect(await readFile(join(repo, 'sk/SKILL.md'), 'utf8')).toContain('1.1.0')
+    expect(await readFile(join(repo, 'sk/CHANGELOG.md'), 'utf8')).toBe('# Changelog\n')
+    await sandbox.dispose()
+  })
+
+  it('aborts the apply when a target drifted between preview and approval', async () => {
+    const { repo, sandbox } = await open()
+    await writeFile(sandbox.resolve('sk/SKILL.md'), SKILL_MD_FULL('sk', '1.1.0'))
+    const change = await sandbox.changeSet()
+    await writeFile(join(repo, 'sk/SKILL.md'), SKILL_MD_FULL('sk', '1.0.0-hand-edited'))
+    await expect(sandbox.apply(change)).rejects.toThrow('preimage-drift: sk/SKILL.md')
+    expect(await readFile(join(repo, 'sk/SKILL.md'), 'utf8')).toContain('1.0.0-hand-edited')
+    await sandbox.dispose()
+  })
 })
