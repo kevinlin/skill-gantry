@@ -17,6 +17,12 @@ const FAN_OUT_LIMIT = 2
 export interface AdapterStageOptions {
   /** Test seam: substitute a manifest's credential requirement. */
   credentialsOverride?: Readonly<Record<string, CredentialRequirement>>
+  /**
+   * Test seam: substitute the adapter lookup. Optimise ships no adapter, so
+   * R4.8's "two optimise tools must never run concurrently" would otherwise be
+   * unassertable rather than merely unreachable.
+   */
+  lookup?: (id: string) => Adapter | undefined
 }
 
 function substitute(argv: readonly string[], vars: Readonly<Record<string, string>>): string[] {
@@ -151,6 +157,10 @@ export class AdapterStageExecutor implements StageExecutor {
     return this.options.credentialsOverride?.[manifest.id] ?? manifest.credentials
   }
 
+  private adapterFor(id: string): Adapter | undefined {
+    return (this.options.lookup ?? getAdapter)(id)
+  }
+
   /**
    * Resolves the configured selection and validates it. The lockfile is not
    * consulted here: a selected tool must survive planning even when it is not
@@ -160,18 +170,30 @@ export class AdapterStageExecutor implements StageExecutor {
     if (ctx.selectedToolIds.length === 0) {
       throw new Error(`no tools selected for stage ${ctx.stage}`)
     }
-    let policy: 'fan-out' | 'pick-one' = 'fan-out'
+    const policies = new Set<'fan-out' | 'pick-one'>()
     for (const id of ctx.selectedToolIds) {
-      const adapter = getAdapter(id)
+      const adapter = this.adapterFor(id)
       if (!adapter) throw new Error(`unknown tool: ${id}`)
       if (adapter.manifest.stage !== ctx.stage) {
         throw new Error(`${id} is not a ${ctx.stage} tool`)
       }
-      policy = adapter.manifest.policy
+      policies.add(adapter.manifest.policy)
     }
-    if (policy === 'pick-one' && ctx.selectedToolIds.length > 1) {
-      throw new Error(`stage ${ctx.stage} accepts exactly one tool`)
+
+    // Over the whole selection, not the last adapter seen. Reading the last one
+    // meant a pick-one tool listed before a fan-out one resolved to fan-out, so
+    // the guard below never fired — which is precisely R4.8's prohibition on two
+    // optimise tools running concurrently.
+    if (policies.has('pick-one')) {
+      if (policies.size > 1) {
+        throw new Error(`tools selected for stage ${ctx.stage} disagree on policy`)
+      }
+      if (ctx.selectedToolIds.length > 1) {
+        throw new Error(`stage ${ctx.stage} accepts exactly one tool`)
+      }
     }
+
+    const policy: 'fan-out' | 'pick-one' = policies.has('pick-one') ? 'pick-one' : 'fan-out'
     return { toolIds: [...ctx.selectedToolIds], policy, mutationScope: { paths: [] } }
   }
 
@@ -180,7 +202,7 @@ export class AdapterStageExecutor implements StageExecutor {
 
     const toolRuns = await mapLimit(plan.toolIds, limit, async (toolId) => {
       const artefactDir = join(ctx.stageDir, toolId)
-      const adapter = getAdapter(toolId)
+      const adapter = this.adapterFor(toolId)
       if (!adapter) return skipped(toolId, artefactDir, 'not-installed')
 
       const locked = ctx.lock.tools[toolId]
