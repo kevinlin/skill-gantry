@@ -45,7 +45,7 @@ docs/specs/
   decision-log.md            MODIFIED  D7, D8, environment facts table, new §10
   requirements.md            MODIFIED  R3.5 tool list
   design.md                  MODIFIED  §5.3 preset paragraph
-  plan-promptfoo-removal.md  NEW       this file
+  plan_m3-promptfoo-removal.md  NEW       this file
 src/core/tools/
   catalogue.ts               MODIFIED  entry removed
 tests/core/
@@ -172,7 +172,7 @@ Presets: **Minimal** is skill-up plus skillspector — the two already present, 
 Run:
 
 ```bash
-grep -rn "promptfoo\|Promptfoo\|PROMPTFOO" docs/specs/ | grep -v 'plan-m3.md' | grep -v 'plan-promptfoo-removal.md'
+grep -rn "promptfoo\|Promptfoo\|PROMPTFOO" docs/specs/ | grep -v 'plan-m3.md' | grep -v 'plan_m3-promptfoo-removal.md'
 ```
 
 Expected: only the two intended mentions — decision-log §10 and the D7/D8/§5.3 sentences that explain the removal. No sentence anywhere may still say promptfoo *will* ship.
@@ -185,7 +185,7 @@ Expected: PASS. This test reads `design.md` §7's skillspector example, which Ta
 - [x] **Step 9: Commit**
 
 ```bash
-git add docs/specs/decision-log.md docs/specs/requirements.md docs/specs/design.md docs/specs/plan-promptfoo-removal.md
+git add docs/specs/decision-log.md docs/specs/requirements.md docs/specs/design.md docs/specs/plan_m3-promptfoo-removal.md
 git commit -m "docs: remove promptfoo from the tool catalogue contract
 
 promptfoo evaluates prompts declared in a per-project promptfooconfig.yaml
@@ -437,7 +437,7 @@ Expected exactly:
 docs/research/skillops-lifecycles.md
 docs/specs/decision-log.md
 docs/specs/plan-m3.md
-docs/specs/plan-promptfoo-removal.md
+docs/specs/plan_m3-promptfoo-removal.md
 ```
 
 `skillops-lifecycles.md` is upstream research and `plan-m3.md` is a point-in-time record of what M3 genuinely installed; neither is a contract, and rewriting either would make the record dishonest.

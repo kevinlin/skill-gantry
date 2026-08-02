@@ -36,15 +36,15 @@ All three were the same typo, referencing `design-review-2.md` instead of the ac
 
 ### Dead links — repo-root-relative paths used as file-relative
 
-`plan_install-as-terminal-command.md` used paths relative to the repo root instead of relative to `docs/specs/`. All resolved after prepending `../../`.
+`plan_m3-install-as-terminal-command.md` used paths relative to the repo root instead of relative to `docs/specs/`. All resolved after prepending `../../`.
 
-- `plan_install-as-terminal-command.md:21` → `scripts/capture-fixtures.sh` — **fixed** → `../../scripts/capture-fixtures.sh`
-- `plan_install-as-terminal-command.md:31` → `src/core/tools/install.ts#L22` — **fixed** → `../../src/core/tools/install.ts#L22`
-- `plan_install-as-terminal-command.md:32` → `src/core/tools/runtimes.ts` — **fixed** → `../../src/core/tools/runtimes.ts`
-- `plan_install-as-terminal-command.md:49` → `tests/acceptance/packaging.test.ts` — **fixed** → `../../tests/acceptance/packaging.test.ts`
-- `plan_install-as-terminal-command.md:49` → `vitest.config.ts` — **fixed** → `../../vitest.config.ts`
-- `plan_install-as-terminal-command.md:60` → `docs/specs/design.md` — **fixed** → `design.md`
-- `plan_install-as-terminal-command.md:61` → `CLAUDE.md` — **fixed** → `../../CLAUDE.md`
+- `plan_m3-install-as-terminal-command.md:21` → `scripts/capture-fixtures.sh` — **fixed** → `../../scripts/capture-fixtures.sh`
+- `plan_m3-install-as-terminal-command.md:31` → `src/core/tools/install.ts#L22` — **fixed** → `../../src/core/tools/install.ts#L22`
+- `plan_m3-install-as-terminal-command.md:32` → `src/core/tools/runtimes.ts` — **fixed** → `../../src/core/tools/runtimes.ts`
+- `plan_m3-install-as-terminal-command.md:49` → `tests/acceptance/packaging.test.ts` — **fixed** → `../../tests/acceptance/packaging.test.ts`
+- `plan_m3-install-as-terminal-command.md:49` → `vitest.config.ts` — **fixed** → `../../vitest.config.ts`
+- `plan_m3-install-as-terminal-command.md:60` → `docs/specs/design.md` — **fixed** → `design.md`
+- `plan_m3-install-as-terminal-command.md:61` → `CLAUDE.md` — **fixed** → `../../CLAUDE.md`
 
 ### Missing root index
 
@@ -60,13 +60,13 @@ Five plan files use a hyphen between the artifact type and the topic. The `defau
 - `plan-m2.md`: non-canonical name. Suggested rename: `plan_m2.md`.
 - `plan-m3.md`: non-canonical name. Suggested rename: `plan_m3.md`.
 - `plan-m4.md`: non-canonical name. Suggested rename: `plan_m4.md`.
-- `plan-promptfoo-removal.md`: non-canonical name. Suggested rename: `plan_promptfoo-removal.md`.
+- `plan_m3-promptfoo-removal.md`: renamed from `plan-promptfoo-removal.md` to follow the milestone naming convention.
 
 Note: these are established legacy names with many inbound cross-references. Renaming requires confirmation (changes git history, breaks external links).
 
 ### Orphan specs
 
-- `plan_install-as-terminal-command.md`: no inbound references from any other spec file. Suggest linking from `index.md` (done in scaffold).
+- `plan_m3-install-as-terminal-command.md`: no inbound references from any other spec file. Suggest linking from `index.md` (done in scaffold).
 
 ## Info
 
@@ -91,7 +91,7 @@ Note: these are established legacy names with many inbound cross-references. Ren
 
 - **Milestones M1–M4 are covered** by their respective plan files.
 - **Milestones M5 (isolation, release, retirement) and M6 (Dashboard, Issues screens) have no plan file yet.** This is expected: they are future milestones.
-- `plan_install-as-terminal-command.md` covers design §2 (local installation) and §16 (test strategy).
+- `plan_m3-install-as-terminal-command.md` covers design §2 (local installation) and §16 (test strategy).
 
 ### Empty sections
 
