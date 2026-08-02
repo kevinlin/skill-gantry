@@ -41,13 +41,22 @@ export async function verifyInstallable(input: InstallCheckInput): Promise<Insta
 
   await exec('unzip', ['-q', '-o', input.archivePath, '-d', extracted], { timeoutMs: 120_000 })
 
+  // ExecOptions.env is Record<string, string>, but process.env is
+  // Record<string, string | undefined> — filter rather than cast, so an
+  // unset variable drops out instead of being asserted into a type it isn't.
+  const env: Record<string, string> = {}
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined) env[key] = value
+  }
+  env.DO_NOT_TRACK = '1'
+
   try {
     const { stdout, stderr } = await exec(
       input.skillsBin,
       ['add', extracted, '--copy', '--skill', '*', '--agent', 'claude-code', '-y'],
       {
         cwd: destination,
-        env: { ...process.env, DO_NOT_TRACK: '1' } as Record<string, string>,
+        env,
         timeoutMs: input.timeoutMs ?? 180_000,
       },
     )

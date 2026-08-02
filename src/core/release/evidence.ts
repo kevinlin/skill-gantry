@@ -35,14 +35,20 @@ export async function writeEvidenceBundle(input: EvidenceInput): Promise<string>
 
   for (const gate of input.gates) {
     const source = join(gate.sidecarPath, STAGE_DIR[gate.stage] ?? gate.stage, 'stage.json')
-    await copyFile(source, join(dir, `${gate.stage}.json`)).catch(async () => {
-      // A pruned run directory is recorded as absent rather than failing the
-      // release: the ledger row is still the evidence that the gate passed.
+    try {
+      await copyFile(source, join(dir, `${gate.stage}.json`))
+    } catch (err) {
+      // Narrowed to ENOENT: a pruned run directory is recorded as absent
+      // rather than failing the release, because the ledger row is still the
+      // evidence that the gate passed. A permission error, a bad STAGE_DIR
+      // mapping or a full disk must surface instead of silently degrading the
+      // bundle into a placeholder that looks the same as a pruned run.
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
       await writeFile(
         join(dir, `${gate.stage}.json`),
         `${JSON.stringify({ stage: gate.stage, runId: gate.runId, stageJson: 'unavailable' }, null, 2)}\n`,
       )
-    })
+    }
   }
 
   await writeFile(join(dir, 'tool-lock.json'), `${JSON.stringify(input.lock, null, 2)}\n`)

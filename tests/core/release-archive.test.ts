@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { chmod, mkdtemp, readFile, stat, symlink } from 'node:fs/promises'
+import { chmod, lstat, mkdtemp, readlink, stat, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { packageCandidate } from '../../src/core/release/archive.js'
@@ -70,9 +70,12 @@ describe('packageCandidate', () => {
     })
     const out = await mkdtemp(join(tmpdir(), 'sg-unzip-'))
     await defaultExec('unzip', ['-q', result.archivePath, '-d', out])
-    const info = await stat(join(out, 'alias.md'))
-    // Following the link would package the target's bytes twice and break R2.10.
-    expect(info.isSymbolicLink() || (await readFile(join(out, 'alias.md'), 'utf8')).length > 0).toBe(true)
+    // lstat, not stat: stat follows the link, so isSymbolicLink() would always
+    // read false and the assertion would pass whether or not `-y` stored a
+    // link — this is the check that actually proves R2.10 for this consumer.
+    const info = await lstat(join(out, 'alias.md'))
+    expect(info.isSymbolicLink()).toBe(true)
+    expect(await readlink(join(out, 'alias.md'))).toBe('SKILL.md')
     expect((await stat(join(out, 'scripts/run.sh'))).mode & 0o111).not.toBe(0)
   })
 
