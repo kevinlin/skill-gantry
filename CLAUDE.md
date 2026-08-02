@@ -12,6 +12,7 @@ Lifecycle stages: `validate`, `evaluate`, `security`, `optimise`, `release`.
 
 ```bash
 pnpm build              # tsc -p tsconfig.json
+pnpm install:cli        # build, pack, install to ~/.skillgantry/cli, link ~/.local/bin/skillgantry
 pnpm lint               # eslint src tests (also enforces the import boundary)
 pnpm test               # vitest run — offline, excludes install + acceptance
 pnpm acceptance         # SG_ACCEPTANCE=1, drives the whole CLI
