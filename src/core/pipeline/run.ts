@@ -7,12 +7,15 @@ import { type Provenance, withAnalysisModes } from '../config/env.js'
 import { getAdapter } from '../adapters/registry.js'
 import { candidateManifest, materialiseCandidate } from '../discovery/candidate.js'
 import { gitState, skillDigest } from '../discovery/digest.js'
+import { openSandbox } from '../isolation/open.js'
+import type { MutationSandbox } from '../isolation/types.js'
 import type { Ledger } from '../ledger/db.js'
 import { recordRun } from '../ledger/record.js'
 import { AdapterStageExecutor } from '../stages/adapter-stage.js'
 import { haltsChain } from '../stages/outcome.js'
 import type {
   PendingMutation,
+  ReleaseTarget,
   StageContext,
   StageExecutor,
   StagePlan,
@@ -53,6 +56,11 @@ export interface RunPipelineInput {
   timeoutOverridesMs: Readonly<Record<string, number>>
   executorFactory?: StageExecutorFactory
   mutationTimeoutMs?: number
+  /** R5.2/R12.4: prior authorisation for a mutating stage's write step. */
+  authorised?: boolean
+  releaseTarget?: ReleaseTarget
+  /** R10.3's override, off by default. */
+  allowDirty?: boolean
 }
 
 export interface RunSummary {
@@ -76,6 +84,35 @@ export interface RunHandle {
 }
 
 const nowIso = (): string => new Date().toISOString()
+
+/** Row 3b of design §8.1: an authorised apply that refused to write. */
+function abortedStage(
+  stage: Stage,
+  plan: StagePlan,
+  message: string,
+  executed?: StageResult,
+): StageResult {
+  const toolId = plan.toolIds[0] ?? stage
+  return {
+    stage,
+    outcome: 'errored',
+    verdict: executed?.verdict ?? 'passed',
+    toolRuns: [
+      {
+        toolId,
+        toolVersion: null,
+        outcome: 'errored',
+        exitCode: null,
+        durationMs: 0,
+        errorKind: 'mutation-aborted',
+        artefactDir: '',
+        findings: [],
+        metrics: {},
+        summary: message,
+      },
+    ],
+  }
+}
 
 export function runPipeline(input: RunPipelineInput): RunHandle {
   const queue = new AsyncEventQueue<RunEvent>()
@@ -168,7 +205,7 @@ export function runPipeline(input: RunPipelineInput): RunHandle {
       plan: StagePlan,
       result: StageResult,
     ): Promise<StageResult> => {
-      if (!executor.mutating || !executor.prepareMutation) return result
+      if (!executor.mutating || !executor.prepareMutation || !ctx.authorised) return result
       const pending: PendingMutation | null = await executor.prepareMutation(ctx, plan, result)
       if (!pending) return result
 
@@ -219,10 +256,11 @@ export function runPipeline(input: RunPipelineInput): RunHandle {
       const executor = makeExecutor(stage)
       const stageDir = stageDirFor(runDir, STAGE_ORDER.indexOf(stage) + 1, stage)
 
-      const ctx: StageContext = {
+      const ctx0: StageContext = {
         skill: toolFacingSkill,
         stage,
         stageDir,
+        runDir,
         selectedToolIds: input.stageTools[stage] ?? [],
         lock: input.lock,
         env: input.env,
@@ -235,12 +273,59 @@ export function runPipeline(input: RunPipelineInput): RunHandle {
           }
         },
         signal: cancellation.signal,
+        authorised: input.authorised === true,
+        ...(input.releaseTarget === undefined ? {} : { releaseTarget: input.releaseTarget }),
+        ...(input.allowDirty === undefined ? {} : { allowDirty: input.allowDirty }),
       }
 
-      const plan = await executor.plan(ctx)
+      const plan = await executor.plan(ctx0)
       queue.push({ type: 'stage:start', runId: id, stage, toolIds: plan.toolIds })
       for (const toolId of plan.toolIds) {
         queue.push({ type: 'tool:start', runId: id, stage, toolId })
+      }
+
+      let sandbox: MutationSandbox | undefined
+      let openFailure: string | null = null
+      if (executor.mutating && input.authorised === true && plan.mutationScope.paths.length > 0) {
+        try {
+          sandbox = await openSandbox({
+            skill: input.skill,
+            stage,
+            runId: id,
+            recordDir: runDir,
+            scope: plan.mutationScope.paths,
+            ...(input.allowDirty === undefined ? {} : { allowDirty: input.allowDirty }),
+          })
+        } catch (err) {
+          // A sandbox that will not open is row 3b: nothing was written, and the
+          // stage has to say why rather than rejecting the whole run.
+          openFailure = (err as Error).message
+        }
+      }
+
+      const ctx: StageContext = {
+        ...ctx0,
+        // {skillDir} and {repoRoot} follow the sandbox, which is what makes the
+        // tool write the copy rather than the user's tree (design §7).
+        ...(sandbox
+          ? {
+              skill: {
+                ...toolFacingSkill,
+                dir: sandbox.resolve(input.skill.relPath),
+                repo: { ...input.skill.repo, path: sandbox.workRoot },
+              },
+            }
+          : {}),
+        ...(sandbox ? { sandbox } : {}),
+      }
+
+      if (openFailure !== null) {
+        const result = abortedStage(stage, plan, `sandbox: ${openFailure}`)
+        await writeStageJson(stageDir, result)
+        results.push(result)
+        queue.push({ type: 'stage:done', runId: id, stage, outcome: result.outcome, result })
+        outcome = result.outcome
+        break
       }
 
       const executed = await executor.execute(ctx, plan)
@@ -248,7 +333,17 @@ export function runPipeline(input: RunPipelineInput): RunHandle {
         queue.push({ type: 'tool:done', runId: id, stage, toolId: toolRun.toolId, result: toolRun })
       }
 
-      const result = await gateMutation(executor, ctx, plan, executed)
+      let result: StageResult
+      try {
+        result = await gateMutation(executor, ctx, plan, executed)
+      } catch (err) {
+        // Row 3b. R10.11 aborts an authorised apply on drift, and R5.13 requires
+        // the run to finalise anyway so its partial evidence survives.
+        await executor.discardMutation?.(ctx, { diff: '', scope: [] }).catch(() => undefined)
+        result = abortedStage(stage, plan, (err as Error).message, executed)
+      } finally {
+        await sandbox?.dispose()
+      }
 
       // M1's only adapter declares no binaryArtefacts, so nothing is copied
       // verbatim; stage.json still records redacted:false per tool run (R7.4a).

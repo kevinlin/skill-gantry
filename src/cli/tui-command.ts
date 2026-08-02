@@ -57,6 +57,9 @@ export async function startTui(options: TuiOptions): Promise<void> {
         artefactSizeCapBytes: config.artefactSizeCapBytes,
         timeoutOverridesMs: config.timeoutOverridesMs,
         mutationTimeoutMs: config.mutationTimeoutMs,
+        // Authorisation in the terminal interface *is* the interactive
+        // confirmation the mutation gate performs, not a separate check.
+        authorised: true,
       }),
   })
 

@@ -7,10 +7,20 @@ import {
   credentialsSatisfied,
   missingCredentials,
 } from '../adapters/types.js'
+import { MUTATING_STAGES } from '../queue/types.js'
 import { type RunToolOutput, runTool } from '../runner/spawn.js'
 import type { ErrorKind, SkillRef, Stage } from '../types.js'
+import { applyFromSandbox, discardFromSandbox, prepareFromSandbox } from './mutation.js'
 import { highestSeverity, meetsFailFloor, reduceStageOutcome } from './outcome.js'
-import type { StageContext, StageExecutor, StagePlan, StageResult, ToolRunRecord } from './types.js'
+import type {
+  MutationScope,
+  PendingMutation,
+  StageContext,
+  StageExecutor,
+  StagePlan,
+  StageResult,
+  ToolRunRecord,
+} from './types.js'
 
 const FAN_OUT_LIMIT = 2
 
@@ -162,12 +172,19 @@ async function mapLimit<T, R>(
 }
 
 export class AdapterStageExecutor implements StageExecutor {
-  readonly mutating = false
+  /**
+   * Derived rather than hard-coded false. The set lives in `queue/types.ts` so
+   * the queue can serialise mutating jobs without importing an executor, and
+   * reading it here is what stops the two disagreeing about which stages write.
+   */
+  readonly mutating: boolean
 
   constructor(
     readonly stage: Stage,
     private readonly options: AdapterStageOptions = {},
-  ) {}
+  ) {
+    this.mutating = MUTATING_STAGES.has(stage)
+  }
 
   private credentialsFor(manifest: AdapterManifest): CredentialRequirement {
     return this.options.credentialsOverride?.[manifest.id] ?? manifest.credentials
@@ -189,7 +206,15 @@ export class AdapterStageExecutor implements StageExecutor {
     const policies = new Set<'fan-out' | 'pick-one'>()
     for (const id of ctx.selectedToolIds) {
       const adapter = this.adapterFor(id)
-      if (!adapter) throw new Error(`unknown tool: ${id}`)
+      if (!adapter) {
+        // R12.4: an unauthorised mutating stage never runs a tool, so its
+        // selection is never resolved against the registry either — that is
+        // what stops "optimise ships no adapter yet" from turning every
+        // unauthorised request into a crash instead of the visible skip R12.4
+        // requires. A stage that *is* authorised still needs a real tool.
+        if (this.mutating && !ctx.authorised) continue
+        throw new Error(`unknown tool: ${id}`)
+      }
       if (adapter.manifest.stage !== ctx.stage) {
         throw new Error(`${id} is not a ${ctx.stage} tool`)
       }
@@ -210,10 +235,27 @@ export class AdapterStageExecutor implements StageExecutor {
     }
 
     const policy: 'fan-out' | 'pick-one' = policies.has('pick-one') ? 'pick-one' : 'fan-out'
-    return { toolIds: [...ctx.selectedToolIds], policy, mutationScope: { paths: [] } }
+    // An optimise tool writes inside the skill directory; a sandbox over an
+    // empty scope can neither snapshot nor diff.
+    const mutationScope: MutationScope = this.mutating
+      ? { paths: [ctx.skill.relPath === '.' ? '.' : ctx.skill.relPath] }
+      : { paths: [] }
+    return { toolIds: [...ctx.selectedToolIds], policy, mutationScope }
   }
 
   async execute(ctx: StageContext, plan: StagePlan): Promise<StageResult> {
+    // Row 3, before a process is spawned. It lands in the ledger as a tool run,
+    // which is what the CLI's old pre-filter could not do: a stage filtered out
+    // before the engine saw it was invisible to doctor, to statistics and to the
+    // sidecar.
+    if (this.mutating && !ctx.authorised) {
+      const toolRuns = plan.toolIds.map((toolId) =>
+        skipped(toolId, join(ctx.stageDir, toolId), 'no-authorisation'),
+      )
+      const { outcome, verdict } = reduceStageOutcome(toolRuns.map((t) => t.outcome))
+      return { stage: ctx.stage, outcome, verdict, toolRuns }
+    }
+
     const limit = plan.policy === 'pick-one' ? 1 : FAN_OUT_LIMIT
 
     const toolRuns = await mapLimit(plan.toolIds, limit, async (toolId) => {
@@ -268,4 +310,9 @@ export class AdapterStageExecutor implements StageExecutor {
     const { outcome, verdict } = reduceStageOutcome(toolRuns.map((t) => t.outcome))
     return { stage: ctx.stage, outcome, verdict, toolRuns }
   }
+
+  prepareMutation = (ctx: StageContext): Promise<PendingMutation | null> => prepareFromSandbox(ctx)
+  applyMutation = (ctx: StageContext, pending: PendingMutation): Promise<void> =>
+    applyFromSandbox(ctx, pending)
+  discardMutation = (ctx: StageContext): Promise<void> => discardFromSandbox(ctx)
 }

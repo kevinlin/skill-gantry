@@ -207,6 +207,8 @@ describe('M2 exit criteria', () => {
         stages: ['optimise'],
         stageTools: { optimise: ['fake'] },
         mutationTimeoutMs: 60_000,
+        // The gate is reached only when the run is authorised (R12.4).
+        authorised: true,
         executorFactory: (stage) =>
           fakeExecutor(stage, {
             mutating: true,

@@ -1,4 +1,5 @@
 import type { ToolLock } from '../config/schema.js'
+import type { MutationSandbox } from '../isolation/types.js'
 import type {
   ErrorKind,
   Metrics,
@@ -8,6 +9,14 @@ import type {
   StageOutcome,
   ToolOutcome,
 } from '../types.js'
+
+/** R9.10: supplied explicitly, never inferred. */
+export interface ReleaseTarget {
+  /** A semver, or one of `major` / `minor` / `patch`. */
+  version: string
+  /** Free text prepended under the new changelog heading. */
+  notes?: string
+}
 
 export interface MutationScope {
   /** Repo-relative paths this stage may write. May include repo-root files. */
@@ -25,6 +34,8 @@ export interface StageContext {
   stage: Stage
   /** Absolute path to `<run>/NN-<stage>/`. */
   stageDir: string
+  /** `<workspace>/skillgantry/runs/<runId>` — where sandbox.json and the journal live. */
+  runDir: string
   selectedToolIds: readonly string[]
   lock: ToolLock
   env: NodeJS.ProcessEnv
@@ -33,6 +44,17 @@ export interface StageContext {
   timeoutOverridesMs: Readonly<Record<string, number>>
   onOutput: (toolId: string, stream: 'stdout' | 'stderr', chunk: string) => void
   signal?: AbortSignal
+  /**
+   * R5.2. For a mutating stage: true means the write may proceed once the diff
+   * has been shown. In the TUI it is always true and the gate prompts; headless
+   * it is `--yes`. False makes the stage `skipped` with `no-authorisation`.
+   */
+  authorised: boolean
+  /** Present only for a mutating stage, opened by the pipeline before any tool. */
+  sandbox?: MutationSandbox
+  releaseTarget?: ReleaseTarget
+  /** R10.3's override, off by default. */
+  allowDirty?: boolean
 }
 
 export interface ToolRunRecord {

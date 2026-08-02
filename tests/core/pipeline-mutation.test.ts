@@ -26,6 +26,9 @@ async function setup(): Promise<RunPipelineInput> {
     provenance: { baseUrlHost: null, models: {}, authTokenHash: null },
     artefactSizeCapBytes: 1024 * 1024,
     timeoutOverridesMs: {},
+    // The gate is reached only when the run is authorised (R12.4); these
+    // fixtures test the gate itself, not the authorisation check.
+    authorised: true,
   }
 }
 

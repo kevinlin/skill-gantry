@@ -14,7 +14,6 @@ import { needsSetup, startSetup, type SetupOptions } from './setup-command.js'
 import { startTui, type TuiOptions } from './tui-command.js'
 
 const STAGES: readonly Stage[] = ['validate', 'evaluate', 'security', 'optimise', 'release']
-const MUTATING: ReadonlySet<Stage> = new Set<Stage>(['optimise', 'release'])
 
 export interface CliDeps {
   home: string
@@ -109,30 +108,11 @@ export function buildProgram(deps: CliDeps): GantryProgram {
 
       for (const warning of env.warnings) deps.write(`warning: ${warning}`)
 
-      // R12.4: a mutating stage is skipped unless authorised.
-      const stages = requested.filter((s) => opts.yes || !MUTATING.has(s))
-      const skippedStages = requested.filter((s) => !stages.includes(s))
-
       const ledger = openLedger(deps.dbPath)
       try {
-        for (const stage of skippedStages) {
-          const event = {
-            type: 'stage:done',
-            stage,
-            outcome: 'skipped',
-            reason: 'no-authorisation',
-          }
-          deps.write(opts.json ? JSON.stringify(event) : `${stage}  skipped (needs --yes)`)
-        }
-
-        if (stages.length === 0) {
-          program.exitCode = 0
-          return
-        }
-
         const handle = runPipeline({
           skill,
-          stages,
+          stages: requested,
           trigger: 'cli',
           stageTools: config.stageTools,
           lock,
@@ -142,6 +122,10 @@ export function buildProgram(deps: CliDeps): GantryProgram {
           provenance: provenanceOf(env.vars),
           artefactSizeCapBytes: config.artefactSizeCapBytes,
           timeoutOverridesMs: config.timeoutOverridesMs,
+          // R12.4: a mutating stage is skipped unless authorised. The pipeline
+          // decides now, so the skip lands in the ledger and the sidecar
+          // instead of being filtered out before the engine ever saw it.
+          authorised: opts.yes === true,
         })
 
         for await (const event of handle.events) {

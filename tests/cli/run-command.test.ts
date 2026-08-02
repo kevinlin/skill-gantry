@@ -3,7 +3,7 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { buildProgram } from '../../src/cli/run-command.js'
-import { registerRepo, saveToolLock } from '../../src/core/config/config.js'
+import { loadConfig, registerRepo, saveConfig, saveToolLock } from '../../src/core/config/config.js'
 import { SKILL_MD, makeRepo } from '../helpers/tmp-repo.js'
 import { makeFakeTool } from '../helpers/fake-tool.js'
 
@@ -104,9 +104,19 @@ describe('skillgantry run', () => {
 
   it('skips a mutating stage without --yes', async () => {
     const h = await harness(SARIF([]))
+    // Optimise ships no adapter yet, so a tool has to be selected for the
+    // engine to have anything to report skipped — an unauthorised mutating
+    // stage never resolves its selection against the registry (R12.4), so
+    // this id need not be a real one.
+    const config = await loadConfig(h.home)
+    await saveConfig(h.home, {
+      ...config,
+      stageTools: { ...config.stageTools, optimise: ['fake-optimiser'] },
+    })
     await run(h.program, ['run', 'declawed', '--stage', 'optimise', '--json'])
     const events = h.out.map((line) => JSON.parse(line))
     const stageDone = events.find((e) => e.type === 'stage:done')
     expect(stageDone?.outcome).toBe('skipped')
+    expect(stageDone?.result.toolRuns[0]?.errorKind).toBe('no-authorisation')
   })
 })
