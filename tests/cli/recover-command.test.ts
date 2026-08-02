@@ -1,0 +1,80 @@
+import { describe, expect, it } from 'vitest'
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { buildProgram } from '../../src/cli/run-command.js'
+import { DEFAULT_CONFIG, registerRepo, saveConfig } from '../../src/core/config/config.js'
+import { writeSandboxRecord } from '../../src/core/isolation/record.js'
+import { workspacePath } from '../../src/core/discovery/discover.js'
+import { SKILL_MD_FULL, makeRepo } from '../helpers/tmp-repo.js'
+
+async function harness() {
+  const home = await mkdtemp(join(tmpdir(), 'sg-home-'))
+  const repo = await makeRepo({ files: { 'sk/SKILL.md': SKILL_MD_FULL('sk') } })
+  await saveConfig(home, DEFAULT_CONFIG)
+  await registerRepo(home, repo)
+
+  const ws = workspacePath(repo, 'sk', false)
+  const recordDir = join(ws, 'skillgantry', 'runs', 'run-a')
+  const snapshotDir = join(recordDir, 'snapshot-pre')
+  await mkdir(join(snapshotDir, 'sk'), { recursive: true })
+  await writeFile(join(snapshotDir, 'sk/SKILL.md'), SKILL_MD_FULL('sk'))
+  await writeSandboxRecord(recordDir, {
+    runId: 'run-a',
+    stage: 'optimise',
+    strategy: 'snapshot',
+    state: 'active',
+    scope: ['sk/SKILL.md'],
+    repoPath: repo,
+    skillId: `${join(repo).split('/').pop()}/sk`,
+    snapshotDir,
+    workRoot: repo,
+    preimages: [{ path: 'sk/SKILL.md', sha256: 'stale', mode: 33188 }],
+    openedAt: '2026-08-03T00:00:00.000Z',
+  })
+  await writeFile(join(repo, 'sk/SKILL.md'), 'half-written\n')
+
+  const out: string[] = []
+  const program = buildProgram({
+    home,
+    dbPath: join(home, 'gantry.db'),
+    write: (line) => out.push(line),
+  })
+  return { home, repo, out, program }
+}
+
+describe('skillgantry recover', () => {
+  it('lists an unresolved mutation and names the resolving flags', async () => {
+    const { out, program } = await harness()
+    await program.parseAsync(['node', 'skillgantry', 'recover'])
+    expect(out.join('\n')).toContain('run-a')
+    expect(out.join('\n')).toContain('--restore run-a')
+  })
+
+  it('restores on --restore and reports the paths', async () => {
+    const { repo, out, program } = await harness()
+    await program.parseAsync(['node', 'skillgantry', 'recover', '--restore', 'run-a'])
+    expect(await readFile(join(repo, 'sk/SKILL.md'), 'utf8')).toBe(SKILL_MD_FULL('sk'))
+    expect(out.join('\n')).toContain('sk/SKILL.md')
+  })
+
+  it('leaves the tree alone on --forget', async () => {
+    const { repo, program } = await harness()
+    await program.parseAsync(['node', 'skillgantry', 'recover', '--forget', 'run-a'])
+    expect(await readFile(join(repo, 'sk/SKILL.md'), 'utf8')).toBe('half-written\n')
+  })
+
+  it('says so when nothing is unresolved', async () => {
+    const { out, program } = await harness()
+    await program.parseAsync(['node', 'skillgantry', 'recover', '--forget', 'run-a'])
+    out.length = 0
+    await program.parseAsync(['node', 'skillgantry', 'recover'])
+    expect(out.join('\n')).toContain('no interrupted mutation')
+  })
+
+  it('emits one JSON document under --json', async () => {
+    const { out, program } = await harness()
+    await program.parseAsync(['node', 'skillgantry', 'recover', '--json'])
+    expect(JSON.parse(out[0] as string)).toMatchObject([{ record: { runId: 'run-a' } }])
+  })
+})

@@ -81,3 +81,18 @@ export {
   type SetupState,
   type SetupStateName,
 } from './tools/setup.js'
+export {
+  forgetInterrupted,
+  restoreInterrupted,
+  scanInterrupted,
+  type InterruptedMutation,
+} from './isolation/recover.js'
+export type {
+  ChangeEntry,
+  ChangeKind,
+  ChangeSet,
+  MutationSandbox,
+  Preimage,
+  SandboxRecord,
+  SandboxStrategy,
+} from './isolation/types.js'

@@ -9,6 +9,7 @@ import { runPipeline } from '../core/pipeline/run.js'
 import type { GantryConfig } from '../core/config/schema.js'
 import type { SkillRef, Stage } from '../core/types.js'
 import { runDoctor } from './doctor-command.js'
+import { detectInterrupted, formatInterrupted, runRecover } from './recover-command.js'
 import { needsSetup, startSetup, type SetupOptions } from './setup-command.js'
 import { startTui, type TuiOptions } from './tui-command.js'
 
@@ -76,6 +77,17 @@ function parseStages(raw: string): Stage[] {
   })
 }
 
+/**
+ * R10.10: startup detects and offers. It never blocks — an old marker the user
+ * has chosen to leave must not make the tool unusable — so the notice is a line
+ * per record and the refusal lives where a second mutation would be applied
+ * over an unrecovered first.
+ */
+async function noticeInterrupted(deps: CliDeps): Promise<void> {
+  const found = await detectInterrupted(deps.home).catch(() => [])
+  for (const line of formatInterrupted(found)) deps.write(`warning: ${line}`)
+}
+
 export function buildProgram(deps: CliDeps): GantryProgram {
   const program = new Command() as GantryProgram
   program.name('skillgantry').description('SkillOps orchestrator for skill maintainers')
@@ -88,6 +100,7 @@ export function buildProgram(deps: CliDeps): GantryProgram {
     .option('--json', 'emit newline-delimited JSON events')
     .option('--yes', 'authorise mutating stages')
     .action(async (selector: string, opts: { stage: string; json?: boolean; yes?: boolean }) => {
+      await noticeInterrupted(deps)
       const requested = parseStages(opts.stage)
       const config = await loadConfig(deps.home)
       const skill = await resolveSkill(config, selector)
@@ -172,6 +185,16 @@ export function buildProgram(deps: CliDeps): GantryProgram {
     })
 
   program
+    .command('recover')
+    .description('report or resolve a mutation interrupted by a crash')
+    .option('--restore <runId>', 'restore the working tree from the recorded pre-state')
+    .option('--forget <runId>', 'keep the tree as it stands and stop reporting the record')
+    .option('--json', 'emit one JSON document')
+    .action(async (opts: { restore?: string; forget?: string; json?: boolean }) => {
+      await runRecover(deps, opts)
+    })
+
+  program
     .option('--concurrency <n>', 'worker pool limit for this session', (value) => Number(value))
     .action(async (opts: { concurrency?: number }) => {
       // Commander runs this only when no subcommand matched. R3.6 calls this
@@ -180,6 +203,7 @@ export function buildProgram(deps: CliDeps): GantryProgram {
         await (deps.startSetup ?? startSetup)({ home: deps.home })
         return
       }
+      await noticeInterrupted(deps)
       const launch = deps.startTui ?? startTui
       await launch({
         home: deps.home,
