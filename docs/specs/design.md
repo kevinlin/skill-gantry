@@ -502,6 +502,7 @@ Evaluated in order; the first row that matches wins.
 | 1 | Tool not in the lock, or lock entry has no runnable `bin` | `skipped` | `not-installed` | no |
 | 2 | `credentials` unsatisfied by the environment | `skipped` | `no-credentials` | no |
 | 3 | Mutating stage reached without authorisation | `skipped` | `no-authorisation` | no |
+| 3b | Mutation apply aborted after authorisation (preimage drift, journal failure, sandbox open failure) | `errored` | `mutation-aborted` | no |
 | 4 | Cancelled (§11.4) | `errored` | `cancelled` | no |
 | 5 | Timeout fired, process tree killed | `errored` | `timeout` | no |
 | 6 | A declared artefact exceeds the size cap | `errored` | `artefact-too-large` | no |
@@ -515,6 +516,8 @@ Evaluated in order; the first row that matches wins.
 | 13 | Spawn itself failed (ENOENT, EACCES) | `errored` | `spawn` | no |
 
 Rows 7 and 8 are ordered so a missing report is classified before the parser is ever handed an empty map; revision 2 left this to whichever error the parser happened to throw. Row 11 is the rule that matters most in practice: a scanner exiting 1 with a clean report has passed, and the parse says so.
+
+Row 3b is the one row a *stage* rather than a tool produces. R10.11 aborts an apply when a target has drifted since the change set was built, and that is neither a tool failure nor a verdict about the skill: the tools ran and were understood, and then the write was refused. Without the row, `applyMutation` throwing propagated out of the pipeline and the run rejected, discarding the partial evidence R5.13 requires a cancelled or aborted run to keep.
 
 Only rows 10 to 12b feed issue reconciliation: the tool actually ran and its output was understood. Every other row leaves the ledger's issue states untouched, which is the fail-safe that stops a crashed or absent scanner from closing everything it once found.
 
@@ -879,6 +882,8 @@ Three holes in revision 2's recovery model, all of them windows before `apply()`
 }
 ```
 
+**Where startup is.** `src/cli/` detects on every launch — before the Work screen, before a headless run — and prints one line per unresolved record naming `skillgantry recover`. It does not block the launch: an old marker the user has decided to leave alone must not make the tool unusable. What does block is a *new* mutating run against a skill that holds an unresolved record, which refuses, because applying a second mutation over an unrecovered first is how a compensating rollback stops being able to compensate.
+
 On launch SkillGantry scans registered workspaces for records still in `state: active`, reports each as an interrupted mutation, and offers restore from `snapshotDir`. The git strategy writes the same record; its recovery is cheaper, since the working tree was never touched and recovery is a worktree prune.
 
 ### 12.3 Journalled apply
@@ -937,6 +942,8 @@ Retirement writes `metadata.deprecated: true` into `SKILL.md` frontmatter throug
 - Release preconditions read the **frontmatter of the release candidate**, never the ledger, so a lagging cache can neither block a legitimate release nor permit a forbidden one.
 - Reversal is one file write; the ledger follows on discovery.
 - A mismatch is not an error state. It is reported in `doctor` as `lifecycle-drift` and resolved by reconciling to the file.
+
+**Invocation.** `skillgantry retire <skill> [--undo] [--superseded-by <id>] [--yes]`. Retirement is not one of the five stages, so it does not run through the pipeline; it runs the same declared-scope, diff-preview, confirmation and journal path directly, with its sandbox and journal under `<workspacePath>/skillgantry/retire/<id>/`. That directory shape is deliberate: startup recovery scans for `sandbox.json` under the workspace, so an interrupted retirement is recovered by the same code as an interrupted release, with no special case.
 
 The cache still earns its place: the Issues and Dashboard screens filter deprecated skills across every registered repo without reading 76 files.
 
@@ -1002,7 +1009,9 @@ Discoverability is layered rather than crammed into the header: a five-key foote
 skillgantry run <skill> [--repo <path>] --stage validate,evaluate,security
                         [--json] [--yes] [--concurrency N]
 skillgantry doctor [--json]
-skillgantry release <skill> --version <semver|major|minor|patch> [--yes]
+skillgantry release <skill> --version <semver|major|minor|patch> [--yes] [--json]
+skillgantry retire <skill> [--undo] [--superseded-by <id>] [--yes] [--json]
+skillgantry recover [--restore <runId>] [--forget <runId>] [--json]
 ```
 
 Consumes the same event stream, rendering line output or newline-delimited JSON. Exits non-zero when any executed stage outcome is not `passed`. Mutating stages are skipped without `--yes`; with it, the diff is emitted before the write.
@@ -1026,8 +1035,9 @@ Consumes the same event stream, rendering line output or newline-delimited JSON.
 | `runner` | Fixture process that **spawns a grandchild**, then times out | No surviving descendant after the timeout fires — R5.9 |
 | Redaction | Fixture tool echoing a secret to stdout, to stderr, and split across chunk boundaries | Streams redacted; `stage.json` records `redacted: false` for the native artefact |
 | Fan-out collision | Two fixture tools both writing `findings.sarif` | Separate tool directories; both survive |
-| `isolation` | Git and non-git fixtures; add, delete, rename, mode change, binary file; crash between journal and rename; crash **during the mutating tool**; crash while awaiting approval; dirty override; a concurrent user edit between preview and apply | Change sets complete; compensating rollback works; `sandbox.json` drives startup restore; `preimage-drift` aborts |
-| Release | Git and non-git transactions changing `SKILL.md`, root `versions.json`, changelog and archive; apply, discard, crash recovery; digest mismatch rejection; missing-manifest path; **packaging failure and installability failure** | The one stage that writes to the user's repo; a failed gate leaves no repo-root archive and no live file change |
+| `isolation` | Git and non-git fixtures, each exercising all five change kinds (add, delete, rename, mode change, binary file); crash during the mutating tool; crash while awaiting approval; dirty override seeding; a concurrent user edit between preview and apply; an incomplete journal replay | Change sets complete; compensating rollback works; `sandbox.json` drives startup restore; `preimage-drift` aborts |
+| Release | Git and non-git transactions changing `SKILL.md`, root `versions.json`, changelog and archive; crash during the mutating tool, crash while awaiting approval, and an incomplete journal replay on the release path; digest mismatch rejection; missing-manifest path; packaging failure and installability failure | The one stage that writes to the user's repo; a failed gate leaves no repo-root archive and no live file change |
+| Mutation preflight | `git`, `zip`, `unzip` absent one at a time | A missing command fails before `sandbox.json` is written, naming the command |
 | Concurrency | Two runs finalising one skill simultaneously, including inverse start/finish order; a truncated final index line; a lock whose holder died | No lost index line, `latest` by greatest run id, no run-id collision, no permanently held lock |
 | `discovery` | Fixture trees with the `*-workspace/` snapshot trap, a repo-root skill, and a symlinked repo path | R2.3, R2.4, §4.1 canonicalisation |
 | Candidate manifest | A skill directory legitimately named `snapshot-pre/`; an internal symlink; a symlink escaping the candidate root; a prior release archive at the candidate root | Only exact owned paths excluded; links hashed not followed; escape rejected — §4.4 |
@@ -1069,7 +1079,7 @@ The mapping is checkable rather than asserted: every `*Satisfies …*` label in 
 | M2 | `queue`, `src/tui/` Work screen with the queue panel |
 | M3 | `tools` completed: catalogue, `npm-prefix`, `gh-release`, presets, setup wizard, doctor |
 | M4 | The three remaining selectable adapters and their parsers, the shared `v1alpha1` parser, the rule-class map and its versioned migration, fan-out policy, cross-tool merge |
-| M5 | `isolation`, `release`, retirement, mutating-stage gate |
+| M5 | `isolation`, `release`, `stages/mutation.ts` + `stages/release-stage.ts`, `ledger/gates.ts` + `ledger/lifecycle.ts`, retirement, the mutating-stage gate, the TUI review pane |
 | M6 | Dashboard and Issues screens, statistics queries |
 
 ## 18. What changed in revision 2

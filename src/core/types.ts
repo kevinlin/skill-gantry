@@ -39,6 +39,12 @@ export type ErrorKind =
   | 'no-credentials'
   | 'no-authorisation'
   | 'artefact-too-large'
+  /**
+   * Row 3b. A stage, not a tool: the change set was built and authorised, and
+   * then the write was refused — by preimage drift (R10.11), by a journal that
+   * could not be written, or by a sandbox that could not be opened.
+   */
+  | 'mutation-aborted'
 
 export const KNOWN_RULE_CLASSES = [
   'prompt-injection',
