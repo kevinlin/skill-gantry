@@ -19,9 +19,11 @@ if [ "$actual" != "$PIN_SKILLSPECTOR" ]; then
   exit 1
 fi
 
-"$BIN" scan "$REPO/declawed" --no-llm --format sarif \
-  --output "$OUT/skillspector-declawed.sarif"
-echo "captured $OUT/skillspector-declawed.sarif"
+for skill in declawed architecture-diagram; do
+  "$BIN" scan "$REPO/$skill" --no-llm --format sarif \
+    --output "$OUT/skillspector-$skill.sarif"
+  echo "captured $OUT/skillspector-$skill.sarif"
+done
 
 PIN_SKILL_LINT="0.2.0"
 LINT_BIN="${SKILL_LINT_BIN:-skill-lint}"

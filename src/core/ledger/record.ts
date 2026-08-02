@@ -68,6 +68,10 @@ export function recordRun(ledger: Ledger, input: RunRecordInput): RunDelta {
     )
 
     const reconcileInput: ReconcileToolRun[] = []
+    // Across the whole run, not per tool run: under fan-out two tools reporting
+    // one issue would otherwise leave the count at whichever finished last, so
+    // the number would depend on scheduling. Design §10.3.
+    const occurrencesThisRun = new Map<string, number>()
 
     for (const stage of input.stages) {
       db.prepare(
@@ -149,6 +153,7 @@ export function recordRun(ledger: Ledger, input: RunRecordInput): RunDelta {
 
           const ordinal = ordinalByFp.get(fp) ?? 0
           ordinalByFp.set(fp, ordinal + 1)
+          occurrencesThisRun.set(fp, (occurrencesThisRun.get(fp) ?? 0) + 1)
 
           db.prepare(
             `insert into issue_detections
@@ -165,10 +170,6 @@ export function recordRun(ledger: Ledger, input: RunRecordInput): RunDelta {
           )
         }
 
-        for (const [fp, count] of ordinalByFp) {
-          db.prepare('update issues set occurrence_count = ? where fingerprint = ?').run(count, fp)
-        }
-
         reconcileInput.push({
           toolRunId,
           toolId: run.toolId,
@@ -176,6 +177,10 @@ export function recordRun(ledger: Ledger, input: RunRecordInput): RunDelta {
           reported,
         })
       }
+    }
+
+    for (const [fp, count] of occurrencesThisRun) {
+      db.prepare('update issues set occurrence_count = ? where fingerprint = ?').run(count, fp)
     }
 
     delta.closed = reconcile(db, skill.id, input.runId, reconcileInput)

@@ -1,0 +1,231 @@
+{
+  "version": "2.1.0",
+  "$schema": "https://schemastore.azurewebsites.net/schemas/json/sarif-2.1.0-rtm.4.json",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "skillspector",
+          "version": "2.5.1",
+          "rules": [
+            {
+              "id": "AST4",
+              "shortDescription": {
+                "text": "subprocess module call"
+              }
+            },
+            {
+              "id": "LP3",
+              "shortDescription": {
+                "text": "Skill has no declared permissions but code capabilities were detected: env, file_read, file_write, shell."
+              }
+            },
+            {
+              "id": "P2",
+              "shortDescription": {
+                "text": "Hidden Instructions"
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "AST4",
+          "message": {
+            "text": "subprocess module call"
+          },
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "scripts/html_to_png.py"
+                },
+                "region": {
+                  "startLine": 135,
+                  "endLine": 136
+                }
+              }
+            }
+          ],
+          "properties": {
+            "findingId": "finding-4fa661dd24fe47bbbeb1015d4746bb65",
+            "severity": "MEDIUM",
+            "category": "Dangerous Code Execution",
+            "pattern": "subprocess module call",
+            "confidence": 0.7,
+            "finding": "    proc = subprocess.run([binary, f\"-s={session}\", *args],\n                          capture_output=True, text=True, timeout=timeout)",
+            "explanation": "subprocess module calls execute external commands. Without careful input validation, this enables command injection.",
+            "remediation": "Use subprocess.run() with shell=False and an explicit argument list. Validate all inputs and avoid passing user-controlled data to commands.",
+            "code_snippet": "\n\ndef _pw_cli(binary, session, args, timeout=90) -> str:\n    proc = subprocess.run([binary, f\"-s={session}\", *args],\n                          capture_output=True, text=True, timeout=timeout)\n    combined = proc.stdout + proc.stderr\n    if \"### Error\" in combined:",
+            "tags": [
+              "Dangerous Code Execution"
+            ]
+          }
+        },
+        {
+          "ruleId": "AST4",
+          "message": {
+            "text": "subprocess module call"
+          },
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "scripts/html_to_png.py"
+                },
+                "region": {
+                  "startLine": 223,
+                  "endLine": 223
+                }
+              }
+            }
+          ],
+          "properties": {
+            "findingId": "finding-19224c70be934e279084f0c2dee86892",
+            "severity": "MEDIUM",
+            "category": "Dangerous Code Execution",
+            "pattern": "subprocess module call",
+            "confidence": 0.7,
+            "finding": "        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=90)",
+            "explanation": "subprocess module calls execute external commands. Without careful input validation, this enables command injection.",
+            "remediation": "Use subprocess.run() with shell=False and an explicit argument list. Validate all inputs and avoid passing user-controlled data to commands.",
+            "code_snippet": "            \"--virtual-time-budget=1500\",\n            f\"--screenshot={out}\", pathlib.Path(tmp).as_uri(),\n        ]\n        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=90)\n        if not out.exists():\n            sys.stderr.write(proc.stderr)\n            raise RuntimeError(\"browser did not produce a screenshot\")",
+            "tags": [
+              "Dangerous Code Execution"
+            ]
+          }
+        },
+        {
+          "ruleId": "LP3",
+          "message": {
+            "text": "Skill has no declared permissions but code capabilities were detected: env, file_read, file_write, shell."
+          },
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "SKILL.md"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "properties": {
+            "findingId": "finding-feabc383f7b74575a3a73d8ef3e815a9",
+            "severity": "MEDIUM",
+            "category": "MCP Least Privilege",
+            "confidence": 0.7,
+            "explanation": "Without declared permissions the skill's intent is opaque and cannot be validated.",
+            "remediation": "Add a 'permissions' field to SKILL.md listing the capabilities this skill requires.",
+            "tags": [
+              "ASI02"
+            ]
+          }
+        },
+        {
+          "ruleId": "P2",
+          "message": {
+            "text": "Hidden Instructions"
+          },
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "layouts/connectors.md"
+                },
+                "region": {
+                  "startLine": 66
+                }
+              }
+            }
+          ],
+          "properties": {
+            "findingId": "finding-43ccd527bc9d4fecbb471b87728b204f",
+            "severity": "HIGH",
+            "category": "Prompt Injection",
+            "pattern": "Hidden Instructions",
+            "confidence": 0.7,
+            "finding": "<!-- SVG Connector Overlay -->\n    <svg style=\"position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible;\">\n      <defs>\n        <marker id=\"arrowhead\" ma",
+            "explanation": "Hidden instructions were detected in comments or invisible text. These could contain malicious directives. Manual review is recommended.",
+            "remediation": "Audit all comments and invisible characters. Remove any instructions that direct the agent to perform unauthorized actions. Use plain, reviewable content.",
+            "code_snippet": "        <div class=\"arch-box\" id=\"s3\">Storage<br><small>S3</small></div>\n      </div>\n    </div>\n    <!-- SVG Connector Overlay -->\n    <svg style=\"position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible;\">\n      <defs>\n        <marker id=\"arrowhead\" markerWidth=\"8\" markerHeight=\"6\" refX=\"8\" refY=\"3\" orient=\"auto\">",
+            "tags": [
+              "Prompt Injection"
+            ]
+          }
+        }
+      ],
+      "invocations": [
+        {
+          "executionSuccessful": true,
+          "toolExecutionNotifications": [
+            {
+              "message": {
+                "text": "Hidden file is excluded from the configured scan scope."
+              },
+              "level": "note",
+              "locations": [
+                {
+                  "physicalLocation": {
+                    "artifactLocation": {
+                      "uri": ".DS_Store"
+                    }
+                  }
+                }
+              ],
+              "properties": {
+                "outcome": "out_of_scope",
+                "phase": "discovery",
+                "reasonCode": "hidden_file",
+                "fatal": false
+              }
+            },
+            {
+              "message": {
+                "text": "Analyzer was disabled by the requested configuration."
+              },
+              "level": "warning",
+              "properties": {
+                "kind": "inspection_limitation"
+              }
+            },
+            {
+              "message": {
+                "text": "Analyzer was disabled by the requested configuration."
+              },
+              "level": "warning",
+              "properties": {
+                "kind": "inspection_limitation"
+              }
+            },
+            {
+              "message": {
+                "text": "Analyzer was disabled by the requested configuration."
+              },
+              "level": "warning",
+              "properties": {
+                "kind": "inspection_limitation"
+              }
+            },
+            {
+              "message": {
+                "text": "Analyzer was disabled by the requested configuration."
+              },
+              "level": "warning",
+              "properties": {
+                "kind": "inspection_limitation"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
