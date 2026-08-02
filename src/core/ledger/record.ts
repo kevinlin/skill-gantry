@@ -47,6 +47,12 @@ export function recordRun(ledger: Ledger, input: RunRecordInput): RunDelta {
          current_version = excluded.current_version,
          -- The file is the authority, and this run just read it (R1.6).
          lifecycle_state = excluded.lifecycle_state,
+         -- Mirrors syncLifecycle's own transition: stamp on first observed
+         -- deprecation, keep that stamp on every later run that still finds
+         -- it deprecated, clear it the moment the file reports active again.
+         deprecated_at = case when excluded.lifecycle_state = 'deprecated'
+                              then coalesce(deprecated_at, datetime('now'))
+                              else null end,
          superseded_by = excluded.superseded_by,
          last_seen = datetime('now')`,
     ).run(
