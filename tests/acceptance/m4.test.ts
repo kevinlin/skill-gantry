@@ -1,9 +1,15 @@
 import { describe, expect, it, vi } from 'vitest'
-import { mkdtemp, readFile, readdir } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { buildProgram } from '../../src/cli/run-command.js'
-import { DEFAULT_CONFIG, registerRepo, saveConfig, saveToolLock } from '../../src/core/config/config.js'
+import {
+  DEFAULT_CONFIG,
+  loadConfig,
+  registerRepo,
+  saveConfig,
+  saveToolLock,
+} from '../../src/core/config/config.js'
 import { listAdapters } from '../../src/core/adapters/registry.js'
 import { RULE_CLASS_MAP_VERSION } from '../../src/core/adapters/rule-classes.js'
 import { openLedger } from '../../src/core/ledger/db.js'
@@ -85,12 +91,17 @@ async function harness(): Promise<Harness> {
   await registerRepo(home, repoPath)
 
   const sarif = join(process.cwd(), 'tests/fixtures/sarif/skillspector-architecture-diagram.sarif')
+  const scannerSarif = join(
+    process.cwd(),
+    'tests/fixtures/sarif/skill-scanner-insight-profile.sarif',
+  )
   const lintJson = join(process.cwd(), 'tests/fixtures/skill-lint/architecture-diagram.json')
 
-  // skillspector's manifest ends `--output {toolDir}/findings.sarif`; skill-lint
-  // declares no artefact and reports on stdout.
-  // $7 is `{toolDir}/findings.sarif`, the last of the manifest's seven argv.
+  // Each manifest ends `--output {toolDir}/findings.sarif`, at a different argv
+  // position: $7 for skillspector, $8 for skill-scanner. skill-lint declares no
+  // artefact and reports on stdout.
   const spectorBin = await makeFakeTool('skillspector', `cp ${sarif} "$7"; exit 1`)
+  const scannerBin = await makeFakeTool('skill-scanner', `cp ${scannerSarif} "$8"; exit 1`)
   const lintBin = await makeFakeTool('skill-lint', `cat ${lintJson}; exit 2`)
 
   await saveToolLock(home, {
@@ -98,9 +109,16 @@ async function harness(): Promise<Harness> {
     tools: {
       skillspector: lockEntry(spectorBin, '2.5.1'),
       'skill-lint': lockEntry(lintBin, '0.2.0'),
+      'skill-scanner': lockEntry(scannerBin, '0.3.3'),
     },
   })
-  const config = await import('../../src/core/config/config.js').then((m) => m.loadConfig(home))
+  // skill-scanner declares a one-of credential requirement, so without these it
+  // would be skipped rather than run. Placeholders: the shim reads neither.
+  await writeFile(join(home, '.env'), 'SKILLSCAN_API_KEY=placeholder\nSKILLSCAN_MODEL=fixture\n', {
+    mode: 0o600,
+  })
+
+  const config = await loadConfig(home)
   await saveConfig(home, {
     ...DEFAULT_CONFIG,
     repos: config.repos,
@@ -237,6 +255,43 @@ describe('M4 exit criteria', () => {
     expect(sarif).toContain('AST4')
   })
 
+  it('two tools writing findings.sarif in one fan-out stage each keep their own file', async () => {
+    const h = await harness()
+    // Both security tools selected, both emitting a file of the same name into
+    // their own artefact directory. skill-scanner needs a credential to run at
+    // all, so the run also proves the one-of requirement is satisfiable.
+    await saveConfig(h.home, {
+      ...(await loadConfig(h.home)),
+      stageTools: {
+        validate: [],
+        evaluate: [],
+        security: ['skillspector', 'skill-scanner'],
+        optimise: [],
+      },
+    })
+    await h.exec(['run', SKILL, '--stage', 'security', '--json'])
+
+    const stageDir = join(await runDirOf(h.repoPath), '03-security')
+    for (const tool of ['skillspector', 'skill-scanner']) {
+      const sarif = await readFile(join(stageDir, tool, 'findings.sarif'), 'utf8')
+      expect(sarif.length).toBeGreaterThan(0)
+    }
+
+    const stageJson = JSON.parse(await readFile(join(stageDir, 'stage.json'), 'utf8')) as {
+      toolRuns: Array<{ toolId: string; artefactDir: string; outcome: string }>
+    }
+    expect(stageJson.toolRuns.map((t) => t.toolId).sort()).toEqual([
+      'skill-scanner',
+      'skillspector',
+    ])
+    for (const run of stageJson.toolRuns) {
+      // Suffix, not the whole path: the recorded directory is canonicalised, and
+      // on macOS the temp root resolves through /private.
+      expect(run.artefactDir.endsWith(join('03-security', run.toolId))).toBe(true)
+      expect(run.outcome).toBe('failed')
+    }
+  })
+
   it('the merged issue closes only once both detectors have run clean, in either finish order', () => {
     for (const order of [
       ['skill-lint', 'skillspector'],
@@ -346,7 +401,9 @@ describe('M4 exit criteria', () => {
     // read here, by the test; the parsers receive bytes.
     const fixtures: Record<string, Record<string, string>> = {
       skillspector: { 'findings.sarif': 'tests/fixtures/sarif/skillspector-declawed.sarif' },
-      'skill-scanner': { 'findings.sarif': 'tests/fixtures/sarif/skill-scanner-declawed.sarif' },
+      'skill-scanner': {
+        'findings.sarif': 'tests/fixtures/sarif/skill-scanner-insight-profile.sarif',
+      },
       'skill-up': {
         'iteration-1/report.json': 'tests/fixtures/skill-up/declawed-iteration-1.report.json',
       },

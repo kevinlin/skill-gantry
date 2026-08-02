@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { installAndLock, installTool, toolRoot, verifyTool } from '../../src/core/tools/install.js'
 import { loadToolLock } from '../../src/core/config/config.js'
 import { CATALOGUE, catalogueEntry } from '../../src/core/tools/catalogue.js'
+import { getAdapter } from '../../src/core/adapters/registry.js'
 
 const home = async (): Promise<string> => mkdtemp(join(tmpdir(), 'sg-tools-'))
 
@@ -60,6 +61,22 @@ describe('installAndLock', () => {
       installAndLock(h, { ...SPEC, pin: 'v0.0.0-does-not-exist' }, ['--version']),
     ).rejects.toThrow(/install failed/)
   }, 300_000)
+})
+
+// Offline: it reads the catalogue and the registry, nothing else.
+describe('catalogue and adapter registry agree', () => {
+  it('gives every stage-selectable catalogued tool an adapter — R3.5b', () => {
+    for (const spec of CATALOGUE) {
+      const adapter = getAdapter(spec.id)
+      if (spec.stage === null) {
+        // The release installer is invoked by a stage, selected by none, so an
+        // adapter would make it reachable by AdapterStageExecutor.plan().
+        expect(adapter, `${spec.id} must not have an adapter`).toBeUndefined()
+      } else {
+        expect(adapter, `${spec.id} has no adapter`).toBeDefined()
+      }
+    }
+  })
 })
 
 describe('installTool against real indexes', () => {
