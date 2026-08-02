@@ -1,6 +1,7 @@
 import { chmod, copyFile, lstat, mkdir, readFile, readdir, rm, stat, symlink, readlink } from 'node:fs/promises'
-import { dirname, isAbsolute, join, normalize, relative, sep } from 'node:path'
+import { dirname, isAbsolute, join, normalize, relative, resolve, sep } from 'node:path'
 import type { SkillRef } from '../types.js'
+import { type CandidateEntry, candidateManifest } from '../discovery/candidate.js'
 import { defaultExec } from '../tools/exec.js'
 import { unifiedDiffFor } from './diff.js'
 import { type SandboxInput, preimageOf } from './git-worktree.js'
@@ -19,19 +20,103 @@ const looksBinary = (bytes: Buffer): boolean => bytes.subarray(0, 8192).includes
 const posix = (p: string): string => p.split(sep).join('/')
 
 /**
- * The workspace path relative to the repo root, repo-root-skill or not: for a
- * repo-root skill it sits inside the repo being scoped, and the run directory
- * holding the snapshot being written lives inside it. Without this exclusion a
- * scope of "." would copy the snapshot into itself — R6.8's failure mode.
+ * What `candidateManifest` allows for one skill, reshaped for scope handling:
+ * repo-root-relative paths (scope's own coordinate system) mapped to the
+ * entry the manifest walk found there. Building this calls the manifest's
+ * own walk, so a symlink inside the candidate root that escapes it throws
+ * `candidate-escapes-root` here too — R2.10 is enforced once, in the one
+ * place that already enforces it for every other consumer, not re-derived.
  */
-function excludedRoot(skill: SkillRef): string {
-  return posix(relative(skill.repo.path, skill.workspacePath))
+interface CandidatePolicy {
+  /** Repo-root-relative candidate root; '' for a repo-root skill. */
+  root: string
+  allowed: Map<string, CandidateEntry>
+}
+
+async function candidatePolicyFor(skill: SkillRef): Promise<CandidatePolicy> {
+  const manifest = await candidateManifest(skill)
+  const root = skill.relPath === '.' ? '' : skill.relPath
+  const allowed = new Map<string, CandidateEntry>()
+  for (const entry of manifest.entries) {
+    allowed.set(root === '' ? entry.relPath : `${root}/${entry.relPath}`, entry)
+  }
+  return { root, allowed }
+}
+
+const underCandidateRoot = (relPath: string, root: string): boolean =>
+  root === '' || relPath === root || relPath.startsWith(`${root}/`)
+
+/** A symlink whose target resolves outside `root` is rejected, never followed. */
+function assertNoEscape(root: string, source: string, target: string, relPath: string): void {
+  const resolved = resolve(dirname(source), target)
+  const inside = resolved === root || resolved.startsWith(root + sep)
+  if (!inside) throw new Error(`candidate-escapes-root: ${relPath} -> ${target}`)
+}
+
+async function materialiseEntry(
+  liveRoot: string,
+  relPath: string,
+  destRoot: string,
+  entry: CandidateEntry,
+): Promise<void> {
+  const dest = join(destRoot, relPath)
+  await mkdir(dirname(dest), { recursive: true })
+  if (entry.kind === 'symlink') {
+    // The manifest walk already rejected an escaping target; recreate the
+    // link itself rather than the bytes it points at.
+    await symlink(entry.target, dest)
+    return
+  }
+  await copyFile(join(liveRoot, relPath), dest)
+  if (entry.exec) await chmod(dest, 0o755)
+}
+
+/**
+ * Everything below `liveRoot`'s scope path that the manifest excludes:
+ * the sidecar workspace, `.gitignore` on a repo-root skill, and a prior
+ * release archive. Duplicating that list here is exactly what R6.8's bug
+ * was — an ad hoc exclusion narrower than the manifest's real one — so this
+ * routes through `candidatePolicyFor` instead of re-deriving it.
+ */
+async function copyScopeEntry(
+  liveRoot: string,
+  relPath: string,
+  destRoot: string,
+  policy: CandidatePolicy,
+  fallbackExcluded: string,
+): Promise<void> {
+  if (underCandidateRoot(relPath, policy.root)) {
+    const exact = policy.allowed.get(relPath)
+    if (exact) {
+      await materialiseEntry(liveRoot, relPath, destRoot, exact)
+      return
+    }
+    // Not a single manifest entry: either a directory scope entry (copy
+    // every allowed path beneath it — '.' means the whole candidate root)
+    // or a path the manifest excludes or that does not exist yet — both of
+    // which are silently skipped, correct for a not-yet-created path
+    // (release's CHANGELOG.md) and correct for an excluded one (the
+    // workspace, an old archive).
+    const prefix = relPath === '.' ? '' : `${relPath}/`
+    for (const [rel, entry] of policy.allowed) {
+      if (rel.startsWith(prefix)) await materialiseEntry(liveRoot, rel, destRoot, entry)
+    }
+    return
+  }
+  // Outside the skill's candidate root: a repo-root manifest file such as
+  // `versions.json` is the case R10.1 names. `candidateManifest`'s root is
+  // the skill directory, so it genuinely cannot speak for a path out here.
+  // The only exclusion that still applies is the workspace directory
+  // itself (R6.8's actual failure mode, reachable only when a repo-root
+  // skill's scope spans the whole repo), and the same never-follow-outside
+  // check the manifest gives paths inside it.
+  await copyRaw(liveRoot, relPath, destRoot, fallbackExcluded)
 }
 
 const isExcluded = (relPath: string, excluded: string): boolean =>
-  relPath === excluded || relPath.startsWith(`${excluded}/`)
+  excluded !== '' && (relPath === excluded || relPath.startsWith(`${excluded}/`))
 
-async function copyInto(
+async function copyRaw(
   liveRoot: string,
   relPath: string,
   destRoot: string,
@@ -43,26 +128,19 @@ async function copyInto(
   try {
     info = await lstat(source)
   } catch {
-    // A scope path need not exist: release declares CHANGELOG.md and the
-    // archive, and neither exists before the first release.
     return
   }
   const dest = join(destRoot, relPath)
   await mkdir(dirname(dest), { recursive: true })
   if (info.isSymbolicLink()) {
-    // R2.10 holds in every consumer of the manifest, snapshots included.
-    await symlink(await readlink(source), dest)
+    const target = await readlink(source)
+    assertNoEscape(liveRoot, source, target, relPath)
+    await symlink(target, dest)
     return
   }
   if (info.isDirectory()) {
-    // A plain recursive `cp` refuses outright when the destination sits
-    // inside the source tree — which it does for a repo-root scope, since
-    // the run directory holding this snapshot lives under the workspace
-    // this walk would otherwise descend into. Copying file-by-file through
-    // the already-exclusion-aware `expand` sidesteps that check entirely
-    // rather than working around it.
-    for (const rel of await expand(liveRoot, relPath, excluded)) {
-      await copyInto(liveRoot, rel, destRoot, excluded)
+    for (const rel of await expandRaw(liveRoot, relPath, excluded)) {
+      await copyRaw(liveRoot, rel, destRoot, excluded)
     }
     return
   }
@@ -70,8 +148,8 @@ async function copyInto(
   await chmod(dest, info.mode & 0o7777)
 }
 
-/** Every file under a scope path, as repo-relative paths. */
-async function expand(root: string, relPath: string, excluded: string): Promise<string[]> {
+/** Every file under a scope path outside the candidate root, repo-relative. */
+async function expandRaw(root: string, relPath: string, excluded: string): Promise<string[]> {
   if (isExcluded(relPath, excluded)) return []
   let info
   try {
@@ -91,13 +169,25 @@ async function expand(root: string, relPath: string, excluded: string): Promise<
   return out
 }
 
+/**
+ * Every file under a scope path, repo-relative, for change detection. This is
+ * deliberately not manifest-filtered: an added release archive is exactly the
+ * kind of change R10.8 requires the change set to represent, even though the
+ * manifest excludes an *existing* archive from candidacy. Only the workspace
+ * is excluded here, so live sidecar writes are never mistaken for a change.
+ */
+async function expand(root: string, relPath: string, excluded: string): Promise<string[]> {
+  return expandRaw(root, relPath, excluded)
+}
+
 export async function openSnapshotSandbox(input: SnapshotInput): Promise<MutationSandbox> {
   const exec = input.exec ?? defaultExec
   const liveRoot = input.skill.repo.path
   const scope = [...input.scope]
-  const excluded = excludedRoot(input.skill)
+  const excluded = posix(relative(liveRoot, input.skill.workspacePath))
+  const policy = await candidatePolicyFor(input.skill)
 
-  for (const relPath of scope) await copyInto(liveRoot, relPath, input.snapshotDir, excluded)
+  for (const relPath of scope) await copyScopeEntry(liveRoot, relPath, input.snapshotDir, policy, excluded)
 
   const preimages: Preimage[] = []
   for (const relPath of scope) preimages.push(await preimageOf(liveRoot, relPath))
@@ -116,7 +206,7 @@ export async function openSnapshotSandbox(input: SnapshotInput): Promise<Mutatio
     openedAt: new Date().toISOString(),
   })
 
-  const resolve = (repoRelPath: string): string => {
+  const resolveFn = (repoRelPath: string): string => {
     const normalised = normalize(repoRelPath)
     if (isAbsolute(normalised) || normalised === '..' || normalised.startsWith(`..${sep}`)) {
       throw new Error(`scope-escapes-root: ${repoRelPath}`)
@@ -202,7 +292,7 @@ export async function openSnapshotSandbox(input: SnapshotInput): Promise<Mutatio
   return {
     strategy: 'snapshot',
     workRoot: liveRoot,
-    resolve,
+    resolve: resolveFn,
     changeSet,
     apply: async (change) => {
       // The tool already wrote the live tree, so there is nothing to move. The
@@ -213,7 +303,7 @@ export async function openSnapshotSandbox(input: SnapshotInput): Promise<Mutatio
       await markSandboxRecord(input.recordDir, 'applied')
     },
     discard: async () => {
-      await restoreSnapshot(input.snapshotDir, liveRoot, scope, excluded)
+      await restoreSnapshot(input.snapshotDir, input.skill, scope)
       await markSandboxRecord(input.recordDir, 'discarded')
     },
     // The snapshot is run evidence under the sidecar, so it outlives the
@@ -222,13 +312,21 @@ export async function openSnapshotSandbox(input: SnapshotInput): Promise<Mutatio
   }
 }
 
-/** Shared with startup recovery, which restores from the same directory. */
+/**
+ * Shared with startup recovery, which restores from the same directory. Takes
+ * the `SkillRef` rather than a precomputed exclusion string: a prior revision
+ * defaulted that string to `''` (exclude nothing), which is exactly the R6.8
+ * bug this function exists to avoid — a repo-root restore that deletes its
+ * own `sandbox.json` mid-restore because nothing told it not to. Requiring
+ * the skill means a caller cannot omit the computation, only redo it.
+ */
 export async function restoreSnapshot(
   snapshotDir: string,
-  liveRoot: string,
+  skill: SkillRef,
   scope: readonly string[],
-  excluded = '',
 ): Promise<void> {
+  const liveRoot = skill.repo.path
+  const excluded = posix(relative(liveRoot, skill.workspacePath))
   for (const relPath of scope) {
     const live = [...new Set(await expand(liveRoot, relPath, excluded))]
     const saved = new Set(await expand(snapshotDir, relPath, excluded))

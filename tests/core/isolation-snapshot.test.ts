@@ -8,7 +8,7 @@ import { ROOT_WORKSPACE_DIR, workspacePath } from '../../src/core/discovery/disc
 import type { SkillRef } from '../../src/core/types.js'
 import { SKILL_MD_FULL, makeRepo } from '../helpers/tmp-repo.js'
 
-const SCOPE = ['sk/SKILL.md', 'sk/CHANGELOG.md', 'sk/old.txt', 'sk/new.txt', 'sk/run.sh']
+const SCOPE = ['sk/SKILL.md', 'sk/CHANGELOG.md', 'sk/old.txt', 'sk/new.txt', 'sk/run.sh', 'sk/gone.txt']
 
 async function open(scope: readonly string[] = SCOPE) {
   const repo = await makeRepo({
@@ -16,6 +16,7 @@ async function open(scope: readonly string[] = SCOPE) {
       'sk/SKILL.md': SKILL_MD_FULL('sk'),
       'sk/old.txt': 'old\n',
       'sk/run.sh': '#!/bin/sh\n',
+      'sk/gone.txt': 'gone\n',
     },
   })
   await chmod(join(repo, 'sk/run.sh'), 0o755)
@@ -67,6 +68,9 @@ describe('SnapshotSandbox', () => {
     await writeFile(sandbox.resolve('sk/CHANGELOG.md'), '# Changelog\n')
     await rename(sandbox.resolve('sk/old.txt'), sandbox.resolve('sk/new.txt'))
     await chmod(sandbox.resolve('sk/run.sh'), 0o644)
+    // A plain removal with nothing else to hash-match it: R10.8 names deletion
+    // as one of the five kinds, distinct from the rename above.
+    await rm(sandbox.resolve('sk/gone.txt'))
 
     const change = await sandbox.changeSet()
     const byPath = new Map(change.entries.map((e) => [e.path, e]))
@@ -76,6 +80,7 @@ describe('SnapshotSandbox', () => {
     // there is no index to ask.
     expect(byPath.get('sk/new.txt')).toMatchObject({ kind: 'renamed', from: 'sk/old.txt' })
     expect(byPath.get('sk/run.sh')?.kind).toBe('mode-changed')
+    expect(byPath.get('sk/gone.txt')?.kind).toBe('deleted')
     expect(change.unifiedDiff).toContain('1.1.0')
     await sandbox.dispose()
   })
@@ -150,6 +155,35 @@ describe('SnapshotSandbox', () => {
     expect((await lstat(liveLink)).isSymbolicLink()).toBe(true)
     expect(await readlink(liveLink)).toBe('old.txt')
     await sandbox.dispose()
+  })
+
+  it('rejects a symlink inside the candidate root that escapes it, by name (R2.10)', async () => {
+    const repo = await makeRepo({ files: { 'sk/SKILL.md': SKILL_MD_FULL('sk') } })
+    await symlink('../../outside', join(repo, 'sk/escape.txt'))
+    const skill: SkillRef = {
+      id: 'repo/sk',
+      name: 'sk',
+      version: '1.0.0',
+      dir: join(repo, 'sk'),
+      relPath: 'sk',
+      repo: { id: 'repo', path: repo, name: 'repo', isGit: false },
+      rootSkill: false,
+      workspacePath: workspacePath(repo, 'sk', false),
+    }
+    const recordDir = await mkdtemp(join(tmpdir(), 'sg-run-'))
+    await expect(
+      openSnapshotSandbox({
+        skill,
+        stage: 'optimise',
+        runId: 'run-1',
+        recordDir,
+        scope: ['sk/SKILL.md'],
+        snapshotDir: join(recordDir, 'snapshot-pre'),
+      }),
+    ).rejects.toThrow('candidate-escapes-root')
+    // R10.10: nothing is written before sandbox.json exists, so a rejected
+    // manifest walk must leave no trace of a sandbox ever having opened.
+    await expect(readSandboxRecord(recordDir)).resolves.toBeNull()
   })
 
   it('excludes the workspace directory from a repo-root scope copy (R6.8)', async () => {
