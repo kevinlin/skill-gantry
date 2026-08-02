@@ -44,13 +44,13 @@ The CLI has three subcommands plus a root action, all built by `buildProgram(dep
 
 - [requirements.md](docs/specs/requirements.md) — numbered `R*` requirements, each tracing to a decision. Code comments and commit messages cite these ids.
 - [design.md](docs/specs/design.md) — module map, stage contract, outcome classification table (§8.1), ledger schema and reconciliation (§10), sidecar layout (§9). Read the relevant section before changing a contract.
-- [plan-m1.md](docs/specs/plan-m1.md) / [plan-m2.md](docs/specs/plan-m2.md) / [plan-m3.md](docs/specs/plan-m3.md) — task-by-task implementation plans with checkboxes.
+- [plan-m1.md](docs/specs/plan-m1.md) / [plan-m2.md](docs/specs/plan-m2.md) / [plan-m3.md](docs/specs/plan-m3.md) / [plan-m4.md](docs/specs/plan-m4.md) — task-by-task implementation plans with checkboxes. Two out-of-band plans sit alongside them: [plan-promptfoo-removal.md](docs/specs/plan-promptfoo-removal.md) (why promptfoo is dropped, not deferred — it has no notion of a skill) and [plan_install-as-terminal-command.md](docs/specs/plan_install-as-terminal-command.md) (`pnpm install:cli`).
 - [decision-log.md](docs/specs/decision-log.md) — `D*` decisions the requirements derive from.
 - `design-review-r1.md` / `design-review-r2.md` — point-in-time reviews against a named commit. Historical; not a contract.
 
-Merged: M1 (engine + headless CLI), M2 (queue + Ink TUI), M3 (full `tools` module, setup wizard, doctor). Milestone ownership lives in exactly one table, [requirements.md § Milestone ownership](docs/specs/requirements.md); `design.md` deliberately no longer carries a second copy. M4 is the seven remaining adapters and cross-tool merge, M5 `release` + retirement, M6 the dashboard.
+Merged: M1 (engine + headless CLI), M2 (queue + Ink TUI), M3 (full `tools` module, setup wizard, doctor), M4 (the three remaining adapters, cross-tool merge, rule-map migration). Milestone ownership lives in exactly one table, [requirements.md § Milestone ownership](docs/specs/requirements.md); `design.md` deliberately no longer carries a second copy. M5 is `release` + retirement, M6 the dashboard.
 
-Each plan ends with a "Deviations found while implementing" section recording where the shipped code diverged from it; `plan-m1.md` and `plan-m2.md` have been compacted post-ship, so they hold the why and not the how. Trust the code over any plan; trust `design.md` and `requirements.md` over the code.
+Each plan ends with a "Deviations found while implementing" section recording where the shipped code diverged from it; `plan-m1.md`, `plan-m2.md` and `plan-m4.md` have been compacted post-ship, so they hold the why and not the how. Trust the code over any plan; trust `design.md` and `requirements.md` over the code.
 
 When implementation proves a spec wrong, amend the spec doc in the same branch rather than letting the two diverge.
 
@@ -76,7 +76,7 @@ Rule applied throughout `src/core/`: a module that owns I/O does not also own de
 | `config/` | `~/.skillgantry/config.json`, tool lock, `.env` read and secret extraction | fs |
 | `discovery/` | repo path → `SkillRef[]`, frontmatter, `workspacePath()`, candidate manifest, digest | fs |
 | `tools/` | catalogue and presets, runtime probe, three install drivers (`uv.ts`, `npm.ts`, `gh-release.ts`) behind `install.ts` dispatch, verify-by-invocation, lockfile, `doctor.ts` drift report, `setup.ts` state machine | fs, net, subprocess |
-| `adapters/` | manifest + `parse` per tool, shared SARIF parser, rule-class map | **none** |
+| `adapters/` | manifest + `parse` per tool (`skillspector`, `skill-lint`, `skill-up`, `skill-scanner`), shared `sarif.ts` / `eval-report.ts` parsers, `paths.ts` rebasing, versioned rule-class map | **none** |
 | `runner/` | spawn one tool: env injection, timeout with process-group kill, stream redaction, artefact load | subprocess, fs |
 | `stages/` | `StageExecutor` contract, `AdapterStageExecutor`, outcome reduction | — |
 | `pipeline/` | stage sequencing, event emission, run finalisation, cancellation, mutation gate | — |
@@ -106,6 +106,8 @@ The setup wizard is a second app, not a screen of the first: `setup-app.tsx` own
 - **Stage reduction** (design §8.2) is total over the four tool outcomes, with `verdict` carried separately so a `degraded` stage still reports whether the tools that ran found anything.
 - **Finding identity** is `(skillId, relPath, ruleClass)` and nothing else: no line number, no message text, no tool id. Two scanners describing one problem resolve to one issue with two detections.
 - **Reconciliation** closes an issue only when every tool that has ever detected it agrees it is gone. It is a conjunction over a set, deliberately order-free, because fan-out tools run concurrently.
+- **Extending the rule-class map is a migration, not an edit.** `RULE_CLASS_MAP_VERSION` in `adapters/rule-classes.ts` bumps with every change, and `ledger/rule-map-migration.ts` reclassifies live issues, merging any that collide onto one fingerprint without dropping a detection (R8.14). Changing a mapping without bumping the version orphans every issue already filed under the old class. `doctor` reports applied-vs-shipped version as drift.
+- **An adapter declares the artefacts it reads, and may declare none.** `manifest.artefacts` is the contract; skill-lint declares `[]` and parses `ctx.stdout`, which is why row 7 of the §8.1 table (missing declared artefact) cannot fire for it. Two tools in one fan-out stage each keep their own `findings.sarif`; neither overwrites the other.
 - **Candidate manifest** (design §4.4) is the single definition of which bytes are a skill: for the digest, for tool input, and for packaging. No consumer applies its own exclusion list, and nothing filters findings after a tool has run.
 - **The catalogue is the install authority; the adapter registry is the run authority** (design §5.1a). A tool can be installed, verified and locked with no adapter — vercel `skills` is. It must not reach `stageTools`, because `AdapterStageExecutor.plan()` throws `unknown tool: <id>` on an id the registry lacks and would fail the whole run. `AdapterManifest.install` survives as documentation, kept in step by a test asserting the two agree for every tool holding both.
 - **The wizard never installs a runtime** (R3.7). Not a check — there is no code path that could. `probeRuntimes` invokes version argv and nothing else; `INSTALL_COMMAND` is printed for the user to run.
@@ -133,4 +135,4 @@ Tests mirror `src/` under `tests/core/`, plus `tests/tui/`, `tests/cli/` and `te
 
 `tests/tui/store.test.ts` dispatches actions and asserts state; the component tests render through `tests/helpers/render-ink.tsx`, which drives Ink with a fake TTY and `debug: true`, and assert on frames. `deps.startTui` and `deps.startSetup` on `CliDeps` are the seams that let the `tests/cli/` tests assert a launch without a terminal.
 
-Adapter tests run against golden SARIF fixtures captured from the pinned tool version, so upstream schema drift shows up as a test failure. Ledger tests use in-memory SQLite. Design §16 lists the target and guard for each suite; consult it when adding tests for a new module.
+Adapter tests run against golden fixtures captured from the pinned tool version — `tests/fixtures/sarif/` plus a directory per non-SARIF reporter (`skill-lint/`, `skill-up/`) — so upstream schema drift shows up as a test failure. Ledger tests use in-memory SQLite. Design §16 lists the target and guard for each suite; consult it when adding tests for a new module.
