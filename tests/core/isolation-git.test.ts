@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { execFile } from 'node:child_process'
-import { chmod, mkdtemp, readFile, rename, stat, writeFile } from 'node:fs/promises'
+import { chmod, mkdtemp, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -103,6 +103,14 @@ describe('GitWorktreeSandbox', () => {
     const byPath = new Map(change.preimages.map((p) => [p.path, p]))
     expect(byPath.get('sk/old.txt')?.sha256).toBeTruthy()
     expect(byPath.get('sk/new.txt')?.sha256).toBeNull()
+    await sandbox.dispose()
+  })
+
+  it('represents a plain deletion, with nothing renamed onto it', async () => {
+    const { sandbox } = await open()
+    await rm(sandbox.resolve('sk/old.txt'))
+    const change = await sandbox.changeSet()
+    expect(change.entries).toEqual([expect.objectContaining({ path: 'sk/old.txt', kind: 'deleted' })])
     await sandbox.dispose()
   })
 

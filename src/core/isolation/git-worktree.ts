@@ -164,6 +164,10 @@ export async function openGitWorktreeSandbox(input: SandboxInput): Promise<Mutat
     // diff against the *original* HEAD and the user's own uncommitted edit
     // shows up as a change the tool made, which is exactly what they are
     // being asked to approve or reject having never touched.
+    // This commit's objects land in the repo's own .git/objects, since a
+    // worktree shares the object database with its parent repo — harmless,
+    // as the commit is unreachable from any real ref once the worktree is
+    // removed and is ordinary GC-eligible garbage, not a leak.
     await exec('git', ['add', '-A'], { cwd: workRoot, timeoutMs: 120_000 })
     await exec('git', ['commit', '-q', '-m', 'seed dirty scope'], {
       cwd: workRoot,
