@@ -36,7 +36,7 @@ All three were the same typo, referencing `design-review-2.md` instead of the ac
 
 ### Dead links — repo-root-relative paths used as file-relative
 
-`plan_m3-install-as-terminal-command.md` used paths relative to the repo root instead of relative to `docs/specs/`. All resolved after prepending `../../`.
+`plan_m3-install-as-terminal-command.md` (since folded into `plan-m3.md` changelog) used paths relative to the repo root instead of relative to `docs/specs/`. All resolved after prepending `../../`.
 
 - `plan_m3-install-as-terminal-command.md:21` → `scripts/capture-fixtures.sh` — **fixed** → `../../scripts/capture-fixtures.sh`
 - `plan_m3-install-as-terminal-command.md:31` → `src/core/tools/install.ts#L22` — **fixed** → `../../src/core/tools/install.ts#L22`
@@ -66,7 +66,7 @@ Note: these are established legacy names with many inbound cross-references. Ren
 
 ### Orphan specs
 
-- `plan_m3-install-as-terminal-command.md`: no inbound references from any other spec file. Suggest linking from `index.md` (done in scaffold).
+- `plan_m3-install-as-terminal-command.md`: no inbound references from any other spec file. Suggest linking from `index.md` (done in scaffold). *Resolved: folded into `plan-m3.md` changelog.*
 
 ## Info
 
@@ -91,7 +91,7 @@ Note: these are established legacy names with many inbound cross-references. Ren
 
 - **Milestones M1–M4 are covered** by their respective plan files.
 - **Milestones M5 (isolation, release, retirement) and M6 (Dashboard, Issues screens) have no plan file yet.** This is expected: they are future milestones.
-- `plan_m3-install-as-terminal-command.md` covers design §2 (local installation) and §16 (test strategy).
+- `plan_m3-install-as-terminal-command.md` (folded into `plan-m3.md` changelog) covers design §2 (local installation) and §16 (test strategy).
 
 ### Empty sections
 
