@@ -2834,6 +2834,18 @@ Every requirement M4 owns, and the task that satisfies it. A requirement with no
 
 *(Filled in during implementation. Each entry names where the plan did not survive contact with the shipped code or the installed tool.)*
 
+**1. Task 2's migration test asserted a note the plan's own code never writes.** The step-5 test expected `/rule-map v2/`; `migrateRuleMap` writes `rule-map v1 -> v2`, naming both ends of the move. The note format is the better record, so the test now matches `rule-map v1 -> v${RULE_CLASS_MAP_VERSION}` and stays correct across the later bumps to 3 and 4.
+
+**2. `DoctorReport` has `failed`, not `ok`.** Task 8's step-1 test was written against a field that does not exist, and `ToolFinding` requires `expectedVersion` and `actualVersion`, which the plan's `findings.push` omitted. The new finding carries the two versions in those fields. `ruleMap` being required also reached further than "every existing case in that file": `tests/acceptance/m3.test.tsx` calls `doctor()` twice and both needed it.
+
+**3. Task 9's first criterion cannot run as one chained run.** R5.1 halts the chain on the first stage that does not pass, and skill-lint's findings fail validate, so security never executes and only one detector is ever recorded. The case now performs two single-stage runs, which is what the plan's own "known gap" about chain-halting predicts and what R5.3 exists to allow. Two consequences are asserted rather than hidden: `occurrence_count` on the merged issue is 2, not 3, because it answers "how many times was this seen last time we looked" and the last look was the security-only run; and skill-lint's own issue stays open through that run, because a tool that did not run reports no conclusive absence.
+
+**4. An ESM namespace cannot be spied, so R4.3's purity case mocks instead.** Both `vi.spyOn(fs, 'readFileSync')` and direct reassignment fail with `Cannot redefine property`. The case now mocks `node:fs`, `node:child_process` and `node:net` at load time behind a flag that is only set around the parser calls, so the harness in the same file can still spawn and write. The test asserts the trap bites before trusting a pass, because a seal that silently does nothing is worse than no seal.
+
+**5. Re-capturing `skillspector-declawed.sarif` produces a byte-different file with identical findings.** The only diff is the random `findingId` per result. The M1 fixture is kept, so the capture script stays runnable without churning a fixture whose content has not changed.
+
+**6. Task 7's fan-out case uses the lookup seam.** `plan(ctx('security', ['skillspector', 'skill-scanner']))` against the real registry needs the skill-scanner adapter of Task 5. The assertion — that a selection of two fan-out tools resolves to `fan-out` — is made through the seam meanwhile, and the real-registry form arrives with Task 5.
+
 ## Changelog
 
 - 2026-08-02 — revision 1, written after installing and running skill-lint 0.2.0, skill-scanner 0.3.3, skill-up 0.7.0 and skillspector 2.5.1 against the 20 skills of `zapac-agent-skills`.
