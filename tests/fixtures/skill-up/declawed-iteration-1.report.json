@@ -1,0 +1,344 @@
+{
+  "skill_name": "declawed",
+  "schema_version": "v1alpha1",
+  "engine_name": "claude_code",
+  "model_name": "",
+  "start_time": "2026-07-31T08:30:12.468831+08:00",
+  "end_time": "2026-07-31T08:31:38.924841+08:00",
+  "case_results": [
+    {
+      "case_id": "strip-not-x-but-y",
+      "title": "Removes the \"not X but Y\" family and puffery instead of paraphrasing it",
+      "status": "PASS",
+      "duration_ms": 34585,
+      "turns": 1,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "grading": {
+        "status": "PASS",
+        "turns_executed": 1,
+        "turns_total": 1,
+        "assertion_results": [
+          {
+            "text": "expect.files_exist",
+            "passed": true,
+            "evidence": "all checks passed"
+          },
+          {
+            "text": "script: /Users/kevinlin/dev/ai-sdlc/zapac-agent-skills/declawed/evals/fixtures/scripts/assert-no-negative-parallelism.sh",
+            "passed": true,
+            "evidence": "PASS: rewritten prose is free of the targeted tells"
+          }
+        ],
+        "summary": {
+          "passed": 2,
+          "failed": 0,
+          "total": 2,
+          "pass_rate": 1
+        }
+      },
+      "configuration": "with_skill",
+      "prompt": "Deslop this LinkedIn post for me. Write only the rewritten prose to a file\ncalled rewritten.md in the current directory (no changelog, no headings, no\ncommentary in that file), then show me the change log in your reply.\n\nIn today's fast-paced world, effective communication isn't just important --\nit's absolutely pivotal. Great leaders don't just talk; they listen, they\nempathize, and they inspire. It's worth noting that the best teams are built\nnot on talent, but on trust. This isn't a minor tweak, it's a seismic shift\nin how modern organisations operate.\n",
+      "response": "Written to `rewritten.md`.\n\nScan findings (before): 7 catalog hits in 4 categories, plus uniform cadence (4 sentences, all 12–15 words).\n\n```\nChanges\n- Stock opener: 1 fixed (deleted \"In today's fast-paced world\")\n- Negative parallelism: 4 fixed (\"isn't just important\", \"don't just talk\", \"not on talent, but on trust\", \"isn't a minor tweak, it's a seismic shift\" — two deleted as empty claims, two restated as plain positives)\n- Puffery: 3 fixed (\"absolutely pivotal\", \"seismic shift\", \"modern organisations\" → plain wording or cut)\n- Hedging: 1 fixed (deleted \"It's worth noting that\")\n- Rule-of-three: 1 fixed (\"listen, they empathize, and they inspire\" → kept \"listen\", the only verb doing work)\n- Cadence: varied — 7/12/11 words, no run of similar lengths\n- Verify passes: 1 (clean)\n- Flagged for author: none. Note the trust claim now rests on assertion alone; if you have a concrete example (a team that held together, or didn't), that sentence is where it belongs.\n```\n\nKept your claims intact: leaders listen, trust beats raw talent, and the implication is organisation-wide. Cut the \"seismic shift\" framing because the post never says what shifts — if that's the actual point of the post, it needs one specific before/after."
+    },
+    {
+      "case_id": "report-scan-and-changelog",
+      "title": "Reports scan findings before rewriting and ends with the required change log",
+      "status": "FAIL",
+      "duration_ms": 42231,
+      "turns": 1,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "grading": {
+        "status": "FAIL",
+        "turns_executed": 1,
+        "turns_total": 1,
+        "assertion_results": [
+          {
+            "text": "expect.must_contain",
+            "passed": true,
+            "evidence": "all checks passed"
+          },
+          {
+            "text": "expect.must_not_contain",
+            "passed": false,
+            "evidence": "output contains forbidden keyword \"unprecedented value\""
+          }
+        ],
+        "summary": {
+          "passed": 1,
+          "failed": 1,
+          "total": 2,
+          "pass_rate": 0.5
+        }
+      },
+      "configuration": "with_skill",
+      "prompt": "Run a declawed pass on this paragraph:\n\nIt's worth noting that our platform doesn't just streamline workflows, it\nfundamentally reimagines them. From startups to enterprises, teams leverage\nour robust, scalable, and intuitive tooling to unlock unprecedented value in\ntoday's ever-evolving landscape. What do you think?\n",
+      "response": "Genre read as product marketing copy for prospective customers. The paragraph asserts nothing checkable, so most of it went; where a claim needs a fact I left placeholders rather than invent one.\n\n**Scan (pass 1) — 6 hits / 4 categories**\n\n| Category | n | Worst example |\n|---|---|---|\n| Puffery | 3 | \"unlock unprecedented value in today's ever-evolving landscape\" |\n| Negative parallelism | 1 | \"doesn't just streamline workflows, it fundamentally reimagines them\" |\n| Hedging / throat-clearing | 1 | \"It's worth noting that\" |\n| False range + rule-of-three | 1 | \"From startups to enterprises\"; \"robust, scalable, and intuitive\" |\n| Engagement bait | — | \"What do you think?\" (stock skeleton, Phase 2) |\n\n**Rewrite**\n\n\u003e Our platform rebuilds your workflow instead of speeding up the one you already have. [ADD: which workflow, and what concretely changes for the user?] It works the same for a five-person team as for a five-thousand-person one. [ADD: a named customer at each size, or cut this sentence.]\n\nThe \"instead of speeding up the one you already have\" contrast is kept deliberately — in this genre it's the actual differentiation claim, stated positively rather than through the \"not X, but Y\" frame.\n\n```\nChanges\n- Negative parallelism: 1 fixed (reframed as a positive claim, contrast kept as real)\n- Puffery: 3 fixed (deleted — \"unprecedented value\", \"ever-evolving landscape\", \"fundamentally\")\n- Hedging: 1 fixed (deleted \"It's worth noting that\")\n- False range: 1 fixed (\"startups to enterprises\" → concrete team sizes)\n- Rule-of-three: 1 fixed (all three adjectives cut; none carried information)\n- Stock skeleton: 1 fixed (deleted \"What do you think?\")\n- Cadence: 3 sentences, 11–23 words, no metronomic run\n- Verify passes: 2 (pass 2 clean)\n- Flagged for author: 2 placeholders — the specific workflow being replaced, and customer names at each scale\n```"
+    },
+    {
+      "case_id": "preserve-facts-no-invention",
+      "title": "Keeps the author's facts and never invents specifics to replace vagueness",
+      "status": "PASS",
+      "duration_ms": 35803,
+      "turns": 1,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "grading": {
+        "status": "PASS",
+        "turns_executed": 1,
+        "turns_total": 1,
+        "assertion_results": [
+          {
+            "text": "expect.must_contain",
+            "passed": true,
+            "evidence": "all checks passed"
+          },
+          {
+            "text": "The rewritten text still states the author's real figures: 42 minutes, 9 minutes, and 14 customer environments, with the same meaning.",
+            "passed": true,
+            "evidence": "The rewritten text reads: 'median deploy time fell from 42 minutes to 9 minutes across 14 customer environments.' All three figures are present with the same meaning as the original."
+          },
+          {
+            "text": "The rewrite does not invent any specific study, author, institution, publication, year, or statistic that was absent from the source text.",
+            "passed": true,
+            "evidence": "The rewrite introduces no invented sources. The vague 'studies show' is replaced with '[ADD: which study? name and link it]' — a placeholder, not an invented citation. No new authors, institutions, publications, years, or statistics appear."
+          },
+          {
+            "text": "For the vague 'studies show' and 'research suggests' claims, the rewrite either deletes them, attributes them only to the author's own testing, or leaves a marked placeholder such as [ADD: which study?] for the author to fill in.",
+            "passed": true,
+            "evidence": "'Studies show that many companies...' is replaced with '[ADD: which study? name and link it]' — a marked placeholder. 'Research suggests this kind of gain is rare' is deleted entirely, as noted in the Changes section: 'deleted, no source and it only re-praises the number you already gave.' Both vague claims are handled per the criterion."
+          },
+          {
+            "text": "The 'doesn't just help -- it transforms the picture' construction is gone and has not been replaced by an equivalent contrast frame such as 'less about X than Y' or 'the real gain is'.",
+            "passed": true,
+            "evidence": "The rewritten text is: 'Our latest release cuts the wait: in our own testing, median deploy time fell from 42 minutes to 9 minutes across 14 customer environments.' The original construction is gone. The Changes section confirms: 'Negative parallelism: 1 fixed (deleted the strawman half; the 42→9 number is the claim, so it carries the sentence).' No equivalent contrast frame appears in the rewrite."
+          }
+        ],
+        "summary": {
+          "passed": 5,
+          "failed": 0,
+          "total": 5,
+          "pass_rate": 1
+        },
+        "judge_context": {
+          "profile": "standard",
+          "materialized_dir": "judge/context",
+          "manifest": {
+            "profile": "standard",
+            "materialized_dir": "judge/context",
+            "materials": [
+              {
+                "key": "final_message",
+                "mode": "include",
+                "path": "judge/context/final_message.txt",
+                "bytes": 1437,
+                "original_bytes": 1437
+              },
+              {
+                "key": "transcript",
+                "mode": "file_ref",
+                "path": "judge/context/transcript.json",
+                "bytes": 1937,
+                "original_bytes": 1937
+              },
+              {
+                "key": "workspace_diff",
+                "mode": "omit",
+                "bytes": 0
+              },
+              {
+                "key": "generated_files",
+                "mode": "omit",
+                "bytes": 0
+              }
+            ]
+          },
+          "prompt_delivery": "inline",
+          "prompt_bytes": 4261
+        }
+      },
+      "configuration": "with_skill",
+      "prompt": "Deslop this for a product blog post:\n\nStudies show that many companies struggle with deployment velocity. Our\nlatest release doesn't just help -- it transforms the picture. In our own\ntesting, median deploy time fell from 42 minutes to 9 minutes across 14\ncustomer environments. Research suggests this kind of gain is rare.\n",
+      "response": "**Rewritten:**\n\n\u003e Slow deploys are a common complaint [ADD: which study? name and link it]. Our latest release cuts the wait: in our own testing, median deploy time fell from 42 minutes to 9 minutes across 14 customer environments.\n\n**Scan findings (before)**\n\n| Category | Count | Worst example |\n|---|---|---|\n| Negative parallelism | 1 | \"doesn't just help -- it transforms the picture\" |\n| Low specificity / fake sourcing | 2 | \"Studies show that many companies…\", \"Research suggests this kind of gain is rare\" |\n| Puffery | 1 | \"transforms the picture\" |\n\n**Changes**\n- Negative parallelism: 1 fixed (deleted the strawman half; the 42→9 number is the claim, so it carries the sentence)\n- Puffery: 1 fixed (plain words — \"cuts the wait\")\n- Low specificity: 2 fixed — \"studies show / many companies\" → plain claim with a source placeholder; \"Research suggests this kind of gain is rare\" deleted, no source and it only re-praises the number you already gave\n- Cadence: one 8-word sentence merged into the data sentence so the paragraph doesn't run at a uniform 15-word beat\n- Verify passes: 2 (remaining \"42 to 9 minutes\" hit is a real measurement, kept deliberately)\n- Flagged for author: `[ADD: which study? name and link it]` — if you can't cite one, drop the sentence and open on your own number. Also worth stating in the post whether the 14 environments were self-selected; \"in our own testing\" invites that question."
+    },
+    {
+      "case_id": "reddit-register",
+      "title": "Applies the genre register instead of a generic clean-up",
+      "status": "PASS",
+      "duration_ms": 31878,
+      "turns": 1,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "grading": {
+        "status": "PASS",
+        "turns_executed": 1,
+        "turns_total": 1,
+        "assertion_results": [
+          {
+            "text": "The rewritten reddit reply contains no markdown bold and is not structured as a bulleted essay; it reads as plain conversational paragraphs a person would type into a reddit comment box.",
+            "passed": true,
+            "evidence": "The reply consists of three plain prose paragraphs with no markdown bold markers (**) and no bullet points. The changes section confirms '4 bold spans and 3 \"term: definition\" bullets deleted'."
+          },
+          {
+            "text": "The reply drops the 'Great question!', 'Hope this helps!' and 'Let me know if you have any questions' scaffolding.",
+            "passed": true,
+            "evidence": "The reply starts directly with 'Containerise a bit at a time.' and ends with 'Handing devs ownership of their own deploys is a bigger adjustment than the YAML.' The changes section explicitly notes 'dropped \"Great question!\" opener and \"Hope this helps! Let me know if you have any questions\" ending'."
+          },
+          {
+            "text": "All three negative-parallelism constructions ('Don't just lift and shift', 'not merely about metrics, it's about traces', 'isn't a tooling change, it's a mindset shift') are gone, and none has been swapped for an equivalent contrast frame.",
+            "passed": true,
+            "evidence": "The reply uses direct positive claims: 'Lift-and-shift just gets you a cluster running the same mess you had before' (not a 'don't X, do Y' frame), 'Metrics will tell you something got slow, but you'll want traces to tell you which of the eight services did it' (causal sequence, not a 'not X, it's Y' contrast), and 'Handing devs ownership of their own deploys is a bigger adjustment than the YAML' (direct assertion, not 'isn't X, it's Y'). The changes section confirms all three were rewritten 'as direct claims with a concrete consequence'."
+          },
+          {
+            "text": "The rewrite does not overcorrect: no fake typos, no manufactured slang, no forced casual persona beyond ordinary reddit register.",
+            "passed": true,
+            "evidence": "The reply uses standard English with no typos, no slang like 'gonna' or 'tbh', and no forced casual markers. Phrases like 'Containerise a bit at a time' and 'except now nobody can debug it' are natural reddit register without being performatively casual."
+          },
+          {
+            "text": "The technical substance (incremental containerisation, traces alongside metrics, the organisational change point) is preserved rather than deleted wholesale.",
+            "passed": true,
+            "evidence": "All three technical points survive: incremental containerisation ('Containerise a bit at a time'), traces alongside metrics ('Metrics will tell you something got slow, but you'll want traces to tell you which of the eight services did it'), and the organisational change point ('Handing devs ownership of their own deploys is a bigger adjustment than the YAML')."
+          }
+        ],
+        "summary": {
+          "passed": 5,
+          "failed": 0,
+          "total": 5,
+          "pass_rate": 1
+        },
+        "judge_context": {
+          "profile": "standard",
+          "materialized_dir": "judge/context",
+          "manifest": {
+            "profile": "standard",
+            "materialized_dir": "judge/context",
+            "materials": [
+              {
+                "key": "final_message",
+                "mode": "include",
+                "path": "judge/context/final_message.txt",
+                "bytes": 1316,
+                "original_bytes": 1316
+              },
+              {
+                "key": "transcript",
+                "mode": "file_ref",
+                "path": "judge/context/transcript.json",
+                "bytes": 1917,
+                "original_bytes": 1917
+              },
+              {
+                "key": "workspace_diff",
+                "mode": "omit",
+                "bytes": 0
+              },
+              {
+                "key": "generated_files",
+                "mode": "omit",
+                "bytes": 0
+              }
+            ]
+          },
+          "prompt_delivery": "inline",
+          "prompt_bytes": 4488
+        }
+      },
+      "configuration": "with_skill",
+      "prompt": "This is a reply I'm about to post on r/devops. Make it not sound like AI.\n\n**Great question!** Here's my take on migrating to Kubernetes:\n\n- **Start small**: Don't just lift and shift, containerise incrementally.\n- **Observability matters**: It's not merely about metrics, it's about traces too.\n- **Culture is key**: This isn't a tooling change, it's a mindset shift.\n\nHope this helps! Let me know if you have any questions.\n",
+      "response": "Clean scan. Here's the reply:\n\n---\n\nContainerise a bit at a time. Lift-and-shift just gets you a cluster running the same mess you had before, except now nobody can debug it.\n\nBudget real time for observability too. Metrics will tell you something got slow, but you'll want traces to tell you which of the eight services did it.\n\nAnd expect the people side to take longer than the tech. Handing devs ownership of their own deploys is a bigger adjustment than the YAML.\n\n---\n\nChanges\n- Negative parallelism: 3 fixed (\"don't just lift and shift\", \"not merely metrics… traces too\", \"isn't a tooling change, it's a mindset shift\") — all rewritten as direct claims with a concrete consequence\n- Formatting: 4 bold spans and 3 \"term: definition\" bullets deleted; reddit comments are prose, and a bulleted mini-essay reads as a generated answer\n- Stock skeleton: dropped \"Great question!\" opener and \"Hope this helps! Let me know if you have any questions\" ending\n- Puffery: \"Culture is key\" / \"Observability matters\" cut — headline labels that restate the bullet under them\n- Cadence: varied, 6–21 words, no metronome runs\n- Verify passes: 1\n- Flagged for author: none — but if you have a real war story (which service, how long the migration took), swapping it in for the \"eight services\" line would land harder"
+    },
+    {
+      "case_id": "academic-no-overcorrection",
+      "title": "De-slops academic prose without trading precision for personality",
+      "status": "PASS",
+      "duration_ms": 27935,
+      "turns": 1,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "grading": {
+        "status": "PASS",
+        "turns_executed": 1,
+        "turns_total": 1,
+        "assertion_results": [
+          {
+            "text": "expect.must_contain",
+            "passed": true,
+            "evidence": "all checks passed"
+          },
+          {
+            "text": "Puffery is gone: 'ever-evolving landscape', 'pivotal', 'delves into', 'plays a vital role in', 'a testament to' no longer appear or have been replaced by plain, concrete wording.",
+            "passed": true,
+            "evidence": "The rewrite contains none of the flagged puffery terms. The changes summary explicitly confirms: \"Puffery: 5 fixed (plain words or deleted — 'landscape'/'pivotal'/'delves'/'vital role'/'testament')\". The rewritten text uses concrete language: \"Consistency protocols impose coordination overhead that caps throughput under write-heavy workloads.\""
+          },
+          {
+            "text": "The 'doesn't just propose another protocol -- it delves into' construction is removed and not reframed as an equivalent contrast.",
+            "passed": true,
+            "evidence": "The rewrite contains no negative parallelism construction. The changes summary states: \"Negative parallelism: 1 fixed (deleted; the contrast decorated an empty claim)\". The rewritten text presents the contribution directly without any 'not just X but Y' framing."
+          },
+          {
+            "text": "The empirical claims are unchanged: a 32-node cluster and a 2.1x throughput improvement over Raft under write-heavy workloads.",
+            "passed": true,
+            "evidence": "The rewrite preserves both figures verbatim: \"On a 32-node cluster it sustains 2.1x the throughput of Raft under write-heavy workloads.\" Both the 32-node cluster and 2.1x throughput over Raft under write-heavy workloads are present and unaltered."
+          },
+          {
+            "text": "Register is preserved: the text stays third-person academic prose with no added slang, jokes, rhetorical questions, first-person opinions, or manufactured casual voice.",
+            "passed": false,
+            "evidence": "The rewrite uses \"We present [ADD: protocol name]\" — first-person plural, which departs from strict third-person. The surrounding explanatory prose (\"Two notes on what I cut and why\") is first-person singular from the agent, but that is commentary outside the rewritten abstract. The rewritten abstract itself uses \"We present,\" which is common in academic writing but is technically first-person rather than third-person."
+          },
+          {
+            "text": "Technical terminology (consistency, coordination overhead, Raft, throughput) is retained rather than simplified away.",
+            "passed": true,
+            "evidence": "The rewrite explicitly retains all four terms: \"Consistency protocols impose coordination overhead that caps throughput under write-heavy workloads\" (consistency, coordination overhead, throughput) and \"2.1x the throughput of Raft under write-heavy workloads\" (Raft, throughput). None of the technical vocabulary was simplified or removed."
+          }
+        ],
+        "summary": {
+          "passed": 5,
+          "failed": 1,
+          "total": 6,
+          "pass_rate": 0.8333333333333334
+        },
+        "judge_context": {
+          "profile": "standard",
+          "materialized_dir": "judge/context",
+          "manifest": {
+            "profile": "standard",
+            "materialized_dir": "judge/context",
+            "materials": [
+              {
+                "key": "final_message",
+                "mode": "include",
+                "path": "judge/context/final_message.txt",
+                "bytes": 1609,
+                "original_bytes": 1609
+              },
+              {
+                "key": "transcript",
+                "mode": "file_ref",
+                "path": "judge/context/transcript.json",
+                "bytes": 2298,
+                "original_bytes": 2298
+              },
+              {
+                "key": "workspace_diff",
+                "mode": "omit",
+                "bytes": 0
+              },
+              {
+                "key": "generated_files",
+                "mode": "omit",
+                "bytes": 0
+              }
+            ]
+          },
+          "prompt_delivery": "inline",
+          "prompt_bytes": 4567
+        }
+      },
+      "configuration": "with_skill",
+      "prompt": "Deslop this abstract for a peer-reviewed systems paper.\n\nIn the ever-evolving landscape of distributed systems, consistency remains a\npivotal concern. This paper doesn't just propose another protocol -- it\ndelves into a fundamentally novel approach. It is worth noting that our\nmethod plays a vital role in reducing coordination overhead. Experiments on a\n32-node cluster show a 2.1x throughput improvement over Raft under write-heavy\nworkloads, a testament to the robustness of the design.\n",
+      "response": "**Scan findings (original)**\n\n| Category | Count | Worst example |\n|---|---|---|\n| Puffery / inflated vocabulary | 5 | \"ever-evolving landscape\", \"pivotal\", \"delves\", \"vital role\", \"a testament to\" |\n| Negative parallelism | 1 | \"doesn't just propose another protocol -- it delves into...\" |\n| Hedged throat-clearing | 1 | \"It is worth noting that\" |\n| Cadence | — | 4 sentences, all 12–23 words, uniform |\n\n**Rewrite**\n\n\u003e Consistency protocols impose coordination overhead that caps throughput under write-heavy workloads. We present [ADD: protocol name], which reduces the coordination required per write by [ADD: one-clause mechanism]. On a 32-node cluster it sustains 2.1x the throughput of Raft under write-heavy workloads.\n\nTwo notes on what I cut and why. \"Fundamentally novel approach\" and \"reduces coordination overhead\" were the only description of the contribution, and neither says what the protocol does — an abstract has to name the mechanism, so I left placeholders rather than inventing one. \"A testament to the robustness of the design\" was an unsupported gloss on a single benchmark; the number stands on its own.\n\n```\nChanges\n- Puffery: 5 fixed (plain words or deleted — \"landscape\"/\"pivotal\"/\"delves\"/\"vital role\"/\"testament\")\n- Negative parallelism: 1 fixed (deleted; the contrast decorated an empty claim)\n- Hedging: 1 fixed (deleted \"It is worth noting that\")\n- Stock opener: 1 fixed (starts at the problem, not the field)\n- Cadence: varied — 11/16/15 words, no uniform run\n- Verify passes: 1 (clean)\n- Flagged for author: [ADD: protocol name], [ADD: one-clause mechanism]\n```"
+    }
+  ],
+  "total_tokens": 0
+}

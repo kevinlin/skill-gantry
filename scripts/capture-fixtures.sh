@@ -40,3 +40,20 @@ for skill in architecture-diagram zuhlke-slides; do
   "$LINT_BIN" "$REPO/$skill" --json > "$LINT_OUT/$skill.json" || true
   echo "captured $LINT_OUT/$skill.json"
 done
+
+UP_OUT="$(dirname "$0")/../tests/fixtures/skill-up"
+mkdir -p "$UP_OUT"
+
+# skill-up run needs an Agent Engine and spends real model budget, so these are
+# copied from the reference repo's own iterations rather than re-run. The schema
+# version is asserted here, which is the property the parser is pinned to.
+for it in 1 3; do
+  src="$REPO/declawed-workspace/iteration-$it/report.json"
+  ver="$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['schema_version'])" "$src")"
+  if [ "$ver" != "v1alpha1" ]; then
+    echo "iteration-$it report is $ver, the parser is pinned to v1alpha1" >&2
+    exit 1
+  fi
+  cp "$src" "$UP_OUT/declawed-iteration-$it.report.json"
+  echo "captured $UP_OUT/declawed-iteration-$it.report.json"
+done
