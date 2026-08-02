@@ -1,7 +1,10 @@
 import {
+  RULE_CLASS_MAP_VERSION,
+  appliedRuleMapVersion,
   discoverSkills,
   doctor,
   loadConfig,
+  migrateRuleMap,
   openLedger,
   type DoctorReport,
   type LifecycleState,
@@ -46,7 +49,40 @@ export function formatDoctor(report: DoctorReport): string[] {
   return lines
 }
 
-export async function runDoctor(deps: CliDeps, opts: { json?: boolean }): Promise<DoctorReport> {
+/**
+ * R8.14 requires the rule-map migration to be explicit, so this flag is the only
+ * trigger: nothing on the openLedger path calls it, which is why a run, a TUI
+ * launch and a plain `doctor` all leave a user's triage alone.
+ */
+function applyRuleMap(dbPath: string, write: CliDeps['write']): void {
+  const ledger = openLedger(dbPath)
+  try {
+    const result = migrateRuleMap(ledger.db)
+    write(
+      `rule-class map v${result.applied}: ` +
+        `${result.reclassified} issue(s) reclassified, ${result.merged} merged`,
+    )
+  } finally {
+    ledger.close()
+  }
+}
+
+function ruleMapVersions(dbPath: string): { applied: number; current: number } {
+  const ledger = openLedger(dbPath)
+  try {
+    return { applied: appliedRuleMapVersion(ledger.db), current: RULE_CLASS_MAP_VERSION }
+  } finally {
+    ledger.close()
+  }
+}
+
+export async function runDoctor(
+  deps: CliDeps,
+  opts: { json?: boolean; migrateRuleMap?: boolean },
+): Promise<DoctorReport> {
+  // Before the report is built, so one invocation shows the result.
+  if (opts.migrateRuleMap) applyRuleMap(deps.dbPath, deps.write)
+
   const config = await loadConfig(deps.home)
   const skills: SkillRef[] = []
   for (const repo of config.repos) skills.push(...(await discoverSkills(repo)))
@@ -54,6 +90,7 @@ export async function runDoctor(deps: CliDeps, opts: { json?: boolean }): Promis
     home: deps.home,
     skills,
     ledgerLifecycle: lifecycleCache(deps.dbPath),
+    ruleMap: ruleMapVersions(deps.dbPath),
   })
   if (opts.json) deps.write(JSON.stringify(report))
   else for (const line of formatDoctor(report)) deps.write(line)

@@ -2,6 +2,12 @@ export * from './types.js'
 export * from './pipeline/events.js'
 export { runPipeline, type RunHandle, type RunSummary } from './pipeline/run.js'
 export { openLedger, type Ledger } from './ledger/db.js'
+export { RULE_CLASS_MAP_VERSION } from './adapters/rule-classes.js'
+export {
+  appliedRuleMapVersion,
+  migrateRuleMap,
+  type RuleMapMigrationResult,
+} from './ledger/rule-map-migration.js'
 export { discoverSkills, workspacePath } from './discovery/discover.js'
 export { loadConfig, loadToolLock, registerRepo, type GantryConfig } from './config/config.js'
 export { loadEnvFile, provenanceOf } from './config/env.js'

@@ -8,6 +8,7 @@ import {
   saveToolLock,
   DEFAULT_CONFIG,
 } from '../../src/core/config/config.js'
+import { RELEASE_TOOL_ID } from '../../src/core/tools/catalogue.js'
 import { buildProgram, type CliDeps } from '../../src/cli/run-command.js'
 import { buildSetupDriver, needsSetup } from '../../src/cli/setup-command.js'
 import { makeRepo, SKILL_MD } from '../helpers/tmp-repo.js'
@@ -78,14 +79,15 @@ describe('setup driver', () => {
     const root = await makeRepo({ files: { 'a/SKILL.md': SKILL_MD('a') } })
     const driver = buildSetupDriver(h)
 
-    await driver.saveSelection(['skillspector', 'skill-lint'])
+    await driver.saveSelection(['skillspector', 'skill-lint', RELEASE_TOOL_ID])
     await driver.registerRepo(root)
 
     const config = await loadConfig(h)
     expect(config.stageTools.security).toEqual(['skillspector'])
-    // skill-lint installs in M3 and gains its parser in M4, so it must not be
-    // selected yet: AdapterStageExecutor.plan() throws on an unknown id.
-    expect(config.stageTools.validate).toEqual([])
+    expect(config.stageTools.validate).toEqual(['skill-lint'])
+    // The release installer has stage null and no adapter by design (R3.5b), so
+    // it never reaches stageTools however it is selected.
+    expect(Object.values(config.stageTools).flat()).not.toContain(RELEASE_TOOL_ID)
     expect(config.repos.map((r) => r.name)).toEqual([root.split('/').at(-1)])
   })
 

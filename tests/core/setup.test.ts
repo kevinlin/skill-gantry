@@ -83,7 +83,9 @@ describe('setup state machine', () => {
 
 describe('stageToolsFor', () => {
   // AdapterStageExecutor.plan() throws on an id the registry does not hold, so
-  // an installed tool with no parser must not reach stageTools.
+  // an installed tool with no parser must not reach stageTools. The runnable
+  // predicate is injected, so this case tests the filter rather than which
+  // tools happen to ship an adapter in the current milestone.
   it('writes only runnable tools into the selection', () => {
     const tools = stageToolsFor(['skillspector', 'skill-lint'], (id) => id === 'skillspector')
     expect(tools.security).toEqual(['skillspector'])
