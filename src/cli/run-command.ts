@@ -158,7 +158,8 @@ export function buildProgram(deps: CliDeps): GantryProgram {
     .command('doctor')
     .description('re-verify every locked tool and report drift')
     .option('--json', 'emit one JSON report')
-    .action(async (opts: { json?: boolean }) => {
+    .option('--migrate-rule-map', 'apply a pending rule-class map migration')
+    .action(async (opts: { json?: boolean; migrateRuleMap?: boolean }) => {
       const report = await runDoctor(deps, opts)
       program.exitCode = report.failed ? 1 : 0
     })

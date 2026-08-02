@@ -1,0 +1,684 @@
+{
+  "tool": "skill-lint",
+  "schemaVersion": 1,
+  "origin": "local:/Users/kevinlin/dev/ai-sdlc/zapac-agent-skills/zuhlke-slides",
+  "skill": {
+    "name": null,
+    "description": null,
+    "files": [
+      {
+        "relPath": ".DS_Store",
+        "size": 6148,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "SKILL.md",
+        "size": 16092,
+        "role": "skill"
+      },
+      {
+        "relPath": "agents/openai.yaml",
+        "size": 288,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "references/.DS_Store",
+        "size": 6148,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "references/add-in.md",
+        "size": 11025,
+        "role": "skill-doc"
+      },
+      {
+        "relPath": "references/design-guidelines.md",
+        "size": 2121,
+        "role": "skill-doc"
+      },
+      {
+        "relPath": "references/editing.md",
+        "size": 6885,
+        "role": "skill-doc"
+      },
+      {
+        "relPath": "references/slide-catalogue.md",
+        "size": 121563,
+        "role": "skill-doc"
+      },
+      {
+        "relPath": "references/template-index.json",
+        "size": 39060,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "references/windows-com.md",
+        "size": 1056,
+        "role": "skill-doc"
+      },
+      {
+        "relPath": "references/zuhlke-master-template.pptx",
+        "size": 887644,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "references/zuhlke-slide-templates.pptx",
+        "size": 14616691,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/.DS_Store",
+        "size": 6148,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/__pycache__/copy_slide.cpython-313.pyc",
+        "size": 34918,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/add_slide.py",
+        "size": 6872,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/clean.py",
+        "size": 9583,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/copy_slide.py",
+        "size": 28618,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/.DS_Store",
+        "size": 6148,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/helpers/__init__.py",
+        "size": 0,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/helpers/__pycache__/__init__.cpython-313.pyc",
+        "size": 191,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/helpers/__pycache__/merge_runs.cpython-313.pyc",
+        "size": 9441,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/helpers/__pycache__/simplify_redlines.cpython-313.pyc",
+        "size": 9205,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/helpers/merge_runs.py",
+        "size": 5567,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/helpers/simplify_redlines.py",
+        "size": 5754,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/pack.py",
+        "size": 4991,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-chart.xsd",
+        "size": 74984,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-chartDrawing.xsd",
+        "size": 6956,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-diagram.xsd",
+        "size": 51302,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-lockedCanvas.xsd",
+        "size": 624,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-main.xsd",
+        "size": 152039,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-picture.xsd",
+        "size": 1231,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-spreadsheetDrawing.xsd",
+        "size": 8862,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-wordprocessingDrawing.xsd",
+        "size": 14795,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/schemas/ISO-IEC29500-4_2016/pml.xsd",
+        "size": 83612,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-additionalCharacteristics.xsd",
+        "size": 1269,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-bibliography.xsd",
+        "size": 7328,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-commonSimpleTypes.xsd",
+        "size": 6382,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-customXmlDataProperties.xsd",
+        "size": 1248,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-customXmlSchemaProperties.xsd",
+        "size": 880,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-documentPropertiesCustom.xsd",
+        "size": 2608,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-documentPropertiesExtended.xsd",
+        "size": 3507,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-documentPropertiesVariantTypes.xsd",
+        "size": 7507,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-math.xsd",
+        "size": 23313,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-relationshipReference.xsd",
+        "size": 1367,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/schemas/ISO-IEC29500-4_2016/sml.xsd",
+        "size": 242277,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/schemas/ISO-IEC29500-4_2016/vml-main.xsd",
+        "size": 26148,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/schemas/ISO-IEC29500-4_2016/vml-officeDrawing.xsd",
+        "size": 25279,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/schemas/ISO-IEC29500-4_2016/vml-presentationDrawing.xsd",
+        "size": 535,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/schemas/ISO-IEC29500-4_2016/vml-spreadsheetDrawing.xsd",
+        "size": 5712,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/schemas/ISO-IEC29500-4_2016/vml-wordprocessingDrawing.xsd",
+        "size": 4010,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/schemas/ISO-IEC29500-4_2016/wml.xsd",
+        "size": 171367,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/schemas/ISO-IEC29500-4_2016/xml.xsd",
+        "size": 4646,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/schemas/ecma/fouth-edition/opc-contentTypes.xsd",
+        "size": 1963,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/schemas/ecma/fouth-edition/opc-coreProperties.xsd",
+        "size": 2515,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/schemas/ecma/fouth-edition/opc-digSig.xsd",
+        "size": 2856,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/schemas/ecma/fouth-edition/opc-relationships.xsd",
+        "size": 1344,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/schemas/mce/mc.xsd",
+        "size": 3127,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/schemas/microsoft/wml-2010.xsd",
+        "size": 26549,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/schemas/microsoft/wml-2012.xsd",
+        "size": 3745,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/schemas/microsoft/wml-2018.xsd",
+        "size": 901,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/schemas/microsoft/wml-cex-2018.xsd",
+        "size": 1778,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/schemas/microsoft/wml-cid-2016.xsd",
+        "size": 1002,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/schemas/microsoft/wml-sdtdatahash-2020.xsd",
+        "size": 600,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/schemas/microsoft/wml-symex-2015.xsd",
+        "size": 745,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/soffice.py",
+        "size": 5301,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/unpack.py",
+        "size": 4052,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/validate.py",
+        "size": 3668,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/validators/__init__.py",
+        "size": 336,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/validators/__pycache__/__init__.cpython-313.pyc",
+        "size": 514,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/validators/__pycache__/base.cpython-313.pyc",
+        "size": 40021,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/validators/__pycache__/docx.cpython-313.pyc",
+        "size": 21013,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/validators/__pycache__/pptx.cpython-313.pyc",
+        "size": 12971,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/validators/__pycache__/redlining.cpython-313.pyc",
+        "size": 11243,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/validators/base.py",
+        "size": 32651,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/validators/docx.py",
+        "size": 16376,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/validators/pptx.py",
+        "size": 9824,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/office/validators/redlining.py",
+        "size": 8918,
+        "role": "skill-script"
+      },
+      {
+        "relPath": "scripts/thumbnail.py",
+        "size": 8785,
+        "role": "skill-script"
+      }
+    ]
+  },
+  "findings": [
+    {
+      "ruleId": "R06",
+      "ast": "AST03",
+      "severity": "HIGH",
+      "title": "Suspicious file in skill",
+      "file": "scripts/__pycache__/copy_slide.cpython-313.pyc",
+      "evidence": "",
+      "message": "Compiled binary in skill (.pyc)",
+      "role": "skill-script"
+    },
+    {
+      "ruleId": "R06",
+      "ast": "AST03",
+      "severity": "LOW",
+      "title": "Suspicious file in skill",
+      "file": "scripts/add_slide.py",
+      "evidence": "",
+      "message": "Bundled script .py — review contents",
+      "role": "skill-script"
+    },
+    {
+      "ruleId": "R06",
+      "ast": "AST03",
+      "severity": "LOW",
+      "title": "Suspicious file in skill",
+      "file": "scripts/clean.py",
+      "evidence": "",
+      "message": "Bundled script .py — review contents",
+      "role": "skill-script"
+    },
+    {
+      "ruleId": "R06",
+      "ast": "AST03",
+      "severity": "LOW",
+      "title": "Suspicious file in skill",
+      "file": "scripts/copy_slide.py",
+      "evidence": "",
+      "message": "Bundled script .py — review contents",
+      "role": "skill-script"
+    },
+    {
+      "ruleId": "R06",
+      "ast": "AST03",
+      "severity": "LOW",
+      "title": "Suspicious file in skill",
+      "file": "scripts/office/helpers/__init__.py",
+      "evidence": "",
+      "message": "Bundled script .py — review contents",
+      "role": "skill-script"
+    },
+    {
+      "ruleId": "R06",
+      "ast": "AST03",
+      "severity": "HIGH",
+      "title": "Suspicious file in skill",
+      "file": "scripts/office/helpers/__pycache__/__init__.cpython-313.pyc",
+      "evidence": "",
+      "message": "Compiled binary in skill (.pyc)",
+      "role": "skill-script"
+    },
+    {
+      "ruleId": "R06",
+      "ast": "AST03",
+      "severity": "HIGH",
+      "title": "Suspicious file in skill",
+      "file": "scripts/office/helpers/__pycache__/merge_runs.cpython-313.pyc",
+      "evidence": "",
+      "message": "Compiled binary in skill (.pyc)",
+      "role": "skill-script"
+    },
+    {
+      "ruleId": "R06",
+      "ast": "AST03",
+      "severity": "HIGH",
+      "title": "Suspicious file in skill",
+      "file": "scripts/office/helpers/__pycache__/simplify_redlines.cpython-313.pyc",
+      "evidence": "",
+      "message": "Compiled binary in skill (.pyc)",
+      "role": "skill-script"
+    },
+    {
+      "ruleId": "R06",
+      "ast": "AST03",
+      "severity": "LOW",
+      "title": "Suspicious file in skill",
+      "file": "scripts/office/helpers/merge_runs.py",
+      "evidence": "",
+      "message": "Bundled script .py — review contents",
+      "role": "skill-script"
+    },
+    {
+      "ruleId": "R06",
+      "ast": "AST03",
+      "severity": "LOW",
+      "title": "Suspicious file in skill",
+      "file": "scripts/office/helpers/simplify_redlines.py",
+      "evidence": "",
+      "message": "Bundled script .py — review contents",
+      "role": "skill-script"
+    },
+    {
+      "ruleId": "R06",
+      "ast": "AST03",
+      "severity": "LOW",
+      "title": "Suspicious file in skill",
+      "file": "scripts/office/pack.py",
+      "evidence": "",
+      "message": "Bundled script .py — review contents",
+      "role": "skill-script"
+    },
+    {
+      "ruleId": "R06",
+      "ast": "AST03",
+      "severity": "LOW",
+      "title": "Suspicious file in skill",
+      "file": "scripts/office/soffice.py",
+      "evidence": "",
+      "message": "Bundled script .py — review contents",
+      "role": "skill-script"
+    },
+    {
+      "ruleId": "R06",
+      "ast": "AST03",
+      "severity": "LOW",
+      "title": "Suspicious file in skill",
+      "file": "scripts/office/unpack.py",
+      "evidence": "",
+      "message": "Bundled script .py — review contents",
+      "role": "skill-script"
+    },
+    {
+      "ruleId": "R06",
+      "ast": "AST03",
+      "severity": "LOW",
+      "title": "Suspicious file in skill",
+      "file": "scripts/office/validate.py",
+      "evidence": "",
+      "message": "Bundled script .py — review contents",
+      "role": "skill-script"
+    },
+    {
+      "ruleId": "R06",
+      "ast": "AST03",
+      "severity": "LOW",
+      "title": "Suspicious file in skill",
+      "file": "scripts/office/validators/__init__.py",
+      "evidence": "",
+      "message": "Bundled script .py — review contents",
+      "role": "skill-script"
+    },
+    {
+      "ruleId": "R06",
+      "ast": "AST03",
+      "severity": "HIGH",
+      "title": "Suspicious file in skill",
+      "file": "scripts/office/validators/__pycache__/__init__.cpython-313.pyc",
+      "evidence": "",
+      "message": "Compiled binary in skill (.pyc)",
+      "role": "skill-script"
+    },
+    {
+      "ruleId": "R06",
+      "ast": "AST03",
+      "severity": "HIGH",
+      "title": "Suspicious file in skill",
+      "file": "scripts/office/validators/__pycache__/base.cpython-313.pyc",
+      "evidence": "",
+      "message": "Compiled binary in skill (.pyc)",
+      "role": "skill-script"
+    },
+    {
+      "ruleId": "R06",
+      "ast": "AST03",
+      "severity": "HIGH",
+      "title": "Suspicious file in skill",
+      "file": "scripts/office/validators/__pycache__/docx.cpython-313.pyc",
+      "evidence": "",
+      "message": "Compiled binary in skill (.pyc)",
+      "role": "skill-script"
+    },
+    {
+      "ruleId": "R06",
+      "ast": "AST03",
+      "severity": "HIGH",
+      "title": "Suspicious file in skill",
+      "file": "scripts/office/validators/__pycache__/pptx.cpython-313.pyc",
+      "evidence": "",
+      "message": "Compiled binary in skill (.pyc)",
+      "role": "skill-script"
+    },
+    {
+      "ruleId": "R06",
+      "ast": "AST03",
+      "severity": "HIGH",
+      "title": "Suspicious file in skill",
+      "file": "scripts/office/validators/__pycache__/redlining.cpython-313.pyc",
+      "evidence": "",
+      "message": "Compiled binary in skill (.pyc)",
+      "role": "skill-script"
+    },
+    {
+      "ruleId": "R06",
+      "ast": "AST03",
+      "severity": "LOW",
+      "title": "Suspicious file in skill",
+      "file": "scripts/office/validators/base.py",
+      "evidence": "",
+      "message": "Bundled script .py — review contents",
+      "role": "skill-script"
+    },
+    {
+      "ruleId": "R06",
+      "ast": "AST03",
+      "severity": "LOW",
+      "title": "Suspicious file in skill",
+      "file": "scripts/office/validators/docx.py",
+      "evidence": "",
+      "message": "Bundled script .py — review contents",
+      "role": "skill-script"
+    },
+    {
+      "ruleId": "R06",
+      "ast": "AST03",
+      "severity": "LOW",
+      "title": "Suspicious file in skill",
+      "file": "scripts/office/validators/pptx.py",
+      "evidence": "",
+      "message": "Bundled script .py — review contents",
+      "role": "skill-script"
+    },
+    {
+      "ruleId": "R06",
+      "ast": "AST03",
+      "severity": "LOW",
+      "title": "Suspicious file in skill",
+      "file": "scripts/office/validators/redlining.py",
+      "evidence": "",
+      "message": "Bundled script .py — review contents",
+      "role": "skill-script"
+    },
+    {
+      "ruleId": "R06",
+      "ast": "AST03",
+      "severity": "LOW",
+      "title": "Suspicious file in skill",
+      "file": "scripts/thumbnail.py",
+      "evidence": "",
+      "message": "Bundled script .py — review contents",
+      "role": "skill-script"
+    },
+    {
+      "ruleId": "R09",
+      "ast": "AST04",
+      "severity": "MEDIUM",
+      "title": "Metadata abuse",
+      "file": "SKILL.md",
+      "evidence": "",
+      "message": "SKILL.md frontmatter missing `name`",
+      "role": "skill"
+    },
+    {
+      "ruleId": "R09",
+      "ast": "AST04",
+      "severity": "MEDIUM",
+      "title": "Metadata abuse",
+      "file": "SKILL.md",
+      "evidence": "",
+      "message": "SKILL.md frontmatter missing `description`",
+      "role": "skill"
+    }
+  ],
+  "verdict": {
+    "label": "TOXIC",
+    "score": 65,
+    "exitCode": 2
+  },
+  "scoring": {
+    "CRITICAL": 10,
+    "HIGH": 5,
+    "MEDIUM": 2,
+    "LOW": 1
+  }
+}

@@ -261,7 +261,7 @@ Presets: **Minimal** is skill-up plus skillspector — the two already present, 
 
 Every preset includes vercel `skills`, because the release stage cannot run its installability gate without it.
 
-Doctor reports four drift kinds per tool: `missing` (in lock, absent on disk), `unverifiable` (present, will not run), `version-drift` (runs, reports a version other than `resolvedVersion`), and `unlocked` (installed under the tool root but absent from the lock). Two further conditions are reported and do not fail the report: `integrity-unverified`, a lock entry recording `integrity: "none"` per §5.2, and `lifecycle-drift` per §13. Neither means a tool cannot run.
+Doctor reports four drift kinds per tool: `missing` (in lock, absent on disk), `unverifiable` (present, will not run), `version-drift` (runs, reports a version other than `resolvedVersion`), and `unlocked` (installed under the tool root but absent from the lock). Three further conditions are reported and do not fail the report: `integrity-unverified`, a lock entry recording `integrity: "none"` per §5.2; `lifecycle-drift` per §13; and `rule-map-pending`, a ledger whose applied rule-map version trails the shipped one per §10.6. None means a tool cannot run. `rule-map-pending` is resolved by `skillgantry doctor --migrate-rule-map`, which is the explicit trigger R8.14 requires — the migration never runs as a side effect of opening the ledger.
 
 Doctor reads the skills it checks and the ledger's lifecycle column as data supplied by its caller, so `tools` needs neither discovery's I/O nor a sqlite dependency.
 
@@ -452,6 +452,27 @@ SARIF severity normalisation: `error → high`, `warning → medium`, `note → 
 Path normalisation: a tool reports paths relative to the directory it was pointed at, which is the candidate root, not the repo root. Verified against SkillSpector 2.5.1, which scanning `declawed` emits `uri: "SKILL.md"` and `uri: "scripts/scan.py"`. The normaliser rebases each path onto `skill.relPath` to produce the repo-relative form R8.3 requires, so a materialised candidate and an in-place one yield identical findings.
 
 Findings whose path still resolves inside a workspace directory are dropped. Under §4.4 no tool can see the workspace at all, so this is a backstop against a tool inventing a path, not the guard it was in revision 2.
+
+### 7.2 Shared eval-report parser
+
+*Satisfies R4.4.*
+
+`src/core/adapters/eval-report.ts` parses skill-up's `schema_version: "v1alpha1"` report into a `ToolResult`, so any evaluate adapter emitting that schema needs no bespoke parsing. It is the second of the two shared parsers R4.4 requires; §7.1's neighbour `sarif.ts` is the first.
+
+Mapping:
+
+| Report field | Becomes |
+|---|---|
+| `case_results[].status` | `PASS` contributes nothing; anything else is one `RawFinding` of class `eval-failure` |
+| `case_results[].case_id` | the finding's path, as `<skillRelPath>/evals/cases/<case_id>.yaml` |
+| `case_results[].title` and `grading.assertion_results[].evidence` | the finding message |
+| `case_results[].status` counts | `casesTotal`, `casesPassed`, `casesErrored` |
+| `case_results[].turns`, summed | `turns` |
+| `input_tokens`, `output_tokens`, `total_tokens` | **dropped** |
+
+A case result carries no file path, so the finding's path is derived from the case id under skill-up's own layout convention. The alternative, pathing every failure at `evals/eval.yaml`, would collapse a whole failing suite into one issue and make "which case regressed" unanswerable from the ledger — R8.4's identity is `(skillId, relPath, ruleClass)`, so the path is the only field that can separate them. The cost is that a repo storing its cases elsewhere gets an issue pathed at a file that does not exist: a display defect, not an identity one, since the fingerprint stays stable and per-case.
+
+Token fields are dropped rather than mapped, because `MetricKey` has no key that could hold them. That is R1.5 enforced by construction — `coerceMetrics` throws on an unknown key, so a parser forwarding them fails its own test.
 
 ## 8. Outcome model
 
@@ -654,7 +675,7 @@ The ledger stores no raw tool output; `tool_runs.artefact_dir` points at the sid
 fingerprint = sha256(skillId ‖ normalisedRelPath ‖ ruleClass).slice(0, 12)
 ```
 
-One issue means "this file has a problem of this class". Every occurrence, from every tool, is a detection row carrying its own line, native rule id, native severity and message. `occurrence_count` is the number of distinct detections in the most recent run that reported it.
+One issue means "this file has a problem of this class". Every occurrence, from every tool, is a detection row carrying its own line, native rule id, native severity and message. `occurrence_count` is the number of detections recorded across **every** tool run of the most recent run that reported the issue. Per tool run would be ambiguous under fan-out: two tools reporting one issue would leave the count at whichever tool finished last, so the number would depend on scheduling. Summing over the run makes it the answer to "how many times was this seen last time we looked", independent of how many tools looked.
 
 Revision 1 added a `messageShape` component, which the review correctly showed cannot satisfy R8.6: two scanners describing one problem in different words produce different shapes and therefore two issues. Cross-tool merging and per-occurrence separation cannot both hold without a semantic key neither tool provides, so merging wins and occurrences move into the detections table.
 
@@ -996,7 +1017,7 @@ The mapping is checkable rather than asserted: every `*Satisfies …*` label in 
 | M1 | `config`, `discovery` (incl. candidate manifest), `tools` (`uv-tool` driver, lock writer, verify), `adapters` (skillspector only), `runner`, `stages`, `pipeline`, `workspace`, `ledger`, headless CLI |
 | M2 | `queue`, `src/tui/` Work screen with the queue panel |
 | M3 | `tools` completed: catalogue, `npm-prefix`, `gh-release`, presets, setup wizard, doctor |
-| M4 | The seven remaining adapters and their parsers, fan-out policy, cross-tool merge |
+| M4 | The three remaining selectable adapters and their parsers, the shared `v1alpha1` parser, the rule-class map and its versioned migration, fan-out policy, cross-tool merge |
 | M5 | `isolation`, `release`, retirement, mutating-stage gate |
 | M6 | Dashboard and Issues screens, statistics queries |
 

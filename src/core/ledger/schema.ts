@@ -103,4 +103,13 @@ export const MIGRATIONS: readonly string[] = [
   create index if not exists idx_detections_issue on issue_detections(issue_fp);
   create index if not exists idx_detectors_issue on issue_detectors(issue_fp);
   `,
+  `
+  -- R8.14: extending the rule-class map is an explicit, versioned migration.
+  -- This table is what makes "explicit" checkable and "once" enforceable.
+  create table if not exists rule_map_migrations (
+    version    integer primary key,
+    applied_at text not null default (datetime('now')),
+    note       text
+  );
+  `,
 ]

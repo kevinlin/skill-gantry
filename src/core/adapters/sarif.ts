@@ -1,23 +1,15 @@
 import type { RawFinding, Severity } from '../types.js'
+import { rebasePath } from './paths.js'
 import { classifyRule } from './rule-classes.js'
 import type { ToolResult } from './types.js'
+
+export { rebasePath }
 
 const LEVEL_TO_SEVERITY: Readonly<Record<string, Severity>> = {
   error: 'high',
   warning: 'medium',
   note: 'low',
   none: 'info',
-}
-
-/**
- * SARIF uris are relative to the scanned directory, so a scan of `declawed`
- * reports `SKILL.md`, not `declawed/SKILL.md`. Findings must be repo-relative.
- */
-export function rebasePath(skillRelPath: string, uri: string): string {
-  const normalised = uri.replace(/\\/g, '/').replace(/^\.\//, '')
-  if (skillRelPath === '.' || skillRelPath === '') return normalised
-  if (normalised === '') return skillRelPath
-  return `${skillRelPath}/${normalised}`
 }
 
 interface SarifRegion {

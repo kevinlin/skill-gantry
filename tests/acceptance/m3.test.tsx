@@ -10,6 +10,8 @@ import {
   saveToolLock,
 } from '../../src/core/config/config.js'
 import { discoverSkills } from '../../src/core/discovery/discover.js'
+import { RULE_CLASS_MAP_VERSION } from '../../src/core/adapters/rule-classes.js'
+import { RELEASE_TOOL_ID } from '../../src/core/tools/catalogue.js'
 import { toolRoot } from '../../src/core/tools/install.js'
 import type { SetupDriver } from '../../src/core/index.js'
 import { doctor } from '../../src/core/tools/doctor.js'
@@ -88,12 +90,16 @@ describe('M3 exit criterion: a clean machine reaches a verified toolchain throug
 
     const config = await loadConfig(h)
     expect(config.repos).toHaveLength(1)
-    expect(config.stageTools.security).toEqual(['skillspector'])
+    // Membership, not equality: a preset that installs two security tools puts
+    // both here, and M4 registers more adapters than M3 did.
+    expect(config.stageTools.security).toContain('skillspector')
+    expect(Object.values(config.stageTools).flat()).not.toContain(RELEASE_TOOL_ID)
 
     const report = await doctor({
       home: h,
       skills: await discoverSkills(config.repos[0]!),
       ledgerLifecycle: new Map(),
+      ruleMap: { applied: RULE_CLASS_MAP_VERSION, current: RULE_CLASS_MAP_VERSION },
     })
     expect(report.failed).toBe(false)
     ink.unmount()
@@ -143,6 +149,7 @@ describe('M3 exit criterion: doctor reports all four drift kinds plus integrity 
       home: h,
       skills: await discoverSkills(repoRef),
       ledgerLifecycle: new Map([['r/declawed', 'active']]),
+      ruleMap: { applied: RULE_CLASS_MAP_VERSION, current: RULE_CLASS_MAP_VERSION },
     })
 
     const kind = (id: string): string | undefined =>

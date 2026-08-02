@@ -1,0 +1,344 @@
+{
+  "skill_name": "declawed",
+  "schema_version": "v1alpha1",
+  "engine_name": "claude_code",
+  "model_name": "",
+  "start_time": "2026-07-31T08:33:35.854671+08:00",
+  "end_time": "2026-07-31T08:35:29.604776+08:00",
+  "case_results": [
+    {
+      "case_id": "strip-not-x-but-y",
+      "title": "Removes the \"not X but Y\" family and puffery instead of paraphrasing it",
+      "status": "PASS",
+      "duration_ms": 38205,
+      "turns": 1,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "grading": {
+        "status": "PASS",
+        "turns_executed": 1,
+        "turns_total": 1,
+        "assertion_results": [
+          {
+            "text": "expect.files_exist",
+            "passed": true,
+            "evidence": "all checks passed"
+          },
+          {
+            "text": "script: /Users/kevinlin/dev/ai-sdlc/zapac-agent-skills/declawed/evals/fixtures/scripts/assert-no-negative-parallelism.sh",
+            "passed": true,
+            "evidence": "PASS: rewritten prose is free of the targeted tells"
+          }
+        ],
+        "summary": {
+          "passed": 2,
+          "failed": 0,
+          "total": 2,
+          "pass_rate": 1
+        }
+      },
+      "configuration": "with_skill",
+      "prompt": "Deslop this LinkedIn post for me. Write only the rewritten prose to a file\ncalled rewritten.md in the current directory (no changelog, no headings, no\ncommentary in that file), then show me the change log in your reply.\n\nIn today's fast-paced world, effective communication isn't just important --\nit's absolutely pivotal. Great leaders don't just talk; they listen, they\nempathize, and they inspire. It's worth noting that the best teams are built\nnot on talent, but on trust. This isn't a minor tweak, it's a seismic shift\nin how modern organisations operate.\n",
+      "response": "Written to `rewritten.md`. Genre assumed: LinkedIn post, general professional audience.\n\n```\nChanges\n- Stock skeleton: 1 fixed (\"In today's fast-paced world\" deleted; post now starts at the point)\n- Negative parallelism: 4 fixed (\"isn't just important\", \"don't just talk\",\n  \"not on talent, but on trust\", \"isn't a minor tweak, it's...\") — three were\n  decoration on empty claims and were cut; the talent/trust contrast was real,\n  so it's now a plain positive claim\n- Puffery: 4 fixed (pivotal, absolutely, seismic shift, modern → plain words or cut)\n- Rule-of-three: 1 fixed (\"listen, they empathize, and they inspire\" → kept\n  \"listen\", the only verb doing work)\n- Hedging: 1 fixed (\"It's worth noting that\" deleted)\n- Cadence: was 4 sentences all 12–15 words; now 7 / 12 / 10\n- Verify passes: 2 (second pass clean)\n- Flagged for author: none in the file. Worth knowing: the last sentence keeps\n  your \"big change\" claim but has nothing behind it. A one-line example from your\n  own team would carry it.\n```"
+    },
+    {
+      "case_id": "report-scan-and-changelog",
+      "title": "Reports scan findings before rewriting and ends with the required change log",
+      "status": "PASS",
+      "duration_ms": 47964,
+      "turns": 1,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "grading": {
+        "status": "PASS",
+        "turns_executed": 1,
+        "turns_total": 1,
+        "assertion_results": [
+          {
+            "text": "expect.must_contain",
+            "passed": true,
+            "evidence": "all checks passed"
+          },
+          {
+            "text": "output_contains{all:[Changes Verify passes Cadence], any:[Puffery puffery Negative parallelism negative parallelism]}",
+            "passed": true,
+            "evidence": "output satisfies all contains checks (all:[Changes Verify passes Cadence], any:[Puffery puffery Negative parallelism negative parallelism])"
+          }
+        ],
+        "summary": {
+          "passed": 2,
+          "failed": 0,
+          "total": 2,
+          "pass_rate": 1
+        }
+      },
+      "configuration": "with_skill",
+      "prompt": "Run a declawed pass on this paragraph:\n\nIt's worth noting that our platform doesn't just streamline workflows, it\nfundamentally reimagines them. From startups to enterprises, teams leverage\nour robust, scalable, and intuitive tooling to unlock unprecedented value in\ntoday's ever-evolving landscape. What do you think?\n",
+      "response": "**Scan findings (Phase 1)**\n\n| Category | Count | Worst example |\n|---|---|---|\n| Puffery / inflated vocabulary | 3 | \"unlock unprecedented value in today's ever-evolving landscape\" |\n| Negative parallelism | 1 | \"doesn't just streamline workflows, it fundamentally reimagines them\" |\n| Hedging / throat-clearing | 1 | \"It's worth noting that\" |\n| False range + rule-of-three | 1 | \"From startups to enterprises\" / \"robust, scalable, and intuitive\" |\n| Engagement bait | 1 | \"What do you think?\" |\n\n**Triage:** the \"doesn't just X, it Y\" sentence decorates an empty claim, so the negation goes and the plain claim stays. \"From startups to enterprises\" has no meaningful midpoint as written — named the two ends instead. The triplet collapses to the one property the copy can actually stand behind. Puffery and the closing question assert nothing; deleted. No numbers exist in the source, so the specificity gap is flagged rather than invented.\n\n**Rewrite**\n\n\u003e Our platform streamlines workflows. The same tooling serves a startup and a company-wide rollout, and it holds up under both.\n\u003e [ADD: one concrete result — hours saved per week, steps cut from a release?]\n\n```\nChanges\n- Puffery: 3 fixed (deleted; \"unlock unprecedented value in today's ever-evolving landscape\" carried no claim)\n- Negative parallelism: 1 fixed (deleted X half, asserted the plain claim)\n- Hedging: 1 fixed (deleted \"It's worth noting that\")\n- False range: 1 fixed (named both ends instead of a range)\n- Rule-of-three: 1 fixed (kept the strongest item, cut \"robust\" and \"intuitive\")\n- Engagement bait: 1 fixed (deleted \"What do you think?\")\n- Cadence: short opening claim, longer second sentence\n- Verify passes: 1 (clean)\n- Flagged for author: [ADD: one concrete result — hours saved per week, steps cut from a release?]\n```\n\nThe rewrite is much shorter because roughly two-thirds of the original was frame with no claim inside it. If you want it to fill the original length, it needs a real fact — a number, a customer, a before/after."
+    },
+    {
+      "case_id": "preserve-facts-no-invention",
+      "title": "Keeps the author's facts and never invents specifics to replace vagueness",
+      "status": "PASS",
+      "duration_ms": 38940,
+      "turns": 1,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "grading": {
+        "status": "PASS",
+        "turns_executed": 1,
+        "turns_total": 1,
+        "assertion_results": [
+          {
+            "text": "expect.must_contain",
+            "passed": true,
+            "evidence": "all checks passed"
+          },
+          {
+            "text": "The rewritten text still states the author's real figures: 42 minutes, 9 minutes, and 14 customer environments, with the same meaning.",
+            "passed": true,
+            "evidence": "The rewrite contains: \"the latest release cut median deploy time from 42 minutes to 9 minutes across 14 customer environments\" — all three figures are present with the same meaning (a before/after deploy time reduction measured across 14 environments)."
+          },
+          {
+            "text": "The rewrite does not invent any specific study, author, institution, publication, year, or statistic that was absent from the source text.",
+            "passed": true,
+            "evidence": "The rewrite introduces no new studies, authors, institutions, or statistics. The optional lead-in example references \"DORA State of DevOps, with year and stat\" but this is inside a bracketed placeholder ([ADD: real source...]) explicitly flagged for the author to fill in — it is not asserted as fact. No fabricated citations appear in the actual rewritten text."
+          },
+          {
+            "text": "For the vague 'studies show' and 'research suggests' claims, the rewrite either deletes them, attributes them only to the author's own testing, or leaves a marked placeholder such as [ADD: which study?] for the author to fill in.",
+            "passed": true,
+            "evidence": "The Changes section explicitly notes: \"Low specificity: 2 cut ('Studies show that many companies' and 'Research suggests this kind of gain is rare' — both cite nothing and are unfalsifiable\"). Both vague claims are deleted. The optional lead-in offers an [ADD: real source...] placeholder for the author. The surviving claim is attributed to \"our own testing.\""
+          },
+          {
+            "text": "The 'doesn't just help -- it transforms the picture' construction is gone and has not been replaced by an equivalent contrast frame such as 'less about X than Y' or 'the real gain is'.",
+            "passed": true,
+            "evidence": "The Changes section confirms: \"Negative parallelism: 1 fixed ('doesn't just help -- it transforms the picture' — deleted\"). The rewritten sentence is simply \"the latest release cut median deploy time from 42 minutes to 9 minutes across 14 customer environments\" — no contrast frame of any kind appears."
+          }
+        ],
+        "summary": {
+          "passed": 5,
+          "failed": 0,
+          "total": 5,
+          "pass_rate": 1
+        },
+        "judge_context": {
+          "profile": "standard",
+          "materialized_dir": "judge/context",
+          "manifest": {
+            "profile": "standard",
+            "materialized_dir": "judge/context",
+            "materials": [
+              {
+                "key": "final_message",
+                "mode": "include",
+                "path": "judge/context/final_message.txt",
+                "bytes": 1541,
+                "original_bytes": 1541
+              },
+              {
+                "key": "transcript",
+                "mode": "file_ref",
+                "path": "judge/context/transcript.json",
+                "bytes": 2046,
+                "original_bytes": 2046
+              },
+              {
+                "key": "workspace_diff",
+                "mode": "omit",
+                "bytes": 0
+              },
+              {
+                "key": "generated_files",
+                "mode": "omit",
+                "bytes": 0
+              }
+            ]
+          },
+          "prompt_delivery": "inline",
+          "prompt_bytes": 4365
+        }
+      },
+      "configuration": "with_skill",
+      "prompt": "Deslop this for a product blog post:\n\nStudies show that many companies struggle with deployment velocity. Our\nlatest release doesn't just help -- it transforms the picture. In our own\ntesting, median deploy time fell from 42 minutes to 9 minutes across 14\ncustomer environments. Research suggests this kind of gain is rare.\n",
+      "response": "**Rewrite**\n\n\u003e In our own testing, the latest release cut median deploy time from 42 minutes to 9 minutes across 14 customer environments.\n\nThat one sentence is the whole paragraph's content. Everything else was scaffolding around it.\n\nIf you want a lead-in before the number, it has to come with a source:\n\n\u003e [ADD: real source for \"companies struggle with deploy velocity\" — e.g. DORA State of DevOps, with year and stat.] In our own testing, the latest release cut median deploy time from 42 minutes to 9 minutes across 14 customer environments.\n\n**Changes**\n- Low specificity: 2 cut (\"Studies show that many companies\" and \"Research suggests this kind of gain is rare\" — both cite nothing and are unfalsifiable; the second also just re-praises the number you already gave)\n- Negative parallelism: 1 fixed (\"doesn't just help -- it transforms the picture\" — deleted; nobody claims a release \"just helps\", and the 42→9 figure makes the point better than the framing did)\n- Puffery: 1 cut (\"transforms the picture\")\n- Cadence: 4 sentences down to 1; the original alternated at a metronomic 8–18 words\n- Verify passes: 1 (remaining hit is the 42→9 range — real measured before/after, kept)\n- Flagged for author: the optional `[ADD: …]` lead-in source above\n\nOne content flag, not style: \"in our own testing\" plus \"14 customer environments\" reads oddly — if those are real customer environments, \"in our own testing\" undersells it; if they're your replicas of customer setups, say so, because a reader will assume the former."
+    },
+    {
+      "case_id": "reddit-register",
+      "title": "Applies the genre register instead of a generic clean-up",
+      "status": "PASS",
+      "duration_ms": 40896,
+      "turns": 1,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "grading": {
+        "status": "PASS",
+        "turns_executed": 1,
+        "turns_total": 1,
+        "assertion_results": [
+          {
+            "text": "The rewritten reddit reply contains no markdown bold and is not structured as a bulleted essay; it reads as plain conversational paragraphs a person would type into a reddit comment box.",
+            "passed": true,
+            "evidence": "The rewrite is three plain prose paragraphs with no bold markers and no bullet points. The changes log explicitly notes: 'bold + bulleted term:definition list → plain paragraphs'. The output reads as natural reddit comment prose."
+          },
+          {
+            "text": "The reply drops the 'Great question!', 'Hope this helps!' and 'Let me know if you have any questions' scaffolding.",
+            "passed": true,
+            "evidence": "The changes log states: 'deleted the \"Great question!\" opener and the \"Hope this helps! Let me know…\" close — both read as assistant, not commenter'. Neither phrase appears in the rewritten text."
+          },
+          {
+            "text": "All three negative-parallelism constructions ('Don't just lift and shift', 'not merely about metrics, it's about traces', 'isn't a tooling change, it's a mindset shift') are gone, and none has been swapped for an equivalent contrast frame.",
+            "passed": false,
+            "evidence": "The first construction 'Don't just lift and shift' has been replaced with 'Containerise one service at a time rather than lifting the whole thing over in one go' — 'rather than' is itself a contrast frame that mirrors the original's X-versus-Y structure. The third construction 'isn't a tooling change, it's a mindset shift' has been replaced with 'Standing up the cluster is the easy half; getting a team to actually think in terms of desired state and ephemeral pods takes a lot longer' — a semicolon contrast that preserves the same easy-versus-hard rhetorical opposition. Only the second construction ('not merely metrics, it's about traces') is cleanly resolved into a plain positive claim."
+          },
+          {
+            "text": "The rewrite does not overcorrect: no fake typos, no manufactured slang, no forced casual persona beyond ordinary reddit register.",
+            "passed": true,
+            "evidence": "The rewrite uses standard technical vocabulary ('containerise', 'tracing', 'desired state', 'ephemeral pods') with no fake typos, no slang ('lol', 'tbh', etc.), and no artificially casual affectations. The tone is matter-of-fact, consistent with ordinary reddit register."
+          },
+          {
+            "text": "The technical substance (incremental containerisation, traces alongside metrics, the organisational change point) is preserved rather than deleted wholesale.",
+            "passed": true,
+            "evidence": "All three technical points survive: incremental containerisation — 'Containerise one service at a time'; traces alongside metrics — 'Metrics alone stop being useful pretty fast here. Get tracing in from the start'; organisational change — 'getting a team to actually think in terms of desired state and ephemeral pods takes a lot longer'."
+          }
+        ],
+        "summary": {
+          "passed": 4,
+          "failed": 1,
+          "total": 5,
+          "pass_rate": 0.8
+        },
+        "judge_context": {
+          "profile": "standard",
+          "materialized_dir": "judge/context",
+          "manifest": {
+            "profile": "standard",
+            "materialized_dir": "judge/context",
+            "materials": [
+              {
+                "key": "final_message",
+                "mode": "include",
+                "path": "judge/context/final_message.txt",
+                "bytes": 1603,
+                "original_bytes": 1603
+              },
+              {
+                "key": "transcript",
+                "mode": "file_ref",
+                "path": "judge/context/transcript.json",
+                "bytes": 2237,
+                "original_bytes": 2237
+              },
+              {
+                "key": "workspace_diff",
+                "mode": "omit",
+                "bytes": 0
+              },
+              {
+                "key": "generated_files",
+                "mode": "omit",
+                "bytes": 0
+              }
+            ]
+          },
+          "prompt_delivery": "inline",
+          "prompt_bytes": 4775
+        }
+      },
+      "configuration": "with_skill",
+      "prompt": "This is a reply I'm about to post on r/devops. Make it not sound like AI.\n\n**Great question!** Here's my take on migrating to Kubernetes:\n\n- **Start small**: Don't just lift and shift, containerise incrementally.\n- **Observability matters**: It's not merely about metrics, it's about traces too.\n- **Culture is key**: This isn't a tooling change, it's a mindset shift.\n\nHope this helps! Let me know if you have any questions.\n",
+      "response": "Ran the declawed loop on it. Scan flagged: stock opener (\"Great question!\"), engagement-bait sign-off, bold-in-prose plus term:definition bullets (both reddit tells), one \"not merely X, it's Y\", and the \"culture is key\" puffery.\n\n**Rewrite:**\n\n\u003e Containerise one service at a time rather than lifting the whole thing over in one go.\n\u003e\n\u003e Metrics alone stop being useful pretty fast here. Get tracing in from the start — the first time a request dies somewhere between six pods, you'll want it.\n\u003e\n\u003e And leave time for the people part. Standing up the cluster is the easy half; getting a team to actually think in terms of desired state and ephemeral pods takes a lot longer.\n\nChanges\n- Stock skeleton: 2 fixed (deleted the \"Great question!\" opener and the \"Hope this helps! Let me know…\" close — both read as assistant, not commenter)\n- Negative parallelism: 3 fixed (\"don't just lift and shift\" → positive instruction; \"not merely metrics, traces too\" → stated as a plain claim with a reason; \"isn't a tooling change, it's a mindset shift\" → concrete version of the same point)\n- Puffery: 2 fixed (\"Observability matters\", \"Culture is key\" → cut the labels, kept the advice)\n- Formatting: bold + bulleted term:definition list → plain paragraphs (bold bullets are the biggest AI giveaway in a reddit reply)\n- Cadence: varied, 7–26 words, no metronomic run\n- Verify passes: 2\n- Flagged for author: \"desired state and ephemeral pods\" and \"six pods\" are my concretisations of your vaguer \"mindset shift\" / \"traces too\" — swap in whatever actually bit you, it'll land better than my guess."
+    },
+    {
+      "case_id": "academic-no-overcorrection",
+      "title": "De-slops academic prose without trading precision for personality",
+      "status": "PASS",
+      "duration_ms": 27737,
+      "turns": 1,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "grading": {
+        "status": "PASS",
+        "turns_executed": 1,
+        "turns_total": 1,
+        "assertion_results": [
+          {
+            "text": "expect.must_contain",
+            "passed": true,
+            "evidence": "all checks passed"
+          },
+          {
+            "text": "Puffery is gone: 'ever-evolving landscape', 'pivotal', 'delves into', 'plays a vital role in', 'a testament to' no longer appear or have been replaced by plain, concrete wording.",
+            "passed": true,
+            "evidence": "The rewritten text contains none of these phrases. The change log explicitly confirms all five were removed: \"Puffery: 5 fixed ('ever-evolving landscape', 'pivotal', 'delves into', 'plays a vital role in', 'a testament to the robustness') — deleted or replaced with the plain verb\". The rewritten abstract uses only concrete, plain phrasing: \"pay for their guarantees in coordination\", \"reduces coordination overhead\"."
+          },
+          {
+            "text": "The 'doesn't just propose another protocol -- it delves into' construction is removed and not reframed as an equivalent contrast.",
+            "passed": true,
+            "evidence": "The rewritten abstract contains no contrast construction of any kind. The change log states: \"Negative parallelism: 1 fixed ('doesn't just propose another protocol -- it delves into a fundamentally novel approach') — strawman, deleted; novelty is now the reader's inference from the result, not an assertion about it\". The rewrite moves directly from problem statement to contribution without any \"not X but Y\" framing."
+          },
+          {
+            "text": "The empirical claims are unchanged: a 32-node cluster and a 2.1x throughput improvement over Raft under write-heavy workloads.",
+            "passed": true,
+            "evidence": "The rewritten text reads: \"On a 32-node cluster under write-heavy workloads, it sustains 2.1x the throughput of Raft.\" All three empirical specifics (32-node, 2.1x, Raft, write-heavy) are present verbatim. The change log also confirms: \"The 2.1x / 32-node / Raft / write-heavy facts are preserved verbatim.\""
+          },
+          {
+            "text": "Register is preserved: the text reads as formal academic prose with no added slang, jokes, rhetorical questions, personal opinions, or manufactured casual voice. Conventional academic first-person plural such as 'We present' or 'We evaluate' is correct in this genre and must NOT be counted as a register failure.",
+            "passed": true,
+            "evidence": "The rewritten abstract is formal academic prose throughout: \"Consistency protocols for distributed systems pay for their guarantees in coordination. We present [ADD: protocol name], which reduces coordination overhead by [ADD: one-clause statement of the mechanism]. On a 32-node cluster under write-heavy workloads, it sustains 2.1x the throughput of Raft.\" The use of \"We present\" is standard systems-paper convention. No slang, jokes, rhetorical questions, or casual voice appear. The agent's framing note also confirms: \"Genre assumed: systems-paper abstract, third person, no first-person hot takes added.\""
+          },
+          {
+            "text": "Technical terminology (consistency, coordination overhead, Raft, throughput) is retained rather than simplified away.",
+            "passed": true,
+            "evidence": "All four required technical terms appear in the rewritten text: \"Consistency protocols\" (consistency), \"reduces coordination overhead\" (coordination overhead), \"2.1x the throughput of Raft\" (Raft and throughput). None were simplified or replaced with lay equivalents."
+          }
+        ],
+        "summary": {
+          "passed": 6,
+          "failed": 0,
+          "total": 6,
+          "pass_rate": 1
+        },
+        "judge_context": {
+          "profile": "standard",
+          "materialized_dir": "judge/context",
+          "manifest": {
+            "profile": "standard",
+            "materialized_dir": "judge/context",
+            "materials": [
+              {
+                "key": "final_message",
+                "mode": "include",
+                "path": "judge/context/final_message.txt",
+                "bytes": 1527,
+                "original_bytes": 1527
+              },
+              {
+                "key": "transcript",
+                "mode": "file_ref",
+                "path": "judge/context/transcript.json",
+                "bytes": 2200,
+                "original_bytes": 2200
+              },
+              {
+                "key": "workspace_diff",
+                "mode": "omit",
+                "bytes": 0
+              },
+              {
+                "key": "generated_files",
+                "mode": "omit",
+                "bytes": 0
+              }
+            ]
+          },
+          "prompt_delivery": "inline",
+          "prompt_bytes": 4773
+        }
+      },
+      "configuration": "with_skill",
+      "prompt": "Deslop this abstract for a peer-reviewed systems paper.\n\nIn the ever-evolving landscape of distributed systems, consistency remains a\npivotal concern. This paper doesn't just propose another protocol -- it\ndelves into a fundamentally novel approach. It is worth noting that our\nmethod plays a vital role in reducing coordination overhead. Experiments on a\n32-node cluster show a 2.1x throughput improvement over Raft under write-heavy\nworkloads, a testament to the robustness of the design.\n",
+      "response": "Clean on pass 2. Genre assumed: systems-paper abstract, third person, no first-person hot takes added.\n\n**Rewritten:**\n\n\u003e Consistency protocols for distributed systems pay for their guarantees in coordination. We present [ADD: protocol name], which reduces coordination overhead by [ADD: one-clause statement of the mechanism]. On a 32-node cluster under write-heavy workloads, it sustains 2.1x the throughput of Raft.\n\n```\nChanges\n- Puffery: 5 fixed (\"ever-evolving landscape\", \"pivotal\", \"delves into\", \"plays a vital\n  role in\", \"a testament to the robustness\") — deleted or replaced with the plain verb\n- Negative parallelism: 1 fixed (\"doesn't just propose another protocol -- it delves\n  into a fundamentally novel approach\") — strawman, deleted; novelty is now the reader's\n  inference from the result, not an assertion about it\n- Hedging: 1 fixed (\"It is worth noting that\") — deleted\n- Stock opener: 1 fixed — abstract now starts at the problem\n- Cadence: was 4 sentences all 12-23 words with a 3-sentence flat run; now 3 sentences,\n  11-16 words, no flat run\n- Verify passes: 2\n- Flagged for author: [ADD: protocol name] and [ADD: one-clause statement of the\n  mechanism]. The original never said what the method is — \"a fundamentally novel\n  approach\" was the only description, and a reviewer will not accept that. The 2.1x /\n  32-node / Raft / write-heavy facts are preserved verbatim.\n```\n\nWord count dropped from 60 to ~40, which leaves room for the mechanism sentence the abstract is currently missing."
+    }
+  ],
+  "total_tokens": 0
+}

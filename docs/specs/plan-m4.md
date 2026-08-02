@@ -202,7 +202,7 @@ docs/specs/
 - Consumes: nothing.
 - Produces: the text every later task cites. No TypeScript symbol.
 
-- [ ] **Step 1: Rewrite R3.5b**
+- [x] **Step 1: Rewrite R3.5b**
 
 In `docs/specs/requirements.md`, replace:
 
@@ -216,7 +216,7 @@ with:
 - **R3.5b** SkillGantry MUST ship a manifest and `parse` for every catalogued tool a stage can select, each fixture-tested per R13.3. As the catalogue stands that is three beyond M1's skillspector — skill-lint (validate), skill-up (evaluate) and skill-scanner (security). A catalogued tool that no stage selects, which today is vercel `skills`, MUST NOT have an adapter. *(rev 4, split from R3.5; rev 5, M4 planning: "the seven adapters M1 did not" counts four tools that have no installable, skill-directory-driven implementation — agentskills, SkillOpt and SkillHone are unpublished per plan-m3.md, promptfoo needs a per-skill config per decision-log §10. A requirement stated as a count goes wrong every time the catalogue moves, so it is stated as a rule over the catalogue instead.)*
 ```
 
-- [ ] **Step 2: Reword the M4 exit criterion**
+- [x] **Step 2: Reword the M4 exit criterion**
 
 In the milestone ownership table, replace the M4 exit-criteria cell:
 
@@ -230,7 +230,7 @@ with:
 Two tools reporting one rule class in one file produce one issue with two detections and two detector rows, whichever stage each ran in — the fingerprint carries no stage component; two tools writing `findings.sarif` in one fan-out stage each keep their own file and both reach the stage summary; the issue closes only once both detectors have since run conclusively without it, in either finish order; extending the rule-class map is a versioned migration that merges colliding issues without losing a detection
 ```
 
-- [ ] **Step 3: Add design §7.2 for the second shared parser**
+- [x] **Step 3: Add design §7.2 for the second shared parser**
 
 In `docs/specs/design.md`, immediately after §7.1 "Rule-class mapping", insert:
 
@@ -257,7 +257,7 @@ A case result carries no file path, so the finding's path is derived from the ca
 Token fields are dropped rather than mapped, because `MetricKey` has no key that could hold them. That is R1.5 enforced by construction — `coerceMetrics` throws on an unknown key, so a parser forwarding them fails its own test.
 ```
 
-- [ ] **Step 4: Sharpen §10.3's occurrence_count sentence**
+- [x] **Step 4: Sharpen §10.3's occurrence_count sentence**
 
 Replace, in §10.3:
 
@@ -271,7 +271,7 @@ with:
 `occurrence_count` is the number of detections recorded across **every** tool run of the most recent run that reported the issue. Per tool run would be ambiguous under fan-out: two tools reporting one issue would leave the count at whichever tool finished last, so the number would depend on scheduling. Summing over the run makes it the answer to "how many times was this seen last time we looked", independent of how many tools looked.
 ```
 
-- [ ] **Step 5: Add the two doctor conditions and correct §17's M4 row**
+- [x] **Step 5: Add the two doctor conditions and correct §17's M4 row**
 
 In §5.3, extend the sentence listing the non-failing conditions:
 
@@ -297,7 +297,7 @@ with:
 | M4 | The three remaining selectable adapters and their parsers, the shared `v1alpha1` parser, the rule-class map and its versioned migration, fan-out policy, cross-tool merge |
 ```
 
-- [ ] **Step 6: Verify the spec documents still parse and cross-check**
+- [x] **Step 6: Verify the spec documents still parse and cross-check**
 
 Run: `pnpm vitest run tests/core/design-example.test.ts`
 Expected: PASS.
@@ -305,7 +305,7 @@ Expected: PASS.
 Run: `grep -c '^\*Satisfies' docs/specs/design.md`
 Expected: one more than before Step 3 — §7.2 adds a `*Satisfies R4.4.*` label, and §17 says every such label is parsed and compared against requirements.md.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add docs/specs/requirements.md docs/specs/design.md docs/specs/plan-m4.md
@@ -338,7 +338,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 This task lands the map growth and the migration together on purpose. Thirteen new skillspector mappings change the fingerprint of every issue a live `gantry.db` already holds under `unmapped:skillspector:*`; shipping the map without the migration orphans them, and shipping the migration without a map change leaves it untested.
 
-- [ ] **Step 1: Write the failing map test**
+- [x] **Step 1: Write the failing map test**
 
 Add to `tests/core/rule-classes.test.ts`:
 
@@ -378,12 +378,12 @@ describe('skillspector static rule map', () => {
 })
 ```
 
-- [ ] **Step 2: Run it and watch it fail**
+- [x] **Step 2: Run it and watch it fail**
 
 Run: `pnpm vitest run tests/core/rule-classes.test.ts`
 Expected: FAIL — `classifyRule('skillspector', 'AS1')` returns `unmapped:skillspector:AS1`, and `RULE_CLASS_MAP_VERSION` is not exported.
 
-- [ ] **Step 3: Grow the map**
+- [x] **Step 3: Grow the map**
 
 Replace the `RULE_CLASS_MAP` block in `src/core/adapters/rule-classes.ts`:
 
@@ -424,12 +424,12 @@ export const RULE_CLASS_MAP: Readonly<Record<string, Readonly<Record<string, Kno
 }
 ```
 
-- [ ] **Step 4: Run the map test to green**
+- [x] **Step 4: Run the map test to green**
 
 Run: `pnpm vitest run tests/core/rule-classes.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Write the failing migration test**
+- [x] **Step 5: Write the failing migration test**
 
 Create `tests/core/rule-map-migration.test.ts`:
 
@@ -567,12 +567,12 @@ describe('migrateRuleMap', () => {
 })
 ```
 
-- [ ] **Step 6: Run it and watch it fail**
+- [x] **Step 6: Run it and watch it fail**
 
 Run: `pnpm vitest run tests/core/rule-map-migration.test.ts`
 Expected: FAIL — the module does not exist.
 
-- [ ] **Step 7: Append schema migration 2**
+- [x] **Step 7: Append schema migration 2**
 
 In `src/core/ledger/schema.ts`, append a second element to `MIGRATIONS`:
 
@@ -590,7 +590,7 @@ In `src/core/ledger/schema.ts`, append a second element to `MIGRATIONS`:
 
 `openLedger` applies migrations by index against `schema_version`, so an existing database picks this up on next open and a fresh one gets both.
 
-- [ ] **Step 8: Write the migration**
+- [x] **Step 8: Write the migration**
 
 Create `src/core/ledger/rule-map-migration.ts`:
 
@@ -800,19 +800,19 @@ export function migrateRuleMap(db: DatabaseSync): RuleMapMigrationResult {
 }
 ```
 
-- [ ] **Step 9: Run the migration test to green**
+- [x] **Step 9: Run the migration test to green**
 
 Run: `pnpm vitest run tests/core/rule-map-migration.test.ts`
 Expected: PASS, 4 tests.
 
 If the merge case fails on a foreign-key error, check that `fold` runs its `update issue_detections` before the `delete from issues` — `pragma foreign_keys = on` is set in `openLedger`, and `on delete cascade` will take the detections with the row if the order inverts.
 
-- [ ] **Step 10: Run the whole ledger suite for regressions**
+- [x] **Step 10: Run the whole ledger suite for regressions**
 
 Run: `pnpm vitest run tests/core/ledger-db.test.ts tests/core/reconcile.test.ts tests/core/issues.test.ts tests/core/fingerprint.test.ts`
 Expected: PASS. `reconcile.test.ts` builds issues under the old two-entry map; if any case hardcodes `unmapped:skillspector:LP3` or similar, update it to the mapped class and note it in the deviations section.
 
-- [ ] **Step 11: Commit**
+- [x] **Step 11: Commit**
 
 ```bash
 git add src/core/adapters/rule-classes.ts src/core/ledger/schema.ts \
@@ -850,7 +850,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
   - `src/core/adapters/skill-lint.ts` → `export const manifest: AdapterManifest`, `export const parse: Parse`
   - `RULE_CLASS_MAP_VERSION` becomes `3`
 
-- [ ] **Step 1: Move `rebasePath` into a shared module**
+- [x] **Step 1: Move `rebasePath` into a shared module**
 
 Two parsers now rebase a scanner-relative path onto the skill's repo-relative one, and importing it from `sarif.ts` into a JSON parser would name the wrong thing. Create `src/core/adapters/paths.ts` with the function moved verbatim from `sarif.ts`:
 
@@ -880,7 +880,7 @@ export { rebasePath }
 
 The re-export keeps `tests/core/sarif.test.ts`, which imports `rebasePath` from `sarif.js`, working unchanged.
 
-- [ ] **Step 2: Capture the two fixtures**
+- [x] **Step 2: Capture the two fixtures**
 
 Extend `scripts/capture-fixtures.sh`. After the skillspector block, add:
 
@@ -919,7 +919,7 @@ python3 -c "import json;d=json.load(open('tests/fixtures/skill-lint/architecture
 
 Expected: `1 {'label': 'SAFE', 'score': 2, 'exitCode': 0} [('R06','scripts/build_gallery.py','LOW'), ('R06','scripts/html_to_png.py','LOW')]`
 
-- [ ] **Step 3: Write the failing adapter test**
+- [x] **Step 3: Write the failing adapter test**
 
 Create `tests/core/skill-lint.test.ts`:
 
@@ -1008,12 +1008,12 @@ describe('skill-lint parse', () => {
 })
 ```
 
-- [ ] **Step 4: Run it and watch it fail**
+- [x] **Step 4: Run it and watch it fail**
 
 Run: `pnpm vitest run tests/core/skill-lint.test.ts`
 Expected: FAIL — `src/core/adapters/skill-lint.js` does not exist.
 
-- [ ] **Step 5: Write the adapter**
+- [x] **Step 5: Write the adapter**
 
 Create `src/core/adapters/skill-lint.ts`:
 
@@ -1124,7 +1124,7 @@ export const parse: Parse = (ctx) => {
 
 skill-lint emits no line numbers, so `RawFinding.line` is never set — which `exactOptionalPropertyTypes` makes easier to get right than to get wrong.
 
-- [ ] **Step 6: Add the skill-lint rule mappings and bump the map version**
+- [x] **Step 6: Add the skill-lint rule mappings and bump the map version**
 
 In `src/core/adapters/rule-classes.ts`, add a second tool block and bump the version to `3`:
 
@@ -1154,7 +1154,7 @@ Extend `tests/core/rule-classes.test.ts` with:
   })
 ```
 
-- [ ] **Step 7: Register the adapter**
+- [x] **Step 7: Register the adapter**
 
 In `src/core/adapters/registry.ts`:
 
@@ -1168,12 +1168,12 @@ const ADAPTERS: readonly Adapter[] = [
 ]
 ```
 
-- [ ] **Step 8: Run the adapter, map, registry, catalogue and boundary suites**
+- [x] **Step 8: Run the adapter, map, registry, catalogue and boundary suites**
 
 Run: `pnpm vitest run tests/core/skill-lint.test.ts tests/core/rule-classes.test.ts tests/core/catalogue.test.ts tests/core/sarif.test.ts tests/boundary.test.ts`
 Expected: PASS. `catalogue.test.ts` asserts a manifest's `install` and `versionArgv` equal the catalogue entry's for every tool holding both — so a typo in either is caught here rather than at install time. `boundary.test.ts` proves the no-`node:fs`-in-adapters rule still fires.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/core/adapters/paths.ts src/core/adapters/sarif.ts src/core/adapters/skill-lint.ts \
@@ -1209,7 +1209,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 This is R4.4's second shared parser. It lives in the engine rather than in the adapter so a future evaluate harness emitting `v1alpha1` needs no bespoke parsing — the same reason `sarif.ts` is shared between skillspector and skill-scanner.
 
-- [ ] **Step 1: Capture the fixtures**
+- [x] **Step 1: Capture the fixtures**
 
 The reference repo holds three real `v1alpha1` reports, one with a failing case. Add to `scripts/capture-fixtures.sh`:
 
@@ -1240,7 +1240,7 @@ python3 -c "import json;d=json.load(open('tests/fixtures/skill-up/declawed-itera
 
 Expected: `v1alpha1 ['PASS', 'FAIL', 'PASS', 'PASS', 'PASS']`
 
-- [ ] **Step 2: Write the failing parser test**
+- [x] **Step 2: Write the failing parser test**
 
 Create `tests/core/eval-report.test.ts`:
 
@@ -1296,12 +1296,12 @@ describe('parseEvalReport', () => {
 })
 ```
 
-- [ ] **Step 3: Run it and watch it fail**
+- [x] **Step 3: Run it and watch it fail**
 
 Run: `pnpm vitest run tests/core/eval-report.test.ts`
 Expected: FAIL — the module does not exist.
 
-- [ ] **Step 4: Write the shared parser**
+- [x] **Step 4: Write the shared parser**
 
 Create `src/core/adapters/eval-report.ts`:
 
@@ -1414,12 +1414,12 @@ export function parseEvalReport(bytes: Buffer, opts: EvalReportOptions): ToolRes
 }
 ```
 
-- [ ] **Step 5: Run the parser test to green**
+- [x] **Step 5: Run the parser test to green**
 
 Run: `pnpm vitest run tests/core/eval-report.test.ts`
 Expected: PASS, 5 tests.
 
-- [ ] **Step 6: Write the failing adapter test**
+- [x] **Step 6: Write the failing adapter test**
 
 Create `tests/core/skill-up.test.ts`:
 
@@ -1484,12 +1484,12 @@ describe('skill-up parse', () => {
 })
 ```
 
-- [ ] **Step 7: Run it and watch it fail**
+- [x] **Step 7: Run it and watch it fail**
 
 Run: `pnpm vitest run tests/core/skill-up.test.ts`
 Expected: FAIL — the module does not exist.
 
-- [ ] **Step 8: Write the adapter**
+- [x] **Step 8: Write the adapter**
 
 Create `src/core/adapters/skill-up.ts`:
 
@@ -1573,7 +1573,7 @@ export const parse: Parse = (ctx) => {
 }
 ```
 
-- [ ] **Step 9: Register it and run the suites**
+- [x] **Step 9: Register it and run the suites**
 
 Add to `src/core/adapters/registry.ts`:
 
@@ -1588,7 +1588,7 @@ import * as skillUp from './skill-up.js'
 Run: `pnpm vitest run tests/core/skill-up.test.ts tests/core/eval-report.test.ts tests/core/catalogue.test.ts`
 Expected: PASS. `catalogue.test.ts` compares this manifest's `install` against the catalogue's `skill-up` entry field by field — the `assetPattern` escaping is the easiest thing to get subtly wrong, and that comparison is what catches it.
 
-- [ ] **Step 10: Verify the iteration directory against the real tool**
+- [x] **Step 10: Verify the iteration directory against the real tool**
 
 This is the one manifest claim the fixtures cannot prove. With a working Agent Engine:
 
@@ -1607,7 +1607,7 @@ If skill-up ignores `--iteration` and numbers differently, change `REPORT` and `
 
 If no engine is available, say so in the task report rather than marking this step done.
 
-- [ ] **Step 11: Commit**
+- [x] **Step 11: Commit**
 
 ```bash
 git add src/core/adapters/eval-report.ts src/core/adapters/skill-up.ts \
@@ -1642,7 +1642,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 **This task needs an LLM key.** skill-scanner has no offline mode, so the fixture cannot be captured without one. Set `SKILLSCAN_API_KEY` and `SKILLSCAN_MODEL` (or `SKILLSCAN_BASE_URL` and `SKILLSCAN_MODEL` for a local gateway) before Step 2. Without a key, stop and report the task as blocked rather than hand-authoring a SARIF file — R13.3 requires fixtures captured from real runs, and a hand-written one would assert the parser against a schema nobody has seen.
 
-- [ ] **Step 1: Confirm the tool refuses to run offline, so the credential declaration is grounded**
+- [x] **Step 1: Confirm the tool refuses to run offline, so the credential declaration is grounded**
 
 Run:
 
@@ -1654,7 +1654,7 @@ Run:
 
 Expected: exit 2, `No analyzers enabled for scan. Configure SKILLSCAN_API_KEY or SKILLSCAN_BASE_URL for LLM analysis and/or VT_API_KEY for VirusTotal`, and no file written. This is why the manifest declares `credentials: one-of` and `analysisMode: 'llm'`.
 
-- [ ] **Step 2: Capture the fixture with a key**
+- [x] **Step 2: Capture the fixture with a key**
 
 Add to `scripts/capture-fixtures.sh`, after the skillspector block:
 
@@ -1697,7 +1697,7 @@ for run in d['runs']:
 print('rules:', rules); print('counts:', dict(seen))"
 ```
 
-- [ ] **Step 3: Write the failing adapter test**
+- [x] **Step 3: Write the failing adapter test**
 
 Create `tests/core/skill-scanner.test.ts`. Fill the two marked assertions from the Step 2 output — they are the only values in this plan that a capture, not a probe, supplies:
 
@@ -1779,12 +1779,12 @@ describe('skill-scanner parse', () => {
 })
 ```
 
-- [ ] **Step 4: Run it and watch it fail**
+- [x] **Step 4: Run it and watch it fail**
 
 Run: `pnpm vitest run tests/core/skill-scanner.test.ts`
 Expected: FAIL — the module does not exist.
 
-- [ ] **Step 5: Write the adapter**
+- [x] **Step 5: Write the adapter**
 
 Create `src/core/adapters/skill-scanner.ts`. Replace the `detects` list with the classes the Step 2 capture actually produced:
 
@@ -1863,7 +1863,7 @@ export const parse: Parse = (ctx) => {
 }
 ```
 
-- [ ] **Step 6: Map its rule ids and bump the map version**
+- [x] **Step 6: Map its rule ids and bump the map version**
 
 Add a `'skill-scanner'` block to `RULE_CLASS_MAP` with one entry per rule id the Step 2 capture produced, each mapped onto the `KnownRuleClass` its `shortDescription` names, and set:
 
@@ -1875,7 +1875,7 @@ Map only ids the capture actually produced. A speculative mapping merges two unr
 
 Extend `tests/core/rule-classes.test.ts` with one assertion per mapped id, in the shape the skillspector and skill-lint cases already use.
 
-- [ ] **Step 7: Register it and run the suites**
+- [x] **Step 7: Register it and run the suites**
 
 Add to `src/core/adapters/registry.ts`:
 
@@ -1890,7 +1890,7 @@ import * as skillScanner from './skill-scanner.js'
 Run: `pnpm vitest run tests/core/skill-scanner.test.ts tests/core/rule-classes.test.ts tests/core/catalogue.test.ts tests/core/rule-map-migration.test.ts`
 Expected: PASS. The migration test asserts `RULE_CLASS_MAP_VERSION >= 2` and records whatever version it applied, so bumping to 4 must not break it.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/core/adapters/skill-scanner.ts src/core/adapters/rule-classes.ts \
@@ -1921,7 +1921,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 `recordRun` declares `ordinalByFp` inside the per-tool-run loop and writes `occurrence_count` at the end of each tool run. With one tool per stage that is the total; with two, the second tool overwrites the first, so the recorded count depends on which finished last. That is invisible until a second tool exists, which is why it is M4's bug and not M1's.
 
-- [ ] **Step 1: Write the failing occurrence test**
+- [x] **Step 1: Write the failing occurrence test**
 
 Create `tests/core/record-occurrences.test.ts`:
 
@@ -2024,12 +2024,12 @@ describe('occurrence_count across a run', () => {
 })
 ```
 
-- [ ] **Step 2: Run it and watch the first case fail**
+- [x] **Step 2: Run it and watch the first case fail**
 
 Run: `pnpm vitest run tests/core/record-occurrences.test.ts`
 Expected: the first case FAILS with `expected 1 to be 3` — skill-lint's tool run wrote last. The second case passes already.
 
-- [ ] **Step 3: Move the count out of the per-tool-run loop**
+- [x] **Step 3: Move the count out of the per-tool-run loop**
 
 In `src/core/ledger/record.ts`, hoist the accumulator above the stage loop:
 
@@ -2067,12 +2067,12 @@ and add the run-level write immediately before the `reconcile` call:
     delta.closed = reconcile(db, skill.id, input.runId, reconcileInput)
 ```
 
-- [ ] **Step 4: Run it to green**
+- [x] **Step 4: Run it to green**
 
 Run: `pnpm vitest run tests/core/record-occurrences.test.ts`
 Expected: PASS, 2 tests.
 
-- [ ] **Step 5: Write the cross-tool merge contract test**
+- [x] **Step 5: Write the cross-tool merge contract test**
 
 Create `tests/core/cross-tool-merge.test.ts`. This is R8.6, R8.8 and R8.13 over the two real fixture files, and it is the test the M4 exit criterion names:
 
@@ -2212,7 +2212,7 @@ describe('cross-tool merge over real fixtures', () => {
 })
 ```
 
-- [ ] **Step 6: Capture the missing skillspector fixture**
+- [x] **Step 6: Capture the missing skillspector fixture**
 
 The test needs `skillspector-architecture-diagram.sarif`, which the M1 capture script does not produce. Extend the skillspector block in `scripts/capture-fixtures.sh` to loop:
 
@@ -2234,19 +2234,19 @@ print([(r['ruleId'], r['locations'][0]['physicalLocation']['artifactLocation']['
 
 Expected: `[('AST4','scripts/html_to_png.py'), ('AST4','scripts/html_to_png.py'), ('LP3','SKILL.md'), ('P2','layouts/connectors.md')]`
 
-- [ ] **Step 7: Run the merge test to green**
+- [x] **Step 7: Run the merge test to green**
 
 Run: `pnpm vitest run tests/core/cross-tool-merge.test.ts`
 Expected: PASS, 3 tests.
 
 If the four-issue count is off, print what was recorded before changing an assertion — a fifth issue means a rule mapped differently than Task 2 and Task 3 intended, and the map is what should change, not the expectation.
 
-- [ ] **Step 8: Run the full ledger and adapter suites**
+- [x] **Step 8: Run the full ledger and adapter suites**
 
 Run: `pnpm vitest run tests/core/`
 Expected: PASS. `reconcile.test.ts` and `issues.test.ts` cover the same machinery from the other side; a regression there means the occurrence change reached further than intended.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/core/ledger/record.ts scripts/capture-fixtures.sh \
@@ -2285,7 +2285,7 @@ export interface AdapterStageOptions {
 
 `plan()` currently assigns `policy` inside the loop over selected tools, so it keeps the **last** adapter's policy. A selection whose first tool is `pick-one` and second is `fan-out` therefore ends up `fan-out`, and the guard that rejects more than one tool for a pick-one stage never fires. One adapter per stage made that unreachable; three do not.
 
-- [ ] **Step 1: Write the failing policy test**
+- [x] **Step 1: Write the failing policy test**
 
 Create `tests/core/adapter-stage-policy.test.ts`:
 
@@ -2356,12 +2356,12 @@ describe('optimise concurrency — R4.8', () => {
 })
 ```
 
-- [ ] **Step 2: Run it and watch the third case fail**
+- [x] **Step 2: Run it and watch the third case fail**
 
 Run: `pnpm vitest run tests/core/adapter-stage-policy.test.ts`
 Expected: the `lookup` cases FAIL — the option does not exist — and, once it does, the pick-one-before-fan-out case FAILS because `plan()` resolves to `fan-out`.
 
-- [ ] **Step 3: Resolve policy from the whole selection**
+- [x] **Step 3: Resolve policy from the whole selection**
 
 In `src/core/stages/adapter-stage.ts`, extend the options type and add a lookup accessor:
 
@@ -2424,12 +2424,12 @@ and replace `plan()`'s body:
 
 Then replace the two `getAdapter(...)` calls in `execute()` with `this.adapterFor(...)`, so a substituted lookup holds for the whole executor rather than only for planning.
 
-- [ ] **Step 4: Run the policy and stage suites to green**
+- [x] **Step 4: Run the policy and stage suites to green**
 
 Run: `pnpm vitest run tests/core/adapter-stage-policy.test.ts tests/core/adapter-stage.test.ts tests/core/outcome.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Add the fan-out artefact-collision case over both real scanners**
+- [x] **Step 5: Add the fan-out artefact-collision case over both real scanners**
 
 R4.9 already gives each tool its own directory, and M1 proved it with two fixture tools. Now that two real scanners both write `findings.sarif`, add the case to `tests/core/adapter-stage.test.ts` using `makeFakeTool` shims named for the real ids, each copying its fixture into `{toolDir}/findings.sarif`, and assert:
 
@@ -2445,12 +2445,12 @@ R4.9 already gives each tool its own directory, and M1 proved it with two fixtur
     expect(result.outcome).toBe('failed')
 ```
 
-- [ ] **Step 6: Run the stage suite**
+- [x] **Step 6: Run the stage suite**
 
 Run: `pnpm vitest run tests/core/adapter-stage.test.ts`
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/core/stages/adapter-stage.ts tests/core/adapter-stage-policy.test.ts \
@@ -2487,7 +2487,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 `tools/**` must not open the ledger, so doctor takes the two version numbers as data from `src/cli/` — the same rule that already keeps its lifecycle check out of sqlite.
 
-- [ ] **Step 1: Write the failing doctor test**
+- [x] **Step 1: Write the failing doctor test**
 
 Add to `tests/core/doctor.test.ts`:
 
@@ -2512,12 +2512,12 @@ Add to `tests/core/doctor.test.ts`:
 
 Use whatever helper `doctor.test.ts` already has in place of `baseInput()`; the point is that `ruleMap` is a new required field on `DoctorInput`, so every existing case in that file needs it too.
 
-- [ ] **Step 2: Run it and watch it fail**
+- [x] **Step 2: Run it and watch it fail**
 
 Run: `pnpm vitest run tests/core/doctor.test.ts`
 Expected: FAIL — `ruleMap` is not a property of `DoctorInput`, and `tsc` rejects the object literal.
 
-- [ ] **Step 3: Add the condition to the doctor engine**
+- [x] **Step 3: Add the condition to the doctor engine**
 
 In `src/core/tools/doctor.ts`, add `'rule-map-pending'` to `ToolDriftKind`, add the input field:
 
@@ -2549,7 +2549,7 @@ and emit the finding beside the existing non-failing ones:
 
 Make sure `rule-map-pending` joins `integrity-unverified` and `lifecycle-drift` in whatever set decides `report.ok`, rather than the four kinds that fail it.
 
-- [ ] **Step 4: Wire the flag into the CLI**
+- [x] **Step 4: Wire the flag into the CLI**
 
 In `src/cli/doctor-command.ts`, read the applied version when building `DoctorInput`:
 
@@ -2582,7 +2582,7 @@ In the action, when the flag is set, run the migration **before** building the r
 
 R8.14 requires the migration to be explicit. This flag is that explicitness: nothing on the `openLedger` path calls it, so a run, a TUI launch and a plain `doctor` all leave the ledger alone.
 
-- [ ] **Step 5: Write the CLI test**
+- [x] **Step 5: Write the CLI test**
 
 Add to `tests/cli/doctor-command.test.ts`:
 
@@ -2604,7 +2604,7 @@ Add to `tests/cli/doctor-command.test.ts`:
   })
 ```
 
-- [ ] **Step 6: Invert the three tests that asserted an empty selection**
+- [x] **Step 6: Invert the three tests that asserted an empty selection**
 
 `tests/cli/setup-command.test.ts` — skill-lint now has a parser, so the case that proved the registry filter needs a tool that still lacks one. `skills` is that tool permanently: it is catalogued with `stage: null` and R3.5b forbids it an adapter. Replace the case with:
 
@@ -2636,7 +2636,7 @@ Add to `tests/cli/doctor-command.test.ts`:
 
 `tests/core/setup.test.ts` — check for a `stageToolsFor` case that depends on skill-lint or skill-up being unrunnable, and re-point it at `RELEASE_TOOL_ID` for the same reason.
 
-- [ ] **Step 7: Export the new surface**
+- [x] **Step 7: Export the new surface**
 
 Add to `src/core/index.ts`:
 
@@ -2651,7 +2651,7 @@ export {
 
 `src/cli/` reaches core directly, but the export keeps the surface in one place and lets a future Tools screen show the pending state without a deep import.
 
-- [ ] **Step 8: Run every affected suite**
+- [x] **Step 8: Run every affected suite**
 
 Run: `pnpm vitest run tests/core/doctor.test.ts tests/cli/ tests/core/setup.test.ts`
 Expected: PASS.
@@ -2659,7 +2659,7 @@ Expected: PASS.
 Run: `SG_ACCEPTANCE=1 pnpm vitest run tests/acceptance/m3.test.tsx`
 Expected: PASS — M3's two exit criteria still hold with four adapters registered.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/core/tools/doctor.ts src/cli/doctor-command.ts src/cli/run-command.ts \
@@ -2689,7 +2689,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 One named test per clause of the M4 exit criterion Task 1 reworded. Each drives the real path — real fixture bytes through real parsers into a real ledger — rather than asserting a unit again.
 
-- [ ] **Step 1: Write the suite**
+- [x] **Step 1: Write the suite**
 
 Create `tests/acceptance/m4.test.ts`, guarded by `SG_ACCEPTANCE=1` like its siblings, with these five cases:
 
@@ -2732,12 +2732,12 @@ describe('M4 exit criteria', () => {
 
 Write each body out in full following the patterns in `tests/acceptance/m1.test.ts` — a stubbed body is a plan failure, and these are the tests the milestone is judged by.
 
-- [ ] **Step 2: Run it**
+- [x] **Step 2: Run it**
 
 Run: `SG_ACCEPTANCE=1 pnpm vitest run tests/acceptance/m4.test.ts`
 Expected: PASS, 5 tests.
 
-- [ ] **Step 3: Extend the real-install matrix**
+- [x] **Step 3: Extend the real-install matrix**
 
 `tests/core/install.test.ts` already loops `CATALOGUE` under `SG_INTEGRATION=1`. Add a case asserting that every catalogued tool a stage selects now has an adapter, and that the release installer does not:
 
@@ -2756,7 +2756,7 @@ Expected: PASS, 5 tests.
 
 This belongs in the offline part of the file, not the network part — it reads only the catalogue and the registry.
 
-- [ ] **Step 4: Run the full gate**
+- [x] **Step 4: Run the full gate**
 
 Run: `pnpm check`
 Expected: lint, build, test and acceptance all pass.
@@ -2764,7 +2764,7 @@ Expected: lint, build, test and acceptance all pass.
 Run: `SG_INTEGRATION=1 pnpm test:integration`
 Expected: PASS — five tools installed, verified and locked against real indexes, then every acceptance suite. If network or a key is unavailable, say which step did not run rather than reporting it green.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/acceptance/m4.test.ts tests/core/install.test.ts
@@ -2815,6 +2815,7 @@ Every requirement M4 owns, and the task that satisfies it. A requirement with no
 - **skill-up cannot be `skipped` for want of credentials.** Its engine is declared in the skill's own `eval.yaml` and authenticated by that CLI, and `CredentialRequirement` can only test env keys. A missing engine therefore lands as `errored`/`missing-artefact` rather than `skipped`/`no-credentials`. Fixing it means an `ErrorKind` for "declared input absent" and a way to express an external CLI's login, both of which reshape an M1 contract for one tool.
 - **A skill with no `evals/` errors rather than skipping.** Most of the 74 reference skills have none, so an evaluate stage over a full repo is mostly `errored`. Same root cause as above.
 - **skill-scanner's fixture cannot be refreshed without a key**, and its findings are nondeterministic, so a re-capture will not reproduce byte-for-byte. The capture script skips it with a message rather than failing, so every other fixture stays refreshable.
+- **skill-scanner finds nothing in most reference skills.** Under the pinned model it reports `declawed`, `agent-insights` and `rfp-daily` CLEAN, and only `insight-profile` produces findings. Its three mapped rule ids are therefore what one skill elicited from one model, not the tool's rule set — a different model or a later version will name rules this map does not hold, and they will degrade to `unmapped:` until a versioned migration adds them. Designed behaviour, but it makes this the least stable of the three maps.
 - **`evals/cases/<case_id>.yaml` is a convention, not a guarantee.** A repo storing its cases elsewhere gets an eval-failure issue pathed at a file that does not exist. The fingerprint stays stable and per-case, so this is a display defect; the alternative collapses a failing suite into one issue, which is worse.
 - **The rule-class map is one maintainer's reading of fifteen rule names.** `RA2` Session Persistence as `excessive-permission` and `R05` Runtime external fetch as `vulnerable-dep` are the two judgement calls most likely to be revisited. Both are versioned, so revisiting one is a migration rather than a rewrite.
 - **Validate and security both fan out, and the chain halts on the first non-passing stage.** A skill whose validate stage fails never reaches security in a chained run, so the merge accumulates across runs rather than within one. The fingerprint carries no stage component precisely so that works, and R5.3's single-stage runs make it directly observable.
@@ -2833,6 +2834,26 @@ Every requirement M4 owns, and the task that satisfies it. A requirement with no
 ## Deviations found while implementing
 
 *(Filled in during implementation. Each entry names where the plan did not survive contact with the shipped code or the installed tool.)*
+
+**1. Task 2's migration test asserted a note the plan's own code never writes.** The step-5 test expected `/rule-map v2/`; `migrateRuleMap` writes `rule-map v1 -> v2`, naming both ends of the move. The note format is the better record, so the test now matches `rule-map v1 -> v${RULE_CLASS_MAP_VERSION}` and stays correct across the later bumps to 3 and 4.
+
+**2. `DoctorReport` has `failed`, not `ok`.** Task 8's step-1 test was written against a field that does not exist, and `ToolFinding` requires `expectedVersion` and `actualVersion`, which the plan's `findings.push` omitted. The new finding carries the two versions in those fields. `ruleMap` being required also reached further than "every existing case in that file": `tests/acceptance/m3.test.tsx` calls `doctor()` twice and both needed it.
+
+**3. Task 9's first criterion cannot run as one chained run.** R5.1 halts the chain on the first stage that does not pass, and skill-lint's findings fail validate, so security never executes and only one detector is ever recorded. The case now performs two single-stage runs, which is what the plan's own "known gap" about chain-halting predicts and what R5.3 exists to allow. Two consequences are asserted rather than hidden: `occurrence_count` on the merged issue is 2, not 3, because it answers "how many times was this seen last time we looked" and the last look was the security-only run; and skill-lint's own issue stays open through that run, because a tool that did not run reports no conclusive absence.
+
+**4. An ESM namespace cannot be spied, so R4.3's purity case mocks instead.** Both `vi.spyOn(fs, 'readFileSync')` and direct reassignment fail with `Cannot redefine property`. The case now mocks `node:fs`, `node:child_process` and `node:net` at load time behind a flag that is only set around the parser calls, so the harness in the same file can still spawn and write. The test asserts the trap bites before trusting a pass, because a seal that silently does nothing is worse than no seal.
+
+**5. Re-capturing `skillspector-declawed.sarif` produces a byte-different file with identical findings.** The only diff is the random `findingId` per result. The M1 fixture is kept, so the capture script stays runnable without churning a fixture whose content has not changed.
+
+**6. skill-scanner's fixture is captured from `insight-profile`, not `declawed`.** LLM analysis is a judgement, not a rule set, and the model reports `declawed`, `agent-insights` and `rfp-daily` CLEAN — a zero-finding SARIF grounds neither the `detects` list nor a single rule mapping. `insight-profile` drives an SSO session and shells out, and yields four findings across three rule ids, so it is the reference repo's one skill that supports the task as written. The capture script scans it and says why.
+
+**7. skill-scanner's rule ids carry the tool's own prefix.** They are `skill-scanner/credential_leak`, `skill-scanner/command_execution` and `skill-scanner/indirect_injection`, not bare ids like skillspector's `AST4`, so the map entries are quoted in full. Unlike skillspector's fixed catalogue, LLM analysis names a rule per finding, so this map covers what the pinned version produced over the reference repo and an unseen id degrades to `unmapped:` exactly as designed.
+
+**8. The tool reads `SKILLSCAN_*`, and exits 0 when it refuses offline.** Task 5's step 1 predicted exit 2 from `--no-ai --no-vt`; 0.3.3 prints "No analyzers enabled for scan", writes no report and exits 0. The manifest is unaffected — the refusal, not the exit code, is what grounds `analysisMode: 'llm'`. Confirmed against `skill-scanner doctor` and the installed package: the names it reads are `SKILLSCAN_API_KEY`, `SKILLSCAN_BASE_URL`, `SKILLSCAN_MODEL` and `VT_API_KEY`, which is what the manifest declares.
+
+**9. Task 7's fan-out case uses the lookup seam.** `plan(ctx('security', ['skillspector', 'skill-scanner']))` against the real registry needs the skill-scanner adapter of Task 5. The assertion — that a selection of two fan-out tools resolves to `fan-out` — was made through the seam while that adapter was blocked on a credential, and now runs against the real registry.
+
+**10. `tests/core/spawn.test.ts > kills the whole process tree on timeout` is an intermittent failure under load.** It failed in two of four full-gate runs and passed in every isolated run, in three consecutive `tests/core/` runs and in the final `pnpm check`. Its 1 000 ms timeout races the shell's own startup, which is the failure mode the neighbouring case already documents and mitigates by using 3 000 ms. M4 touches neither the runner nor that test; raising the timeout the same way belongs to whichever milestone next opens `runner/`.
 
 ## Changelog
 

@@ -15,6 +15,7 @@ export type ToolDriftKind =
   | 'version-drift'
   | 'unlocked'
   | 'integrity-unverified'
+  | 'rule-map-pending'
 
 /** The four kinds R3.9 names are the ones that fail the report. */
 const FAILING: ReadonlySet<ToolDriftKind> = new Set<ToolDriftKind>([
@@ -52,6 +53,12 @@ export interface DoctorInput {
   /** Discovered by the caller, so `tools` needs neither discovery's I/O nor the ledger. */
   skills: readonly SkillRef[]
   ledgerLifecycle: ReadonlyMap<string, LifecycleState>
+  /**
+   * Supplied by src/cli: `tools` must not open the ledger, which is the same
+   * rule that keeps queue out of it. `applied` is the ledger's recorded rule-map
+   * version, `current` is RULE_CLASS_MAP_VERSION from the shipped build.
+   */
+  ruleMap: { applied: number; current: number }
   exec?: Exec
 }
 
@@ -149,6 +156,20 @@ export async function doctor(input: DoctorInput): Promise<DoctorReport> {
       expectedVersion: null,
       actualVersion: null,
       detail: 'installed under the tool root but absent from the lock',
+    })
+  }
+
+  // Beside integrity-unverified and lifecycle-drift: a standing condition to
+  // surface, not a reason a tool cannot run. R8.14 keeps the fix explicit.
+  if (input.ruleMap.applied < input.ruleMap.current) {
+    tools.push({
+      toolId: '(ledger)',
+      kind: 'rule-map-pending',
+      expectedVersion: String(input.ruleMap.current),
+      actualVersion: String(input.ruleMap.applied),
+      detail:
+        `rule-class map v${input.ruleMap.applied} applied, v${input.ruleMap.current} shipped — ` +
+        'run `skillgantry doctor --migrate-rule-map`',
     })
   }
 

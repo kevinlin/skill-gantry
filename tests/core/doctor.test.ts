@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { chmod, mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { RULE_CLASS_MAP_VERSION } from '../../src/core/adapters/rule-classes.js'
 import { saveToolLock } from '../../src/core/config/config.js'
 import type { ToolLockEntry } from '../../src/core/config/schema.js'
 import { discoverSkills } from '../../src/core/discovery/discover.js'
@@ -32,11 +33,14 @@ async function fakeBin(dir: string, name: string, body: string): Promise<string>
 
 const home = (): Promise<string> => mkdtemp(join(tmpdir(), 'sg-doctor-'))
 
+/** A ledger already on the shipped map version: no rule-map finding expected. */
+const CURRENT = { applied: RULE_CLASS_MAP_VERSION, current: RULE_CLASS_MAP_VERSION }
+
 describe('doctor', () => {
   it('reports a lock entry whose binary is gone as missing', async () => {
     const h = await home()
     await saveToolLock(h, { version: 1, tools: { alpha: entry() } })
-    const report = await doctor({ home: h, skills: [], ledgerLifecycle: new Map() })
+    const report = await doctor({ home: h, skills: [], ledgerLifecycle: new Map(), ruleMap: CURRENT })
     expect(report.tools.find((t) => t.toolId === 'alpha')?.kind).toBe('missing')
     expect(report.failed).toBe(true)
   })
@@ -45,7 +49,7 @@ describe('doctor', () => {
     const h = await home()
     const bin = await fakeBin(join(toolRoot(h), 'beta', 'bin'), 'beta', 'exit 1')
     await saveToolLock(h, { version: 1, tools: { beta: entry({ bin }) } })
-    const report = await doctor({ home: h, skills: [], ledgerLifecycle: new Map() })
+    const report = await doctor({ home: h, skills: [], ledgerLifecycle: new Map(), ruleMap: CURRENT })
     expect(report.tools.find((t) => t.toolId === 'beta')?.kind).toBe('unverifiable')
   })
 
@@ -53,7 +57,7 @@ describe('doctor', () => {
     const h = await home()
     const bin = await fakeBin(join(toolRoot(h), 'gamma', 'bin'), 'gamma', 'echo "gamma 2.0.0"')
     await saveToolLock(h, { version: 1, tools: { gamma: entry({ bin }) } })
-    const report = await doctor({ home: h, skills: [], ledgerLifecycle: new Map() })
+    const report = await doctor({ home: h, skills: [], ledgerLifecycle: new Map(), ruleMap: CURRENT })
     const found = report.tools.find((t) => t.toolId === 'gamma')
     expect(found).toMatchObject({
       kind: 'version-drift',
@@ -66,7 +70,7 @@ describe('doctor', () => {
     const h = await home()
     await mkdir(join(toolRoot(h), 'delta'), { recursive: true })
     await saveToolLock(h, { version: 1, tools: {} })
-    const report = await doctor({ home: h, skills: [], ledgerLifecycle: new Map() })
+    const report = await doctor({ home: h, skills: [], ledgerLifecycle: new Map(), ruleMap: CURRENT })
     expect(report.tools.find((t) => t.toolId === 'delta')?.kind).toBe('unlocked')
   })
 
@@ -77,7 +81,7 @@ describe('doctor', () => {
       version: 1,
       tools: { epsilon: entry({ bin, installKind: 'gh-release', integrity: 'none' }) },
     })
-    const report = await doctor({ home: h, skills: [], ledgerLifecycle: new Map() })
+    const report = await doctor({ home: h, skills: [], ledgerLifecycle: new Map(), ruleMap: CURRENT })
     expect(report.tools.find((t) => t.toolId === 'epsilon')?.kind).toBe('integrity-unverified')
     expect(report.failed).toBe(false)
   })
@@ -99,6 +103,7 @@ describe('doctor', () => {
         ['r/declawed', 'active'],
         ['r/gap', 'active'],
       ]),
+      ruleMap: CURRENT,
     })
     expect(report.lifecycle).toEqual([{ skillId: 'r/declawed', file: 'deprecated', ledger: 'active' }])
     // A cache the file disagrees with is drift to report, not an error — R1.6.
@@ -112,10 +117,33 @@ describe('doctor', () => {
       home: h,
       skills: [],
       ledgerLifecycle: new Map(),
+      ruleMap: CURRENT,
       exec: async (bin) => ({ stdout: `${bin} 1.0.0`, stderr: '' }),
     })
     const expected = runtimesFor(CATALOGUE).filter((runtime) => runtime !== 'none')
     expect(report.runtimes.map((r) => r.runtime).sort()).toEqual([...expected].sort())
     expect(report.runtimes.every((r) => r.present)).toBe(true)
+  })
+
+  it('reports a ledger whose rule map trails the shipped one, without failing', async () => {
+    const h = await home()
+    await saveToolLock(h, { version: 1, tools: {} })
+    const report = await doctor({
+      home: h,
+      skills: [],
+      ledgerLifecycle: new Map(),
+      ruleMap: { applied: 1, current: RULE_CLASS_MAP_VERSION },
+    })
+    expect(report.tools.find((t) => t.kind === 'rule-map-pending')).toBeDefined()
+    // Like integrity-unverified and lifecycle-drift: a standing condition to
+    // surface, not a reason a tool cannot run.
+    expect(report.failed).toBe(false)
+  })
+
+  it('reports nothing when the ledger is current', async () => {
+    const h = await home()
+    await saveToolLock(h, { version: 1, tools: {} })
+    const report = await doctor({ home: h, skills: [], ledgerLifecycle: new Map(), ruleMap: CURRENT })
+    expect(report.tools.some((t) => t.kind === 'rule-map-pending')).toBe(false)
   })
 })
