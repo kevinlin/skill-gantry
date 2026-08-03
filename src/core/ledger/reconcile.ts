@@ -1,7 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { getAdapter } from '../adapters/registry.js'
 import type { ToolOutcome } from '../types.js'
-import { type IssueState, stateOnAbsence } from './issues.js'
+import { detectorSaysGone, type IssueState, stateOnAbsence } from './issues.js'
 
 export interface ReconcileToolRun {
   toolRunId: number
@@ -104,12 +104,7 @@ export function reconcile(
     }>
     if (detectors.length === 0) continue
 
-    // Run ids are UUIDv7, so lexical order is claim order.
-    const allAbsent = detectors.every(
-      (d) =>
-        d.last_absent_run !== null &&
-        (d.last_seen_run === null || d.last_absent_run > d.last_seen_run),
-    )
+    const allAbsent = detectors.every(detectorSaysGone)
     if (!allAbsent) continue
 
     const next = stateOnAbsence(candidate.state)

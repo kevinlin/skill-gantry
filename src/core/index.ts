@@ -117,3 +117,15 @@ export {
   type StatsFilter,
 } from './ledger/stats.js'
 export { provenanceFingerprint, type ProvenanceLike } from './ledger/fingerprint.js'
+export {
+  listIssues,
+  setIssueState,
+  type IssueFilter,
+  type IssueRow,
+} from './ledger/issue-queries.js'
+export {
+  detectorSaysGone,
+  stateOnUserAction,
+  type IssueAction,
+  type IssueState,
+} from './ledger/issues.js'
