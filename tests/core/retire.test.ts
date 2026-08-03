@@ -3,6 +3,7 @@ import { readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { retireSkill } from '../../src/core/release/retire.js'
 import { scanSandboxRecords } from '../../src/core/isolation/record.js'
+import { restoreInterrupted, scanInterrupted } from '../../src/core/isolation/recover.js'
 import { discoverSkills } from '../../src/core/discovery/discover.js'
 import { parseFrontmatter } from '../../src/core/discovery/frontmatter.js'
 import type { SkillRef } from '../../src/core/types.js'
@@ -76,5 +77,37 @@ describe('retireSkill', () => {
     await expect(stat(join(result.recordDir, 'journal.json'))).resolves.toBeTruthy()
     // Settled, so startup does not report a completed retirement as interrupted.
     expect(await scanSandboxRecords(skill.workspacePath)).toEqual([])
+  })
+
+  it('recovers an interrupted retirement through the same scan and restore as a crashed release', async () => {
+    const skill = await scene()
+    // A crash between the sandbox opening and the confirmation reaching apply
+    // or discard: the record is written up front (R10.10) and nothing settles
+    // it. `confirm` throwing stands in for the process dying mid-review.
+    await expect(
+      retireSkill({
+        skill,
+        deprecated: true,
+        confirm: async () => {
+          throw new Error('simulated crash before the diff was answered')
+        },
+      }),
+    ).rejects.toThrow('simulated crash')
+
+    // Task 6's scan finds it precisely because `recordDirFor` routes on
+    // `record.stage === 'retire'` — get that value wrong and this returns [].
+    const found = await scanInterrupted([skill])
+    expect(found).toHaveLength(1)
+    expect(found[0]?.record.stage).toBe('retire')
+    expect(found[0]?.recordDir).toContain(join('skillgantry', 'retire'))
+
+    // Nothing was ever written to the live tree (the crash landed before
+    // apply), so recovery is a prune and the frontmatter is untouched.
+    const restored = await restoreInterrupted(found[0]!)
+    expect(restored).toEqual([])
+    expect((await front(skill)).deprecated).toBe(false)
+
+    // Settled: a second scan reports nothing left to recover.
+    expect(await scanInterrupted([skill])).toEqual([])
   })
 })
