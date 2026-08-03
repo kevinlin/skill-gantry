@@ -28,6 +28,8 @@ async function harness() {
     scope: ['sk/SKILL.md'],
     repoPath: repo,
     skillId: `${join(repo).split('/').pop()}/sk`,
+    skillRelPath: 'sk',
+    rootSkill: false,
     snapshotDir,
     workRoot: repo,
     preimages: [{ path: 'sk/SKILL.md', sha256: 'stale', mode: 33188 }],

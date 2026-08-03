@@ -10,7 +10,7 @@ import {
 } from './candidate-policy.js'
 import { unifiedDiffFor } from './diff.js'
 import { type SandboxInput, preimageOf } from './git-worktree.js'
-import { applyJournalled } from './journal.js'
+import { applyJournalled, copyDurable } from './journal.js'
 import { markSandboxRecord, writeSandboxRecord } from './record.js'
 import type { ChangeEntry, ChangeSet, MutationSandbox, Preimage } from './types.js'
 
@@ -45,7 +45,8 @@ async function materialiseEntry(
     await symlink(entry.target, dest)
     return
   }
-  await copyFile(join(liveRoot, relPath), dest)
+  // Durable: the mutating tool writes the real tree the moment this returns.
+  await copyDurable(join(liveRoot, relPath), dest)
   if (entry.exec) await chmod(dest, 0o755)
 }
 
@@ -122,7 +123,7 @@ async function copyRaw(
     }
     return
   }
-  await copyFile(source, dest)
+  await copyDurable(source, dest)
   await chmod(dest, info.mode & 0o7777)
 }
 
@@ -178,6 +179,8 @@ export async function openSnapshotSandbox(input: SnapshotInput): Promise<Mutatio
     scope,
     repoPath: liveRoot,
     skillId: input.skill.id,
+    skillRelPath: input.skill.relPath,
+    rootSkill: input.skill.rootSkill,
     snapshotDir: input.snapshotDir,
     workRoot: liveRoot,
     preimages,
@@ -277,7 +280,15 @@ export async function openSnapshotSandbox(input: SnapshotInput): Promise<Mutatio
       // journal is still written: R10.9 wants the prior bytes on record, and
       // R10.11's recheck is what catches a user edit made while the diff sat
       // awaiting approval.
-      await applyJournalled({ recordDir: input.recordDir, liveRoot, sourceRoot: liveRoot, change, exec })
+      await applyJournalled({
+        recordDir: input.recordDir,
+        runId: input.runId,
+        stage: input.stage,
+        liveRoot,
+        sourceRoot: liveRoot,
+        change,
+        exec,
+      })
       await markSandboxRecord(input.recordDir, 'applied')
     },
     discard: async () => {
@@ -305,12 +316,24 @@ export async function restoreSnapshot(
 ): Promise<void> {
   const liveRoot = skill.repo.path
   const excluded = posix(relative(liveRoot, skill.workspacePath))
+  // The same policy the copy used. Without it the live-side expansion saw
+  // everything under the scope path and deleted whatever the snapshot lacked —
+  // which, for a repo-root skill with a directory scope entry (what
+  // `AdapterStageExecutor.plan` produces for optimise: `paths: ['.']`), meant
+  // the repo's own `.gitignore` and any pre-existing release archive, neither
+  // of them ever backed up because the manifest excludes both from candidacy.
+  const policy = await candidatePolicyFor(skill)
   for (const relPath of scope) {
     const live = [...new Set(await expand(liveRoot, relPath, excluded))]
     const saved = new Set(await expand(snapshotDir, relPath, excluded))
-    // Anything the tool created that the snapshot never held.
+    // Anything the tool created that the snapshot never held — and nothing the
+    // snapshot was never entitled to hold. Inside the candidate root the
+    // manifest walk runs over the live tree, so a file the tool just created is
+    // an allowed entry and is removed, while an excluded one is left alone.
     for (const p of live) {
-      if (!saved.has(p)) await rm(join(liveRoot, p), { force: true })
+      if (saved.has(p)) continue
+      if (underCandidateRoot(p, policy.root) && !policy.allowed.has(p)) continue
+      await rm(join(liveRoot, p), { force: true })
     }
     for (const p of saved) {
       const source = join(snapshotDir, p)

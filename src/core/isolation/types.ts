@@ -61,6 +61,16 @@ export interface SandboxRecord {
   scope: string[]
   repoPath: string
   skillId: string
+  /**
+   * Repo-relative skill directory ('.' for a repo-root skill) and whether it is
+   * one. Recovery has no live `SkillRef` — a record can outlive the run that
+   * discovered it — and `restoreSnapshot` needs the candidate manifest to know
+   * which live files the snapshot deliberately never captured. Without these
+   * two fields it could only guess, and guessing meant deleting the repo's
+   * `.gitignore` and any stale archive on a repo-root restore.
+   */
+  skillRelPath: string
+  rootSkill: boolean
   /** Absolute; empty for the git strategy, which restores by pruning. */
   snapshotDir: string
   /** Absolute path to the sandbox work root, so recovery can prune it. */

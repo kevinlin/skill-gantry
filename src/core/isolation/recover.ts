@@ -45,24 +45,28 @@ const recordDirFor = (record: SandboxRecord, workspacePath: string): string => {
 const workspacePathOf = (recordDir: string): string => dirname(dirname(dirname(recordDir)))
 
 /**
- * `restoreSnapshot` reads only `skill.repo.path` and `skill.workspacePath` off
- * the `SkillRef` it is given — the rest of the shape exists purely to satisfy
- * the type. Recovery has no live `SkillRef` (a record can outlive the run that
- * discovered it), so this rebuilds just those two fields from the record and
- * its directory rather than re-running discovery.
+ * `restoreSnapshot` reads `repo.path`, `workspacePath`, and — since it filters
+ * the live side through the candidate manifest — `dir`, `relPath` and
+ * `rootSkill`. Recovery has no live `SkillRef` (a record can outlive the run
+ * that discovered it), which is exactly why the record carries the last three:
+ * a rebuilt ref with `relPath: ''` would make the manifest walk speak for the
+ * wrong root, and the restore delete files it never backed up.
  */
-const skillFor = (found: InterruptedMutation): SkillRef => ({
-  id: found.skillId,
-  name: null,
-  version: null,
-  dir: '',
-  relPath: '',
-  rootSkill: false,
-  repo: { id: '', path: found.record.repoPath, name: '', isGit: false },
-  workspacePath: workspacePathOf(found.recordDir),
-  deprecated: false,
-  supersededBy: null,
-})
+const skillFor = (found: InterruptedMutation): SkillRef => {
+  const relPath = found.record.skillRelPath
+  return {
+    id: found.skillId,
+    name: null,
+    version: null,
+    dir: relPath === '.' || relPath === '' ? found.record.repoPath : join(found.record.repoPath, relPath),
+    relPath: relPath === '' ? '.' : relPath,
+    rootSkill: found.record.rootSkill,
+    repo: { id: '', path: found.record.repoPath, name: '', isGit: false },
+    workspacePath: workspacePathOf(found.recordDir),
+    deprecated: false,
+    supersededBy: null,
+  }
+}
 
 /**
  * R10.10. A `SnapshotSandbox` lets the tool write the real tree, so a crash

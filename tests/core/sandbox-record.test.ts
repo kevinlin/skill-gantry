@@ -18,6 +18,8 @@ const record = (runId: string, state: SandboxRecord['state'] = 'active'): Sandbo
   scope: ['sk/SKILL.md'],
   repoPath: '/repo',
   skillId: 'repo/sk',
+  skillRelPath: 'sk',
+  rootSkill: false,
   snapshotDir: '/repo/sk-workspace/skillgantry/runs/x/snapshot-pre',
   workRoot: '/repo',
   preimages: [{ path: 'sk/SKILL.md', sha256: 'abc', mode: 33188 }],

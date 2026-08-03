@@ -273,6 +273,8 @@ export async function openGitWorktreeSandbox(input: SandboxInput): Promise<Mutat
     scope,
     repoPath,
     skillId: input.skill.id,
+    skillRelPath: input.skill.relPath,
+    rootSkill: input.skill.rootSkill,
     snapshotDir: '',
     workRoot,
     preimages,
@@ -316,7 +318,15 @@ export async function openGitWorktreeSandbox(input: SandboxInput): Promise<Mutat
     resolve,
     changeSet,
     apply: async (change) => {
-      await applyJournalled({ recordDir: input.recordDir, liveRoot: repoPath, sourceRoot: workRoot, change, exec })
+      await applyJournalled({
+        recordDir: input.recordDir,
+        runId: input.runId,
+        stage: input.stage,
+        liveRoot: repoPath,
+        sourceRoot: workRoot,
+        change,
+        exec,
+      })
       await markSandboxRecord(input.recordDir, 'applied')
     },
     // Nothing was written to the user's tree, so there is nothing to undo.

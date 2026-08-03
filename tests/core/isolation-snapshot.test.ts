@@ -229,6 +229,56 @@ describe('SnapshotSandbox', () => {
     await sandbox.dispose()
   })
 
+  it('never deletes a live file the snapshot was not entitled to hold (R6.8)', async () => {
+    // A repo-root skill in a non-git repo with a directory scope entry — what
+    // `AdapterStageExecutor.plan` produces for optimise (`paths: ['.']`). The
+    // manifest excludes `.gitignore` and a prior release archive from candidacy,
+    // so neither is ever copied into `snapshot-pre/`; the restore's live-side
+    // expansion excluded only the workspace, so it deleted both.
+    const repo = await makeRepo({
+      files: {
+        'SKILL.md': SKILL_MD_FULL('root'),
+        '.gitignore': '*.zip\n',
+        'root_0.9.0.zip': 'a previous release\n',
+      },
+    })
+    const skill: SkillRef = {
+      id: 'repo',
+      name: 'root',
+      version: '1.0.0',
+      dir: repo,
+      relPath: '.',
+      repo: { id: 'repo', path: repo, name: 'repo', isGit: false },
+      rootSkill: true,
+      workspacePath: workspacePath(repo, '.', true),
+      deprecated: false,
+      supersededBy: null,
+    }
+    const recordDir = join(repo, ROOT_WORKSPACE_DIR, 'skillgantry', 'runs', 'run-1')
+    await mkdir(recordDir, { recursive: true })
+    const sandbox = await openSnapshotSandbox({
+      skill,
+      stage: 'optimise',
+      runId: 'run-1',
+      recordDir,
+      scope: ['.'],
+      snapshotDir: join(recordDir, 'snapshot-pre'),
+    })
+    // The tool writes one candidate file and creates another.
+    await writeFile(join(repo, 'SKILL.md'), SKILL_MD_FULL('root', '2.0.0'))
+    await writeFile(join(repo, 'scratch.md'), 'created by the tool\n')
+
+    await sandbox.discard()
+
+    expect(await readFile(join(repo, '.gitignore'), 'utf8')).toBe('*.zip\n')
+    expect(await readFile(join(repo, 'root_0.9.0.zip'), 'utf8')).toBe('a previous release\n')
+    // The candidate is still fully restored: the tool's edit reverted and its
+    // new file removed.
+    expect(await readFile(join(repo, 'SKILL.md'), 'utf8')).toBe(SKILL_MD_FULL('root'))
+    await expect(stat(join(repo, 'scratch.md'))).rejects.toThrow()
+    await sandbox.dispose()
+  })
+
   it('accepts the live bytes on apply and records the prior ones', async () => {
     const { repo, recordDir, sandbox } = await open()
     await writeFile(sandbox.resolve('sk/SKILL.md'), SKILL_MD_FULL('sk', '1.1.0'))

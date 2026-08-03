@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { chmod, mkdir, open, readFile, rename, rm } from 'node:fs/promises'
+import { chmod, copyFile, mkdir, open, readFile, rename, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { Exec } from '../tools/exec.js'
 import { preimageOf } from './git-worktree.js'
@@ -26,6 +26,9 @@ export interface Journal {
 export interface ApplyInput {
   /** Where journal.json lives: the run directory or a retire directory. */
   recordDir: string
+  /** Design §12.2 names both on the journal, so both are supplied. */
+  runId: string
+  stage: string
   /** The user's repo root — what is being written. */
   liveRoot: string
   /** Where the approved bytes are. Equals liveRoot for the snapshot strategy. */
@@ -44,7 +47,7 @@ export const journalPath = (recordDir: string): string => join(recordDir, 'journ
  * `rename`) is a separate write the OS is free to persist on its own
  * schedule unless the directory itself is fsynced too.
  */
-async function fsyncDir(dir: string): Promise<void> {
+export async function fsyncDir(dir: string): Promise<void> {
   const handle = await open(dir, 'r')
   try {
     await handle.sync()
@@ -71,6 +74,24 @@ async function writeDurable(path: string, bytes: Buffer | string): Promise<void>
     await handle.close()
   }
   await fsyncDir(dirname(path))
+}
+
+/**
+ * `copyFile` then fsync the copy and the directory naming it. Shared with the
+ * snapshot sandbox, whose pre-state is the same kind of backup the journal's
+ * `journal-bytes/` is: the mutating tool writes the real tree right after, so a
+ * power loss can otherwise persist the live modification while `snapshot-pre/`
+ * is still in write-back cache — the crash R10.9 and R10.10 exist to survive.
+ */
+export async function copyDurable(source: string, dest: string): Promise<void> {
+  await copyFile(source, dest)
+  const handle = await open(dest, 'r')
+  try {
+    await handle.sync()
+  } finally {
+    await handle.close()
+  }
+  await fsyncDir(dirname(dest))
 }
 
 async function writeJournalFile(recordDir: string, journal: Journal): Promise<void> {
@@ -156,8 +177,8 @@ export async function applyJournalled(input: ApplyInput): Promise<void> {
   // (R10.9): the backups and the journal record naming them must survive a
   // crash that happens the instant after the first live target is mutated.
   const journal: Journal = {
-    runId: '',
-    stage: '',
+    runId: input.runId,
+    stage: input.stage,
     liveRoot,
     complete: false,
     entries,

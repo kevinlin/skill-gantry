@@ -35,6 +35,8 @@ async function interrupted() {
     scope: ['sk/SKILL.md'],
     repoPath: repo,
     skillId: skill.id,
+    skillRelPath: 'sk',
+    rootSkill: false,
     snapshotDir,
     workRoot: repo,
     preimages: [await preimageOf(repo, 'sk/SKILL.md')],
