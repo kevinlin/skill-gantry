@@ -35,6 +35,17 @@ export interface SkillRow {
   findings: RawFinding[]
 }
 
+export interface PendingReview {
+  jobId: string
+  runId: string
+  stage: Stage
+  requestId: string
+  diff: string
+  scope: readonly string[]
+  /** First visible diff line, moved by `scroll-review`. */
+  offset: number
+}
+
 export interface AppState {
   skills: SkillRow[]
   selectedSkill: number
@@ -53,6 +64,11 @@ export interface AppState {
   artefacts: string[]
   /** `?` replaces the whole screen; the footer carries only five keys. */
   help: boolean
+  /**
+   * The diff awaiting an answer. It lives in state, unlike log text: a change
+   * set is one bounded document, and R11.4 is about a stream that never stops.
+   */
+  pending: PendingReview | null
 }
 
 export type Action =
@@ -72,6 +88,7 @@ export type Action =
   | { type: 'set-artefacts'; paths: string[] }
   | { type: 'set-statuses'; statuses: Record<string, string> }
   | { type: 'toggle-help'; open?: boolean }
+  | { type: 'scroll-review'; delta: number }
 
 const emptyStages = (): Record<Stage, StageCell> =>
   Object.fromEntries(
@@ -107,6 +124,7 @@ export function initialState(skills: readonly SkillRef[], concurrency: number): 
     skillMd: '',
     artefacts: [],
     help: false,
+    pending: null,
   }
 }
 
@@ -138,7 +156,7 @@ const withStage = (row: SkillRow, stage: Stage, patch: Partial<StageCell>): Skil
   stages: { ...row.stages, [stage]: { ...row.stages[stage], ...patch } },
 })
 
-function onRunEvent(state: AppState, event: RunEvent): AppState {
+function onRunEvent(state: AppState, jobId: string, event: RunEvent): AppState {
   if (event.type === 'run:start') {
     const next = withSkill(state, event.skillId, (row) => ({
       ...row,
@@ -149,6 +167,27 @@ function onRunEvent(state: AppState, event: RunEvent): AppState {
       findings: [],
     }))
     return { ...next, runIndex: { ...next.runIndex, [event.runId]: event.skillId } }
+  }
+
+  // Handled before the skillId guard below: a review pane is keyed by job and
+  // run id, not by the skill row, so it must not depend on run:start having
+  // already been seen.
+  if (event.type === 'mutation:pending') {
+    return {
+      ...state,
+      pending: {
+        jobId,
+        runId: event.runId,
+        stage: event.stage,
+        requestId: event.requestId,
+        diff: event.diff,
+        scope: event.scope,
+        offset: 0,
+      },
+    }
+  }
+  if (event.type === 'mutation:resolved') {
+    return state.pending?.requestId === event.requestId ? { ...state, pending: null } : state
   }
 
   // tool:output is deliberately absent: it belongs to the pump, and taking it
@@ -171,26 +210,33 @@ function onRunEvent(state: AppState, event: RunEvent): AppState {
       return withSkill(state, skillId, (row) =>
         withStage(row, event.stage, { running: false, outcome: event.outcome }),
       )
+    // A prompt whose run has ended can never be answered.
     case 'run:done':
-      return withSkill(state, skillId, (row) => ({
-        ...row,
-        status: statusOf(event.outcome),
-        activeRunId: null,
-      }))
+      return {
+        ...withSkill(state, skillId, (row) => ({
+          ...row,
+          status: statusOf(event.outcome),
+          activeRunId: null,
+        })),
+        pending: state.pending?.runId === event.runId ? null : state.pending,
+      }
     case 'run:cancelled':
     case 'run:error':
-      return withSkill(state, skillId, (row) => ({
-        ...row,
-        status: 'errored',
-        activeRunId: null,
-      }))
+      return {
+        ...withSkill(state, skillId, (row) => ({
+          ...row,
+          status: 'errored',
+          activeRunId: null,
+        })),
+        pending: state.pending?.runId === event.runId ? null : state.pending,
+      }
     default:
       return state
   }
 }
 
 function onQueueEvent(state: AppState, event: QueueEvent): AppState {
-  if (event.type === 'run:event') return onRunEvent(state, event.event)
+  if (event.type === 'run:event') return onRunEvent(state, event.jobId, event.event)
   const index = state.jobs.findIndex((job) => job.jobId === event.job.jobId)
   const jobs = index === -1 ? [...state.jobs, event.job] : [...state.jobs]
   if (index !== -1) jobs[index] = event.job
@@ -239,6 +285,10 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, artefacts: action.paths }
     case 'toggle-help':
       return { ...state, help: action.open ?? !state.help }
+    case 'scroll-review':
+      return state.pending
+        ? { ...state, pending: { ...state.pending, offset: Math.max(0, state.pending.offset + action.delta) } }
+        : state
     case 'set-statuses':
       return {
         ...state,

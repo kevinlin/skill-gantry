@@ -54,6 +54,13 @@ class FakeStdin extends EventEmitter {
     this.emit('readable')
     this.emit('data', data)
   }
+
+  /** Alias for `send`: Ink's own input handling only ever reads, never writes,
+      so tests that call `stdin.write(...)` mean the same keypress delivery. */
+  write(data: string): boolean {
+    this.send(data)
+    return true
+  }
 }
 
 export interface InkHarness {

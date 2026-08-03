@@ -1,3 +1,5 @@
+import { vi } from 'vitest'
+import type { QueueEvent, QueueHandle } from '../../src/core/queue/types.js'
 import type { RunEvent } from '../../src/core/pipeline/events.js'
 import { AsyncEventQueue } from '../../src/core/pipeline/queue.js'
 import type { RunHandle, RunSummary } from '../../src/core/pipeline/run.js'
@@ -63,5 +65,29 @@ export function fakeRun(runId = 'run-1'): FakeRun {
     get cancelled() {
       return state.cancelled
     },
+  }
+}
+
+export interface FakeQueue extends QueueHandle {
+  /** Pushes a `QueueEvent` onto the stream the App is reading. */
+  emit(event: QueueEvent): void
+}
+
+/**
+ * A `QueueHandle` for the review pane tests, which drive `mutation:pending`
+ * and `mutation:resolved` directly rather than through a real `runPipeline` —
+ * the pane only cares that those events arrive on the store's event stream.
+ */
+export function fakeQueue(): FakeQueue {
+  const events = new AsyncEventQueue<QueueEvent>()
+  return {
+    enqueue: vi.fn(() => []),
+    snapshot: vi.fn(() => ({ concurrency: 1, queued: [], running: [], completed: [] })),
+    cancelJob: vi.fn(async () => undefined),
+    resolveMutation: vi.fn(),
+    events,
+    idle: vi.fn(async () => undefined),
+    close: () => events.close(),
+    emit: (event) => events.push(event),
   }
 }

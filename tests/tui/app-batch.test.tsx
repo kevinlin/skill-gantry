@@ -29,6 +29,7 @@ function recordingQueue(): { queue: QueueHandle; batches: JobSpec[][] } {
     },
     snapshot: () => ({ concurrency: 2, queued: [], running: [], completed: [] }),
     cancelJob: vi.fn(async () => undefined),
+    resolveMutation: vi.fn(),
     events: events as AsyncIterable<never>,
     idle: async () => undefined,
     close: () => events.close(),

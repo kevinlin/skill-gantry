@@ -39,9 +39,17 @@ export function App({
     const active = pump.current
     active?.start()
     let live = true
+    // Grabbed once and driven by hand, rather than `for await`, so cleanup can
+    // call `iterator.return()`: a `next()` awaited when this effect tears down
+    // otherwise leaves its resolver parked in the queue's shared FIFO, where a
+    // later push would hand it to a dead consumer instead of the one mounted
+    // after it — exactly what remounting the Work screen against a live queue
+    // does in a test, and what a stale resolver would do for real too.
+    const iterator = queue.events[Symbol.asyncIterator]()
     void (async () => {
-      for await (const event of queue.events) {
-        if (!live) break
+      while (live) {
+        const { value: event, done } = await iterator.next()
+        if (done || !live) break
         // Log text goes to the buffer, never through the reducer — R11.4.
         if (event.type === 'run:event' && event.event.type === 'tool:output') {
           active?.write(event.event.toolId, event.event.chunk)
@@ -52,6 +60,7 @@ export function App({
     })()
     return () => {
       live = false
+      void iterator.return?.()
       active?.stop()
     }
   }, [queue])
@@ -78,6 +87,16 @@ export function App({
     }
     if (input === '?') {
       dispatch({ type: 'toggle-help' })
+      return
+    }
+    // Modal like help: swallowing movement keeps the selection where the user
+    // left it rather than scrolling a screen they cannot see.
+    if (state.pending) {
+      const { jobId, requestId } = state.pending
+      if (input === 'a') queue.resolveMutation(jobId, requestId, 'apply')
+      else if (input === 'd' || key.escape) queue.resolveMutation(jobId, requestId, 'discard')
+      else if (input === 'j' || key.downArrow) dispatch({ type: 'scroll-review', delta: 1 })
+      else if (input === 'k' || key.upArrow) dispatch({ type: 'scroll-review', delta: -1 })
       return
     }
     // Help is modal: swallowing movement while it is open keeps the selection

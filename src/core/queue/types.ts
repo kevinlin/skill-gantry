@@ -42,6 +42,11 @@ export interface QueueHandle {
   enqueue(specs: readonly JobSpec[]): string[]
   snapshot(): QueueSnapshot
   cancelJob(jobId: string): Promise<void>
+  /**
+   * R5.12's command path, routed by job rather than by run: a frontend knows
+   * which job it is looking at, and the run id only appears on the event stream.
+   */
+  resolveMutation(jobId: string, requestId: string, action: 'apply' | 'discard'): void
   events: AsyncIterable<QueueEvent>
   /** Resolves when nothing is queued and nothing is running. */
   idle(): Promise<void>

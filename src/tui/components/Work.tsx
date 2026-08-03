@@ -5,10 +5,13 @@ import { Help } from './Help.js'
 import { LifecycleRail } from './LifecycleRail.js'
 import { OutputPane } from './OutputPane.js'
 import { QueuePanel } from './QueuePanel.js'
+import { ReviewPane } from './ReviewPane.js'
 import { SkillList } from './SkillList.js'
 
 /** Five keys, per the layered discoverability rule; the rest are behind `?`. */
 const HINTS = 'j/k move · space mark · r run · x cancel · ? help · q quit'
+/** The footer carries five keys, and two of them only mean something here. */
+const REVIEW_HINTS = 'a apply · d discard · j/k scroll · ? help · q quit'
 
 export function Work({ state }: { state: AppState }): React.ReactElement {
   // Re-renders on SIGWINCH, which is the whole point: every pane height below
@@ -32,6 +35,18 @@ export function Work({ state }: { state: AppState }): React.ReactElement {
       <Box flexDirection="column" width={columns}>
         <Help layout={layout} />
         <Text dimColor>{truncate('esc or ? closes · q quits', columns)}</Text>
+      </Box>
+    )
+  }
+
+  // Modal like help: a pending mutation replaces the whole screen, because
+  // R5.2 requires the diff to have been shown before an answer is possible —
+  // a pane the user could route around while looking elsewhere would not do.
+  if (state.pending) {
+    return (
+      <Box flexDirection="column" width={columns}>
+        <ReviewPane pending={state.pending} layout={layout} />
+        <Text dimColor>{truncate(REVIEW_HINTS, columns)}</Text>
       </Box>
     )
   }

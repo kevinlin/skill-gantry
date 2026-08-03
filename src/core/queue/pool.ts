@@ -168,6 +168,10 @@ export function createQueue(options: QueueOptions): QueueHandle {
       await active.settled
     },
 
+    resolveMutation(jobId, requestId, action) {
+      running.get(jobId)?.handle.resolveMutation(requestId, action)
+    },
+
     events,
 
     idle(): Promise<void> {
