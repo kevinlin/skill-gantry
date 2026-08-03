@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mkdtemp, readFile } from 'node:fs/promises'
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { buildProgram } from '../../src/cli/run-command.js'
@@ -77,8 +77,44 @@ describe('skillgantry retire', () => {
   it('reverses with --undo', async () => {
     const { repo, program } = await harness()
     await program.parseAsync(['node', 'sg', 'retire', 'sk', '--yes'])
-    await program.parseAsync(['node', 'sg', 'retire', 'sk', '--undo', '--yes'])
+    // The first retire's write is never committed, so SKILL.md is dirty
+    // relative to HEAD by the time --undo runs. R10.3 makes waiving that
+    // refusal the user's call, so the reversal states it explicitly.
+    await program.parseAsync(['node', 'sg', 'retire', 'sk', '--undo', '--yes', '--allow-dirty'])
     expect(await readFile(join(repo, 'sk/SKILL.md'), 'utf8')).not.toContain('deprecated: true')
+  })
+
+  it('refuses a chained retire without --allow-dirty', async () => {
+    const { repo, program } = await harness()
+    await program.parseAsync(['node', 'sg', 'retire', 'sk', '--yes'])
+    await expect(
+      program.parseAsync(['node', 'sg', 'retire', 'sk', '--undo', '--yes']),
+    ).rejects.toThrow(/uncommitted/)
+    // R10.3 held: the second call never touched the file.
+    expect(await readFile(join(repo, 'sk/SKILL.md'), 'utf8')).toContain('deprecated: true')
+  })
+
+  it('reports a no-op with exit 0 when the skill is already in the requested state', async () => {
+    const { repo, out, program } = await harness()
+    await program.parseAsync(['node', 'sg', 'retire', 'sk', '--undo', '--yes'])
+    expect(out.join('\n')).toContain('already in that state')
+    expect(await readFile(join(repo, 'sk/SKILL.md'), 'utf8')).not.toContain('deprecated')
+    expect(program.exitCode).toBe(0)
+  })
+
+  it('emits every --json line as a single parseable document', async () => {
+    const { out, program } = await harness()
+    await program.parseAsync(['node', 'sg', 'retire', 'sk', '--yes', '--json'])
+    for (const line of out) expect(() => JSON.parse(line)).not.toThrow()
+  })
+
+  it('proceeds past a dirty scope path with --allow-dirty', async () => {
+    const { repo, program } = await harness()
+    // Simulates a user edit already sitting in the scope path when retire runs.
+    await writeFile(join(repo, 'sk/SKILL.md'), (await readFile(join(repo, 'sk/SKILL.md'), 'utf8')) + '\n')
+    await program.parseAsync(['node', 'sg', 'retire', 'sk', '--yes', '--allow-dirty'])
+    expect(await readFile(join(repo, 'sk/SKILL.md'), 'utf8')).toContain('deprecated: true')
+    expect(program.exitCode).toBe(0)
   })
 
   it('leaves the gates runnable against a deprecated skill', async () => {

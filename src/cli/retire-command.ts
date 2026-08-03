@@ -55,10 +55,24 @@ export async function runRetire(
     },
   })
 
-  if (!result.applied) return 1
+  if (!result.applied) {
+    // `retireSkill` returns before ever calling `confirm` when the skill is
+    // already in the requested state (retire.ts's empty-change-set branch),
+    // which an empty scope is the only way to tell apart from a declined
+    // confirmation — both share `applied: false`. Conflating the two would
+    // make "nothing to do" fail a script the same way a real refusal does.
+    if (result.scope.length === 0) {
+      const line = `${skill.id} is already in that state`
+      deps.write(opts.json ? JSON.stringify({ type: 'retire:noop', skill: skill.id, message: line }) : line)
+      return 0
+    }
+    return 1
+  }
 
-  // §13: the file is the authority; the cache follows. Reconciling here means a
-  // user who never runs another gate still sees the right state in the ledger.
+  // §13: the file is the authority; the cache follows. A skill's frontmatter
+  // just changed underneath the discovery this command started with, so this
+  // is a second, deliberate re-read — not a duplicate to fold away — and it is
+  // what lets a user who never runs another gate still see the right state.
   const ledger = openLedger(deps.dbPath)
   try {
     const skills = []
@@ -68,6 +82,7 @@ export async function runRetire(
     ledger.close()
   }
 
-  deps.write(opts.undo === true ? `reinstated ${skill.id}` : `retired ${skill.id}`)
+  const line = opts.undo === true ? `reinstated ${skill.id}` : `retired ${skill.id}`
+  deps.write(opts.json ? JSON.stringify({ type: 'retire:done', skill: skill.id, message: line }) : line)
   return 0
 }

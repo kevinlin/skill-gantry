@@ -34,21 +34,21 @@ export interface RetireResult {
  */
 export async function retireSkill(input: RetireInput): Promise<RetireResult> {
   const relPath = input.skill.relPath === '.' ? 'SKILL.md' : `${input.skill.relPath}/SKILL.md`
-  const recordDir = join(input.skill.workspacePath, 'skillgantry', 'retire', uuidv7())
+  const id = uuidv7()
+  const recordDir = join(input.skill.workspacePath, 'skillgantry', 'retire', id)
   await mkdir(recordDir, { recursive: true })
 
   const sandbox = await openSandbox({
     skill: input.skill,
     stage: 'retire',
-    runId: recordDir.split('/').at(-1) as string,
+    runId: id,
     recordDir,
     scope: [relPath],
-    // Retirement's scope is always this one file, and `--undo` (R10.6) is an
-    // ordinary reversal of retirement's own last write, not an exceptional
-    // one — so the file being uncommitted from a prior retire must not force
-    // every reversal through `--allow-dirty`. A caller can still opt into the
-    // strict check by passing `allowDirty: false`.
-    allowDirty: input.allowDirty ?? true,
+    // R10.3: the override is the *user's* decision, not retirement's to make
+    // for them — a chained retire/undo without one is refused exactly like
+    // any other mutation over an uncommitted scope path, and `--allow-dirty`
+    // stays the one way past that refusal.
+    ...(input.allowDirty === undefined ? {} : { allowDirty: input.allowDirty }),
     ...(input.exec === undefined ? {} : { exec: input.exec }),
   })
 

@@ -49,10 +49,28 @@ describe('retireSkill', () => {
     expect((await front(skill)).deprecated).toBe(false)
   })
 
+  it('writes nothing when declined on a repo with no git, though the snapshot strategy writes the live path first', async () => {
+    // The snapshot strategy's `resolve` returns the live path directly (there
+    // is no throwaway worktree to write into instead), so the edit lands on
+    // disk before `confirm` is ever asked. A declined confirmation has to
+    // restore from the pre-write snapshot, not merely skip a write it never
+    // made — this is the one strategy where those two are different things.
+    const skill = await scene(false)
+    const before = await readFile(join(skill.dir, 'SKILL.md'), 'utf8')
+    const result = await retireSkill({ skill, deprecated: true, confirm: async () => false })
+    expect(result.applied).toBe(false)
+    expect(await readFile(join(skill.dir, 'SKILL.md'), 'utf8')).toBe(before)
+    expect((await front(skill)).deprecated).toBe(false)
+  })
+
   it('reverses by the same route', async () => {
     const skill = await scene()
     await retireSkill({ skill, deprecated: true, supersededBy: 'repo/other', confirm: async () => true })
-    await retireSkill({ skill, deprecated: false, confirm: async () => true })
+    // The first retire's write is never committed (no mutation is — R9.7), so
+    // the second call finds SKILL.md dirty relative to HEAD. R10.3 makes that
+    // refusal the user's to waive, not retirement's, so the reversal states
+    // the override explicitly rather than defaulting past it.
+    await retireSkill({ skill, deprecated: false, confirm: async () => true, allowDirty: true })
     expect((await front(skill)).deprecated).toBe(false)
     expect(await readFile(join(skill.dir, 'SKILL.md'), 'utf8')).not.toContain('superseded_by')
   })
