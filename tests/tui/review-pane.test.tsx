@@ -64,20 +64,25 @@ describe('the review store', () => {
   it('scrolls the diff without leaving it', () => {
     let state = initialState([skill('sk')], 2)
     state = reducer(state, { type: 'queue-event', event: pendingEvent('j1') })
-    state = reducer(state, { type: 'scroll-review', delta: 3 })
+    state = reducer(state, { type: 'scroll-review', delta: 3, viewport: 2 })
     expect(state.pending?.offset).toBe(3)
-    state = reducer(state, { type: 'scroll-review', delta: -99 })
+    state = reducer(state, { type: 'scroll-review', delta: -99, viewport: 2 })
     expect(state.pending?.offset).toBe(0)
   })
 
-  it('clamps the offset to the diff\'s own last line rather than an arbitrary large one', () => {
+  it('clamps the offset to the last full window, so the pane never empties', () => {
     let state = initialState([skill('sk')], 2)
     state = reducer(state, { type: 'queue-event', event: pendingEvent('j1') }) // 6-line DIFF
-    state = reducer(state, { type: 'scroll-review', delta: 9999 })
-    expect(state.pending?.offset).toBe(5)
+    // Four visible rows: the furthest useful offset is 2, not 5. Clamping to
+    // the last *line* left one diff row on screen at the bottom of a diff.
+    state = reducer(state, { type: 'scroll-review', delta: 9999, viewport: 4 })
+    expect(state.pending?.offset).toBe(2)
+    // A viewport taller than the diff cannot scroll at all.
+    state = reducer(state, { type: 'scroll-review', delta: 9999, viewport: 20 })
+    expect(state.pending?.offset).toBe(0)
   })
 
-  it('counts a second mutation:pending as displacing the first, rather than silently dropping it', () => {
+  it('counts a displacing mutation:pending and resets the count when the slot empties', () => {
     let state = initialState([skill('sk')], 2)
     state = reducer(state, { type: 'queue-event', event: pendingEvent('j1') })
     expect(state.displacedReviews).toBe(0)
@@ -91,6 +96,18 @@ describe('the review store', () => {
     })
     expect(state.displacedReviews).toBe(1)
     expect(state.pending).toMatchObject({ jobId: 'j2', requestId: 'req-2' })
+
+    // And it resets when the slot empties: the count belongs to the review on
+    // screen, not to the whole session.
+    state = reducer(state, {
+      type: 'queue-event',
+      event: {
+        type: 'run:event',
+        jobId: 'j2',
+        event: { type: 'mutation:resolved', runId: 'run-2', stage: 'release', requestId: 'req-2', action: 'apply' },
+      },
+    })
+    expect(state.displacedReviews).toBe(0)
   })
 
   it('clears a pending review whose run ended, even without having seen run:start', () => {
@@ -124,6 +141,27 @@ describe('the review pane', () => {
     const { stdin, unmount } = renderInk(<App skills={[skill('sk')]} queue={queue} stages={['release']} concurrency={2} intervalMs={5} />)
     queue.emit(pendingEvent('j1'))
     await new Promise((r) => setTimeout(r, 30))
+    stdin.send('a')
+    await new Promise((r) => setTimeout(r, 30))
+    expect(resolve).toHaveBeenCalledWith('j1', 'req-1', 'apply')
+    unmount()
+  })
+
+  it('ignores Ctrl+A and Alt+A, which ink normalises onto the bare letter', async () => {
+    // `\x01` is Ctrl+A; ink reports it as `input === 'a'` with `key.ctrl` set,
+    // and Alt+A arrives as `\x1ba` with the escape stripped. Ctrl+A is a reflex
+    // keystroke and this is the one screen whose keypress writes to the repo.
+    const queue = fakeQueue()
+    const resolve = vi.spyOn(queue, 'resolveMutation')
+    const { stdin, unmount } = renderInk(<App skills={[skill('sk')]} queue={queue} stages={['release']} concurrency={2} intervalMs={5} />)
+    queue.emit(pendingEvent('j1'))
+    await new Promise((r) => setTimeout(r, 30))
+    stdin.send('\x01')
+    stdin.send('\x1ba')
+    await new Promise((r) => setTimeout(r, 30))
+    expect(resolve).not.toHaveBeenCalled()
+    // The plain key still works, so this is a modifier guard and not a
+    // disabled binding.
     stdin.send('a')
     await new Promise((r) => setTimeout(r, 30))
     expect(resolve).toHaveBeenCalledWith('j1', 'req-1', 'apply')

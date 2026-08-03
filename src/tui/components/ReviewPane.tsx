@@ -1,10 +1,7 @@
 import { Box, Text } from 'ink'
-import { innerWidth, truncate, type Layout } from '../layout.js'
+import { innerWidth, reviewDiffRows, truncate, type Layout } from '../layout.js'
 import type { PendingReview } from '../store.js'
 import { Panel } from './Panel.js'
-
-/** Rows the frame spends before its first diff line: chrome, scope, footer. */
-const CHROME_ROWS = { boxed: 6, bare: 4 } as const
 
 const colour = (line: string): string | undefined =>
   line.startsWith('+') ? 'green' : line.startsWith('-') ? 'red' : line.startsWith('@@') ? 'cyan' : undefined
@@ -22,19 +19,21 @@ export function ReviewPane({
 }: {
   pending: PendingReview
   layout: Layout
-  /** Another `mutation:pending` this review silently replaced. Known gap: R5.12
-      needs a queue of pendings, not a count, but a count is at least visible. */
+  /** A `mutation:pending` that overwrote a slot still holding a different
+      request — a resolution the store never saw, not a second concurrent
+      review, which the queue and the pipeline both already prevent. */
   displacedReviews?: number
 }): React.ReactElement {
   const cols = Math.max(8, innerWidth(layout.columns, layout.chrome))
   const lines = pending.diff.split('\n')
-  const budget = Math.max(1, layout.rows - CHROME_ROWS[layout.chrome])
   // `offset` is the first visible line, not a centred cursor: `windowFor`
   // centres its window on the position given, which meant the first several
   // `j` presses on a long diff moved nothing because the window already
   // spanned the top. A plain slice from `offset` moves on the first press.
-  const height = Math.max(1, budget - 1)
-  const start = Math.min(pending.offset, Math.max(0, lines.length - 1))
+  const height = reviewDiffRows(layout)
+  // Clamped so the last window is still a full one; clamping to the last line
+  // left a single diff line on screen at the bottom of a long diff.
+  const start = Math.min(pending.offset, Math.max(0, lines.length - height))
   const end = Math.min(lines.length, start + height)
   const shown = lines.slice(start, end)
   const hidden = lines.length - shown.length

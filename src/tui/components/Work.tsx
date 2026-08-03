@@ -10,8 +10,9 @@ import { SkillList } from './SkillList.js'
 
 /** Five keys, per the layered discoverability rule; the rest are behind `?`. */
 const HINTS = 'j/k move · space mark · r run · x cancel · ? help · q quit'
-/** The footer carries five keys, and two of them only mean something here. */
-const REVIEW_HINTS = 'a apply · d discard · j/k scroll · ? help · q quit'
+/** The footer carries only keys this screen answers: `?` is swallowed while a
+    review is pending, so advertising help here promised a screen that never came. */
+const REVIEW_HINTS = 'a apply · d discard · j/k scroll · esc discard · q quit'
 
 export function Work({ state }: { state: AppState }): React.ReactElement {
   // Re-renders on SIGWINCH, which is the whole point: every pane height below

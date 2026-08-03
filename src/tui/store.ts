@@ -70,11 +70,13 @@ export interface AppState {
    */
   pending: PendingReview | null
   /**
-   * Count of `mutation:pending` events that arrived while another was already
-   * displayed and silently overwrote it. `pending` is a single slot per the
-   * plan (R5.12's two-skills-pending case is a known gap here, not solved),
-   * so this is the one visible trace that a second run is blocked behind the
-   * one on screen rather than one more press away from being unblocked.
+   * How many `mutation:pending` events overwrote the slot while a *different*
+   * request was still in it. `pending` is a single slot, but that is not the
+   * reachable cause of a displacement: `pool.ts` admits one mutating job at a
+   * time and `run.ts` serialises two pendings inside one job, so a non-zero
+   * count means the previous request was never cleared — a stale slot the store
+   * missed the resolution for. It resets whenever the slot empties, so it counts
+   * displacements against the review on screen rather than the whole session.
    */
   displacedReviews: number
 }
@@ -96,7 +98,9 @@ export type Action =
   | { type: 'set-artefacts'; paths: string[] }
   | { type: 'set-statuses'; statuses: Record<string, string> }
   | { type: 'toggle-help'; open?: boolean }
-  | { type: 'scroll-review'; delta: number }
+  /** `viewport` is the diff rows the pane can show, so the clamp leaves a full
+      window at the bottom rather than a single line. */
+  | { type: 'scroll-review'; delta: number; viewport: number }
 
 const emptyStages = (): Record<Stage, StageCell> =>
   Object.fromEntries(
@@ -183,10 +187,11 @@ function onRunEvent(state: AppState, jobId: string, event: RunEvent): AppState {
   // run:start having already been seen — a run:done racing ahead of its own
   // start being observed must still be able to clear a pending it created.
   if (event.type === 'mutation:pending') {
-    // R5.12 needs two skills to be able to have a mutation pending at once;
-    // `pending` is a single slot per the plan, so a second request silently
-    // displaces the first here. The count is the only trace of that until a
-    // queue of pendings replaces the slot — a known gap, not a fix.
+    // A second request cannot legitimately arrive on top of a live one — the
+    // queue serialises mutating jobs and the pipeline serialises pendings
+    // within one — so a displacement here means the slot still held a request
+    // whose resolution the store never saw. Counting it makes that visible
+    // instead of losing the older diff silently.
     const displaced = state.pending !== null && state.pending.requestId !== event.requestId
     return {
       ...state,
@@ -203,7 +208,9 @@ function onRunEvent(state: AppState, jobId: string, event: RunEvent): AppState {
     }
   }
   if (event.type === 'mutation:resolved') {
-    return state.pending?.requestId === event.requestId ? { ...state, pending: null } : state
+    return state.pending?.requestId === event.requestId
+      ? { ...state, pending: null, displacedReviews: 0 }
+      : state
   }
   // A prompt whose run has ended can never be answered.
   if (event.type === 'run:done' || event.type === 'run:cancelled' || event.type === 'run:error') {
@@ -215,7 +222,8 @@ function onRunEvent(state: AppState, jobId: string, event: RunEvent): AppState {
           activeRunId: null,
         }))
       : state
-    return { ...next, pending: state.pending?.runId === event.runId ? null : state.pending }
+    if (state.pending?.runId !== event.runId) return { ...next, pending: state.pending }
+    return { ...next, pending: null, displacedReviews: 0 }
   }
 
   // tool:output is deliberately absent: it belongs to the pump, and taking it
@@ -295,11 +303,12 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, help: action.open ?? !state.help }
     case 'scroll-review': {
       if (!state.pending) return state
-      // Clamped to the diff's own last line, not an arbitrary large number:
-      // without this, holding `j` past the end drove offset into the
-      // thousands and the same number of `k` presses were needed before the
-      // view moved again.
-      const maxOffset = Math.max(0, state.pending.diff.split('\n').length - 1)
+      // Clamped to the last *full* window, not to the diff's last line and not
+      // to an arbitrary large number: holding `j` past the end used to drive
+      // offset into the thousands, needing as many `k` presses before the view
+      // moved again, and clamping to the last line left one diff row on screen.
+      const lines = state.pending.diff.split('\n').length
+      const maxOffset = Math.max(0, lines - Math.max(1, action.viewport))
       const offset = Math.min(maxOffset, Math.max(0, state.pending.offset + action.delta))
       return { ...state, pending: { ...state.pending, offset } }
     }

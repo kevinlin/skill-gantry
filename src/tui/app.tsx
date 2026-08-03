@@ -1,7 +1,8 @@
 import { useEffect, useReducer, useRef } from 'react'
-import { useApp, useInput } from 'ink'
+import { useApp, useInput, useWindowSize } from 'ink'
 import type { QueueHandle, SkillRef, Stage } from '../core/index.js'
 import { Work } from './components/Work.js'
+import { layoutFor, reviewDiffRows } from './layout.js'
 import { LogPump } from './log-buffer.js'
 import { PANELS, initialState, reducer, selectedSkill } from './store.js'
 import { listArtefacts, loadSkillMd, loadSkillStatuses } from './views.js'
@@ -24,6 +25,10 @@ export function App({
   intervalMs,
 }: AppProps): React.ReactElement {
   const [state, dispatch] = useReducer(reducer, skills, (list) => initialState(list, concurrency))
+  // The scroll clamp needs the same row count the review pane renders, and
+  // `layout.ts` is the one place that decides it (§14.1's third rule).
+  const { columns, rows } = useWindowSize()
+  const reviewRows = reviewDiffRows(layoutFor(columns, rows))
   const { exit } = useApp()
   const byId = useRef(new Map(skills.map((skill) => [skill.id, skill])))
 
@@ -81,7 +86,14 @@ export function App({
   }, [state.panel, current?.skillId, current?.runDir])
 
   useInput((input, key) => {
-    if (input === 'q') {
+    // Ink normalises a modified key onto the bare letter — `input` becomes
+    // `keypress.name` when ctrl is held, and an alt-prefixed `\x1ba` has its
+    // escape stripped — so without this every binding also answers to Ctrl and
+    // Alt. Ctrl+A is a reflex keystroke, and on the review screen the `a`
+    // binding writes to the user's repo. Escape and the arrows are unaffected:
+    // they arrive as named keys with `input` empty.
+    const plain = !key.ctrl && !key.meta && !key.super && !key.hyper
+    if (plain && input === 'q') {
       exit()
       return
     }
@@ -91,13 +103,15 @@ export function App({
     // awaiting an answer.
     if (state.pending) {
       const { jobId, requestId } = state.pending
-      if (input === 'a') queue.resolveMutation(jobId, requestId, 'apply')
-      else if (input === 'd' || key.escape) queue.resolveMutation(jobId, requestId, 'discard')
-      else if (input === 'j' || key.downArrow) dispatch({ type: 'scroll-review', delta: 1 })
-      else if (input === 'k' || key.upArrow) dispatch({ type: 'scroll-review', delta: -1 })
+      if (plain && input === 'a') queue.resolveMutation(jobId, requestId, 'apply')
+      else if ((plain && input === 'd') || key.escape) queue.resolveMutation(jobId, requestId, 'discard')
+      else if ((plain && input === 'j') || key.downArrow)
+        dispatch({ type: 'scroll-review', delta: 1, viewport: reviewRows })
+      else if ((plain && input === 'k') || key.upArrow)
+        dispatch({ type: 'scroll-review', delta: -1, viewport: reviewRows })
       return
     }
-    if (input === '?') {
+    if (plain && input === '?') {
       dispatch({ type: 'toggle-help' })
       return
     }
@@ -111,11 +125,11 @@ export function App({
       dispatch({ type: 'cycle-focus', delta: key.shift ? -1 : 1 })
       return
     }
-    if (input >= '1' && input <= '4') {
+    if (plain && input >= '1' && input <= '4') {
       dispatch({ type: 'set-panel', panel: PANELS[Number(input) - 1]! })
       return
     }
-    if (input === 'j' || key.downArrow) {
+    if ((plain && input === 'j') || key.downArrow) {
       dispatch(
         state.focus === 'queue'
           ? { type: 'select-job', delta: 1 }
@@ -123,7 +137,7 @@ export function App({
       )
       return
     }
-    if (input === 'k' || key.upArrow) {
+    if ((plain && input === 'k') || key.upArrow) {
       dispatch(
         state.focus === 'queue'
           ? { type: 'select-job', delta: -1 }
@@ -131,21 +145,21 @@ export function App({
       )
       return
     }
-    if (input === 'h') {
+    if (plain && input === 'h') {
       dispatch({ type: 'select-stage', delta: -1 })
       return
     }
-    if (input === 'l') {
+    if (plain && input === 'l') {
       dispatch({ type: 'select-stage', delta: 1 })
       return
     }
-    if (input === ' ') {
+    if (plain && input === ' ') {
       dispatch(
         state.focus === 'stages' ? { type: 'toggle-stage-mark' } : { type: 'toggle-skill-mark' },
       )
       return
     }
-    if (input === 'r') {
+    if (plain && input === 'r') {
       // R5.5: every marked skill and stage becomes one batch, one call.
       const chosen = state.markedSkills.length > 0 ? state.markedSkills : [current?.skillId]
       const wanted = state.markedStages.length > 0 ? state.markedStages : stages
@@ -156,7 +170,7 @@ export function App({
       dispatch({ type: 'clear-marks' })
       return
     }
-    if (input === 'x') {
+    if (plain && input === 'x') {
       const job = state.jobs[state.selectedJob]
       if (job) void queue.cancelJob(job.jobId)
     }

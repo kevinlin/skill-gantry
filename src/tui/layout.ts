@@ -47,6 +47,20 @@ export function innerWidth(width: number, chrome: 'boxed' | 'bare'): number {
   return width - (chrome === 'boxed' ? PANEL_INSET : 0)
 }
 
+/** Rows the review frame spends before its first diff line: chrome, scope, footer. */
+const REVIEW_CHROME_ROWS = { boxed: 6, bare: 4 } as const
+
+/**
+ * Diff lines the review pane can show. Floored at 0, not 1: a floor of one row
+ * made the frame need one row more than it had below five, which is §14.1's
+ * first rule broken. Lives here rather than in `ReviewPane` because the scroll
+ * clamp needs the same number — without it, `j` at the bottom of a diff walked
+ * `offset` to the last line and left a one-line pane.
+ */
+export function reviewDiffRows(layout: Layout): number {
+  return Math.max(0, layout.rows - REVIEW_CHROME_ROWS[layout.chrome] - 1)
+}
+
 export type LayoutMode = 'too-small' | 'narrow' | 'standard'
 
 export interface Layout {
