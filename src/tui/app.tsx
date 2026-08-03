@@ -216,6 +216,18 @@ export function App({
       dispatch({ type: 'set-screen', screen: 'work' })
       return
     }
+    if (state.screen === 'tools' || state.screen === 'settings') {
+      if (plain && input === 'r' && state.screen === 'tools') {
+        // A re-probe, not a migration: `tools()` invokes each binary's version
+        // argv, which is what R3.9 means by re-verify.
+        dispatch({ type: 'refresh-views' })
+      } else if ((plain && input === 'j') || key.downArrow) {
+        dispatch({ type: 'scroll-screen', delta: 1, viewport: screenBodyRows(layout) })
+      } else if ((plain && input === 'k') || key.upArrow) {
+        dispatch({ type: 'scroll-screen', delta: -1, viewport: screenBodyRows(layout) })
+      }
+      return
+    }
     if (state.screen === 'issues') {
       const row = state.issues[state.selectedIssue]
       const act = (action: IssueAction): void => {
@@ -350,9 +362,9 @@ export function App({
     case 'issues':
       return <Issues state={state} />
     case 'tools':
-      return <Tools state={state} />
+      return <Tools state={state} dispatch={dispatch} />
     case 'settings':
-      return <Settings state={state} />
+      return <Settings state={state} dispatch={dispatch} />
     default:
       return <Work state={state} />
   }
