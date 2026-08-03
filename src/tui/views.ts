@@ -1,6 +1,16 @@
 import { readFile, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import { readIndex, type SkillRef } from '../core/index.js'
+import {
+  readIndex,
+  type DashboardStats,
+  type DoctorReport,
+  type IssueAction,
+  type IssueFilter,
+  type IssueRow,
+  type ProvenanceOption,
+  type SkillRef,
+  type StatsFilter,
+} from '../core/index.js'
 
 export async function loadSkillMd(dir: string): Promise<string> {
   try {
@@ -48,4 +58,47 @@ export async function loadSkillStatuses(
     if (latest) out[skill.id] = latest.outcome
   }
   return out
+}
+
+export interface SettingsRepo {
+  id: string
+  name: string
+  path: string
+  isGit: boolean
+  skills: number
+}
+
+export interface SettingsCredential {
+  /** The provider label an adapter declares, or the env key for a bare one. */
+  label: string
+  satisfied: boolean
+  detail: string
+}
+
+export interface SettingsView {
+  home: string
+  dbPath: string
+  concurrency: number
+  repos: SettingsRepo[]
+  stageTools: Record<string, readonly string[]>
+  credentials: SettingsCredential[]
+  /** `.env` mode and presence warnings, verbatim from `loadEnvFile`. */
+  envWarnings: string[]
+  ruleMap: { applied: number; current: number }
+}
+
+/**
+ * Everything the screens need and the terminal interface is not allowed to do:
+ * open the ledger, and spawn a tool to verify it. Declared here because it is
+ * the TUI's requirement; implemented in `src/cli/gantry-views.ts`, which is
+ * already the one place config, the lockfile and the ledger meet.
+ */
+export interface GantryViews {
+  dashboard(filter: StatsFilter): Promise<DashboardStats>
+  provenances(): Promise<ProvenanceOption[]>
+  issues(filter: IssueFilter): Promise<IssueRow[]>
+  /** Resolves to the new state, or null when the transition was not legal. */
+  actOnIssue(fingerprint: string, action: IssueAction): Promise<string | null>
+  tools(): Promise<DoctorReport>
+  settings(): Promise<SettingsView>
 }

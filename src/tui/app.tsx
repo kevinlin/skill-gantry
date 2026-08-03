@@ -5,7 +5,7 @@ import { Work } from './components/Work.js'
 import { layoutFor, reviewDiffRows } from './layout.js'
 import { LogPump } from './log-buffer.js'
 import { PANELS, initialState, reducer, selectedSkill } from './store.js'
-import { listArtefacts, loadSkillMd, loadSkillStatuses } from './views.js'
+import { type GantryViews, listArtefacts, loadSkillMd, loadSkillStatuses } from './views.js'
 
 export interface AppProps {
   skills: readonly SkillRef[]
@@ -13,6 +13,8 @@ export interface AppProps {
   /** Stages enqueued when the user has marked none. */
   stages: readonly Stage[]
   concurrency: number
+  /** R11.3's screens read the ledger through this; the TUI may not open it. */
+  views: GantryViews
   /** Flush interval, lowered in tests. */
   intervalMs?: number
 }

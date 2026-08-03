@@ -12,6 +12,7 @@ import {
   type Stage,
 } from '../core/index.js'
 import { renderApp } from '../tui/index.js'
+import { createGantryViews } from './gantry-views.js'
 import { discoverAll } from './run-command.js'
 
 export interface TuiOptions {
@@ -71,6 +72,11 @@ export async function startTui(options: TuiOptions): Promise<void> {
       queue,
       stages: resolveStages(config),
       concurrency,
+      views: createGantryViews({
+        home: options.home,
+        dbPath: options.dbPath,
+        write: () => undefined,
+      }),
     })
   } finally {
     queue.close()
