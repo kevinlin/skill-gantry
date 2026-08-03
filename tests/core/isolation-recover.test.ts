@@ -59,7 +59,7 @@ describe('startup recovery', () => {
     const { repo, skill, recordDir } = await interrupted()
     const found = await scanInterrupted([skill])
     const restored = await restoreInterrupted(found[0]!)
-    expect(restored).toEqual(['sk/SKILL.md'])
+    expect(restored).toEqual({ action: 'restored', paths: ['sk/SKILL.md'] })
     expect(await readFile(join(repo, 'sk/SKILL.md'), 'utf8')).toBe(SKILL_MD_FULL('sk'))
     expect((await readSandboxRecord(recordDir))?.state).toBe('discarded')
     expect(await scanInterrupted([skill])).toEqual([])
@@ -117,7 +117,9 @@ describe('startup recovery', () => {
     const found = await scanInterrupted([skill])
     expect(found[0]?.journalIncomplete).toBe(false)
     const restored = await restoreInterrupted(found[0]!)
-    expect(restored).toEqual([])
+    // Named, not merely empty: the CLI printed "the working tree was never
+    // modified" for this branch, where the tree *was* written and approved.
+    expect(restored).toEqual({ action: 'settled-applied', paths: [] })
     // Must still hold the approved bytes, not the snapshot's pre-stage ones.
     expect(await readFile(join(repo, 'sk/SKILL.md'), 'utf8')).toBe('applied by the optimiser\n')
     expect((await readSandboxRecord(recordDir))?.state).toBe('applied')
@@ -130,7 +132,7 @@ describe('startup recovery', () => {
     const found = await scanInterrupted([skill])
     // The worktree strategy never wrote the live tree, so there is nothing to
     // restore and the half-written file is not ours.
-    expect(await restoreInterrupted(found[0]!)).toEqual([])
+    expect(await restoreInterrupted(found[0]!)).toEqual({ action: 'pruned', paths: [] })
     expect((await readSandboxRecord(recordDir))?.state).toBe('discarded')
     expect(await readFile(join(repo, 'sk/SKILL.md'), 'utf8')).toBe('half-written by an optimiser\n')
   })

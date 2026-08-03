@@ -8,6 +8,14 @@ export type RefusalCode =
   | 'version-disagreement'
   | 'interrupted-mutation'
 
+/**
+ * Shared with `retireSkill`, because design §12.2's rule is about any new
+ * mutating run rather than release alone, and a user who meets it from either
+ * command should be told the same thing.
+ */
+export const INTERRUPTED_MUTATION_MESSAGE =
+  'an interrupted mutation is unresolved: run `skillgantry recover` first'
+
 export interface Refusal {
   code: RefusalCode
   message: string
@@ -75,10 +83,7 @@ export function checkPreconditions(input: PreconditionInput): Refusal[] {
   }
 
   if (input.interrupted) {
-    refusals.push({
-      code: 'interrupted-mutation',
-      message: 'an interrupted mutation is unresolved: run `skillgantry recover` first',
-    })
+    refusals.push({ code: 'interrupted-mutation', message: INTERRUPTED_MUTATION_MESSAGE })
   }
 
   return refusals

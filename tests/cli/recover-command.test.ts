@@ -59,6 +59,29 @@ describe('skillgantry recover', () => {
     expect(out.join('\n')).toContain('sk/SKILL.md')
   })
 
+  it('does not claim the tree was never modified on an already-applied record', async () => {
+    // A complete journal means the apply landed and the user approved it. The
+    // message here used to be "the working tree was never modified", which is
+    // false, on the one command a user reaches after a crash.
+    const { repo, out, program } = await harness()
+    const recordDir = join(workspacePath(repo, 'sk', false), 'skillgantry', 'runs', 'run-a')
+    await writeFile(
+      join(recordDir, 'journal.json'),
+      JSON.stringify({
+        runId: 'run-a',
+        stage: 'optimise',
+        liveRoot: repo,
+        complete: true,
+        entries: [{ path: 'sk/SKILL.md', priorSha: 'x', priorMode: 33188, priorBytesRef: 'aa' }],
+      }),
+    )
+    await program.parseAsync(['node', 'skillgantry', 'recover', '--restore', 'run-a'])
+    expect(out.join('\n')).not.toContain('never modified')
+    expect(out.join('\n')).toContain('already completed')
+    // And the applied bytes are still the applied bytes.
+    expect(await readFile(join(repo, 'sk/SKILL.md'), 'utf8')).toBe('half-written\n')
+  })
+
   it('leaves the tree alone on --forget', async () => {
     const { repo, program } = await harness()
     await program.parseAsync(['node', 'skillgantry', 'recover', '--forget', 'run-a'])

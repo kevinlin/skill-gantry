@@ -5,7 +5,7 @@ import { runPipeline } from '../../src/core/pipeline/run.js'
 import { openLedger } from '../../src/core/ledger/db.js'
 import { workspacePath } from '../../src/core/discovery/discover.js'
 import { AdapterStageExecutor } from '../../src/core/stages/adapter-stage.js'
-import { scanSandboxRecords } from '../../src/core/isolation/record.js'
+import { readSandboxRecord, scanSandboxRecords } from '../../src/core/isolation/record.js'
 import type { RunEvent } from '../../src/core/pipeline/events.js'
 import type { StageExecutor, StageResult } from '../../src/core/stages/types.js'
 import type { SkillRef } from '../../src/core/types.js'
@@ -83,7 +83,7 @@ async function harness(replacement: string = OPTIMISED) {
       ...over,
     })
 
-  return { repo, skill, ledger, start }
+  return { repo, skill, ledger, adapter, start }
 }
 
 describe('a mutating stage through the pipeline', () => {
@@ -159,10 +159,61 @@ describe('a mutating stage through the pipeline', () => {
     })()
     const summary = await handle.done
     expect(summary.stages[0]?.outcome).toBe('errored')
-    expect(summary.stages[0]?.toolRuns[0]?.errorKind).toBe('mutation-aborted')
+    // R5.13: the synthetic row is appended, so the tool run that really ran —
+    // its summary, its findings, its artefact dir — is still on record.
+    // Replacing it threw that evidence away from stage.json and the ledger.
+    const toolRuns = summary.stages[0]?.toolRuns ?? []
+    expect(toolRuns).toHaveLength(2)
+    expect(toolRuns[0]).toMatchObject({ toolId: 'fake-optimiser', summary: 'rewrote' })
+    expect(toolRuns[0]?.artefactDir).not.toBe('')
+    expect(toolRuns.at(-1)?.errorKind).toBe('mutation-aborted')
     // R5.13: the run still finalises, so the partial evidence survives.
     expect(summary.runId).toBeTruthy()
     expect(await readFile(join(repo, 'sk/SKILL.md'), 'utf8')).toBe('hand-edited\n')
+  })
+
+  it('keeps an applied mutation applied when the work after the apply throws', async () => {
+    // Release's own shape: `applyFromSandbox` completes the journal and marks
+    // the record `applied`, and only then does `writeEvidenceBundle` run. When
+    // that throws, treating it as an abort flipped a git sandbox's marker to
+    // `discarded` over a tree written with a *complete* journal — so recovery
+    // would never offer it — and on the snapshot strategy reverted an apply the
+    // user had approved. Design §12.4: at or after apply there is no discard.
+    const { repo, adapter, start } = await harness()
+    const handle = start({
+      authorised: true,
+      executorFactory: (stage) => {
+        const real = new AdapterStageExecutor(stage, {
+          lookup: (id) => (id === 'fake-optimiser' ? adapter : undefined),
+        })
+        const wrapped: StageExecutor = {
+          stage: real.stage,
+          mutating: real.mutating,
+          plan: (ctx) => real.plan(ctx),
+          execute: (ctx, plan) => real.execute(ctx, plan),
+          prepareMutation: (ctx, plan, result) => real.prepareMutation(ctx, plan, result),
+          applyMutation: async (ctx, pending) => {
+            await real.applyMutation(ctx, pending)
+            throw new Error('evidence bundle failed')
+          },
+          discardMutation: (ctx, pending) => real.discardMutation(ctx, pending),
+        }
+        return wrapped
+      },
+    })
+    void (async () => {
+      for await (const event of handle.events) {
+        if (event.type === 'mutation:pending') handle.resolveMutation(event.requestId, 'apply')
+      }
+    })()
+    const summary = await handle.done
+
+    expect(summary.stages[0]?.outcome).toBe('errored')
+    expect(summary.stages[0]?.toolRuns.at(-1)?.errorKind).toBe('mutation-incomplete')
+    // The approved bytes are still there: nothing rolled them back.
+    expect(await readFile(join(repo, 'sk/SKILL.md'), 'utf8')).toBe(OPTIMISED)
+    // And the marker still says `applied`, so recovery reads the truth.
+    expect((await readSandboxRecord(summary.runDir))?.state).toBe('applied')
   })
 
   it('settles the sandbox record on every path, so nothing is left reported as active', async () => {
@@ -207,18 +258,24 @@ describe('a mutating stage through the pipeline', () => {
     })()
     const summary = await handle.done
 
-    const row = ledger.db
+    const rows = ledger.db
       .prepare(
-        `select tr.error_kind as errorKind, tr.artefact_dir as artefactDir, tr.outcome as outcome
+        `select tr.tool_id as toolId, tr.error_kind as errorKind, tr.artefact_dir as artefactDir,
+                tr.outcome as outcome
          from tool_runs tr
          join stages s on s.id = tr.stage_id
          join runs r on r.id = s.run_id
-         where r.id = ?`,
+         where r.id = ? order by tr.rowid`,
       )
-      .get(summary.runId) as
-      | { errorKind: string | null; artefactDir: string; outcome: string }
-      | undefined
-    expect(row).toMatchObject({ errorKind: 'mutation-aborted', artefactDir: '', outcome: 'errored' })
+      .all(summary.runId) as Array<{
+      toolId: string
+      errorKind: string | null
+      artefactDir: string
+      outcome: string
+    }>
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toMatchObject({ toolId: 'fake-optimiser', outcome: 'passed' })
+    expect(rows.at(-1)).toMatchObject({ errorKind: 'mutation-aborted', artefactDir: '', outcome: 'errored' })
   })
 
   it('reports mutation-aborted and disposes the sandbox when the sandbox refuses to open', async () => {

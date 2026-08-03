@@ -1,5 +1,4 @@
 import {
-  discoverSkills,
   loadEnvFile,
   loadToolLock,
   openLedger,
@@ -7,10 +6,8 @@ import {
   runPipeline,
   syncLifecycle,
 } from '../core/index.js'
-import { loadConfig } from '../core/config/config.js'
-import type { SkillRef } from '../core/types.js'
 import { detectInterrupted } from './recover-command.js'
-import { resolveSkill, type CliDeps } from './run-command.js'
+import { selectSkill, type CliDeps } from './run-command.js'
 
 export interface ReleaseOptions {
   version: string
@@ -29,10 +26,7 @@ export async function runRelease(
   selector: string,
   opts: ReleaseOptions,
 ): Promise<number> {
-  const config = await loadConfig(deps.home)
-  const allSkills: SkillRef[] = []
-  for (const repo of config.repos) allSkills.push(...(await discoverSkills(repo)))
-  const skill = resolveSkill(allSkills, selector)
+  const { config, allSkills, skill } = await selectSkill(deps.home, selector)
   const lock = await loadToolLock(deps.home)
   const env = await loadEnvFile(deps.home)
   for (const warning of env.warnings) deps.write(`warning: ${warning}`)

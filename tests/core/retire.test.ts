@@ -122,7 +122,7 @@ describe('retireSkill', () => {
     // Nothing was ever written to the live tree (the crash landed before
     // apply), so recovery is a prune and the frontmatter is untouched.
     const restored = await restoreInterrupted(found[0]!)
-    expect(restored).toEqual([])
+    expect(restored).toEqual({ action: 'pruned', paths: [] })
     expect((await front(skill)).deprecated).toBe(false)
 
     // Settled: a second scan reports nothing left to recover.

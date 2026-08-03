@@ -45,6 +45,16 @@ export type ErrorKind =
    * could not be written, or by a sandbox that could not be opened.
    */
   | 'mutation-aborted'
+  /**
+   * Row 3c. The apply landed — the journal is complete and the user's tree
+   * holds the approved bytes — and something after it threw (release's
+   * evidence bundle is the reachable case). Distinct from `mutation-aborted`
+   * because the two call for opposite recovery: nothing is compensated here,
+   * and a caller that treated this as an abort would either flip a marker to
+   * `discarded` over a written tree, so recovery would never offer it again,
+   * or restore a snapshot over an apply the user approved.
+   */
+  | 'mutation-incomplete'
 
 export const KNOWN_RULE_CLASSES = [
   'prompt-injection',

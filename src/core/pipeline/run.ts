@@ -8,6 +8,7 @@ import { getAdapter } from '../adapters/registry.js'
 import { candidateManifest, materialiseCandidate } from '../discovery/candidate.js'
 import { gitState, skillDigest } from '../discovery/digest.js'
 import { openSandbox } from '../isolation/open.js'
+import { readSandboxRecord } from '../isolation/record.js'
 import type { MutationSandbox } from '../isolation/types.js'
 import type { Ledger } from '../ledger/db.js'
 import { recordRun } from '../ledger/record.js'
@@ -97,12 +98,21 @@ export interface RunHandle {
 
 const nowIso = (): string => new Date().toISOString()
 
-/** Row 3b of design §8.1: an authorised apply that refused to write. */
+/**
+ * Rows 3b and 3c of design §8.1: an authorised apply that refused to write, or
+ * one that wrote and then could not finish the work that follows it.
+ *
+ * The synthetic record is **appended** to whatever the tools already reported,
+ * never substituted for it. Replacing them threw away the real tool run's
+ * findings and its artefact directory, so `stage.json` and the ledger lost the
+ * partial evidence R5.13 requires an aborted run to keep.
+ */
 function abortedStage(
   stage: Stage,
   plan: StagePlan,
   message: string,
   executed?: StageResult,
+  errorKind: 'mutation-aborted' | 'mutation-incomplete' = 'mutation-aborted',
 ): StageResult {
   const toolId = plan.toolIds[0] ?? stage
   return {
@@ -110,13 +120,14 @@ function abortedStage(
     outcome: 'errored',
     verdict: executed?.verdict ?? 'passed',
     toolRuns: [
+      ...(executed?.toolRuns ?? []),
       {
         toolId,
         toolVersion: null,
         outcome: 'errored',
         exitCode: null,
         durationMs: 0,
-        errorKind: 'mutation-aborted',
+        errorKind,
         artefactDir: '',
         findings: [],
         metrics: {},
@@ -228,6 +239,9 @@ export function runPipeline(input: RunPipelineInput): RunHandle {
       ctx: StageContext,
       plan: StagePlan,
       result: StageResult,
+      /** Set the instant the apply starts, so the catch below can tell an
+          abort from a failure that happened *after* the tree was written. */
+      progress: { applyBegan: boolean },
     ): Promise<StageResult> => {
       if (!executor.mutating || !executor.prepareMutation || !ctx.authorised) return result
       const pending: PendingMutation | null = await executor.prepareMutation(ctx, plan, result)
@@ -267,6 +281,7 @@ export function runPipeline(input: RunPipelineInput): RunHandle {
       cancellation.enter('running')
 
       if (decision.action === 'apply') {
+        progress.applyBegan = true
         await executor.applyMutation?.(ctx, pending)
         return result
       }
@@ -367,27 +382,48 @@ export function runPipeline(input: RunPipelineInput): RunHandle {
       // would leave the worktree registered and the record `active` forever.
       let executed: StageResult | undefined
       let result: StageResult
+      const progress = { applyBegan: false }
       try {
         executed = await executor.execute(ctx, plan)
         for (const toolRun of executed.toolRuns) {
           queue.push({ type: 'tool:done', runId: id, stage, toolId: toolRun.toolId, result: toolRun })
         }
-        result = await gateMutation(executor, ctx, plan, executed)
+        result = await gateMutation(executor, ctx, plan, executed, progress)
       } catch (err) {
         // No sandbox means this stage never touched isolation (not mutating,
         // or not authorised), so there is nothing of row 3b's to report —
         // the error is the run's, same as before this task.
         if (!sandbox) throw err
-        // Row 3b. R10.11 aborts an authorised apply on drift, and R5.13 requires
-        // the run to finalise anyway so its partial evidence survives.
-        await executor.discardMutation?.(ctx, { diff: '', scope: [] }).catch(() => undefined)
-        result = abortedStage(stage, plan, (err as Error).message, executed)
+        // `applyBegan` alone is too coarse: R10.11's drift check runs *inside*
+        // the apply and throws before a byte moves, which is row 3b. The
+        // sandbox record is the authority on whether the write landed — both
+        // strategies mark it `applied` only after `applyJournalled` has
+        // completed the journal.
+        const landed =
+          progress.applyBegan && (await readSandboxRecord(runDir))?.state === 'applied'
+        if (landed) {
+          // Row 3c. The apply already ran, so this is not an abort and must not
+          // be settled like one: design §12.4 gives an at-or-after-apply
+          // failure a *compensating journal rollback*, and a completed journal
+          // has nothing left to compensate. Calling `discardMutation` here
+          // flipped a git sandbox's marker to `discarded` over a tree written
+          // with a complete journal — so recovery would never offer it again —
+          // and, on the snapshot strategy, restored the pre-tool state over an
+          // apply the user had approved.
+          result = abortedStage(stage, plan, (err as Error).message, executed, 'mutation-incomplete')
+        } else {
+          // Row 3b. R10.11 aborts an authorised apply on drift, and R5.13 requires
+          // the run to finalise anyway so its partial evidence survives.
+          await executor.discardMutation?.(ctx, { diff: '', scope: [] }).catch(() => undefined)
+          result = abortedStage(stage, plan, (err as Error).message, executed)
+        }
       } finally {
         await sandbox?.dispose()
       }
 
-      // M1's only adapter declares no binaryArtefacts, so nothing is copied
-      // verbatim; stage.json still records redacted:false per tool run (R7.4a).
+      // stage.json records redacted:false per tool run (R7.4a); an adapter that
+      // declares `binaryArtefacts` has them copied verbatim by the runner, not
+      // here.
       await writeStageJson(stageDir, result)
 
       results.push(result)

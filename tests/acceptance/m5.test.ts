@@ -151,6 +151,10 @@ async function seedGatesForCurrentBytes(dbPath: string, skill: SkillRef, runId?:
  * limit 1` with no stage filter picks an arbitrary row once a run carries
  * more than one stage (a seeded gates run does, with three), which is exactly
  * the ambiguity a fingerprint-free query like this must not have.
+ *
+ * `tr.rowid desc` too: an aborted apply *appends* its synthetic row rather than
+ * replacing the tool run that really ran (R5.13), so a release stage can carry
+ * two, and the last one is the one that says why the stage ended as it did.
  */
 function latestReleaseToolRun(
   dbPath: string,
@@ -164,7 +168,7 @@ function latestReleaseToolRun(
          join stages s on s.id = tr.stage_id
          join runs r on r.id = s.run_id
          where s.stage = 'release'
-         order by r.rowid desc limit 1`,
+         order by r.rowid desc, tr.rowid desc limit 1`,
       )
       .get() as { errorKind: string | null; outcome: string } | undefined
   } finally {

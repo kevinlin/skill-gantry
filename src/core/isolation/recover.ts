@@ -5,7 +5,7 @@ import { type Exec, defaultExec } from '../tools/exec.js'
 import { readJournal, rollbackJournal } from './journal.js'
 import { markSandboxRecord, scanSandboxRecords } from './record.js'
 import { restoreSnapshot } from './snapshot.js'
-import type { SandboxRecord } from './types.js'
+import { RETIRE_STAGE, type SandboxRecord } from './types.js'
 
 export interface InterruptedMutation {
   record: SandboxRecord
@@ -15,8 +15,23 @@ export interface InterruptedMutation {
   journalIncomplete: boolean
 }
 
+/**
+ * What each branch of `restoreInterrupted` actually did. A bare path list could
+ * not tell "the apply had already completed, the tree stands as approved" apart
+ * from "nothing was ever written" — both are empty — and the CLI printed the
+ * second sentence for the first case, on the one command a user reaches after a
+ * crash.
+ */
+export type RecoveryAction = 'settled-applied' | 'rolled-back' | 'pruned' | 'restored'
+
+export interface RecoveryOutcome {
+  action: RecoveryAction
+  /** Paths put back; empty for `settled-applied` and `pruned`. */
+  paths: string[]
+}
+
 const recordDirFor = (record: SandboxRecord, workspacePath: string): string => {
-  const group = record.stage === 'retire' ? 'retire' : 'runs'
+  const group = record.stage === RETIRE_STAGE ? 'retire' : 'runs'
   return join(workspacePath, 'skillgantry', group, record.runId)
 }
 
@@ -93,18 +108,18 @@ export async function scanInterrupted(
 export async function restoreInterrupted(
   found: InterruptedMutation,
   exec: Exec = defaultExec,
-): Promise<string[]> {
+): Promise<RecoveryOutcome> {
   const journal = await readJournal(found.recordDir)
 
   if (journal?.complete) {
     await markSandboxRecord(found.recordDir, 'applied')
-    return []
+    return { action: 'settled-applied', paths: [] }
   }
 
   if (journal && !journal.complete) {
     const restored = await rollbackJournal(found.recordDir)
     await markSandboxRecord(found.recordDir, 'discarded')
-    return restored
+    return { action: 'rolled-back', paths: restored }
   }
 
   if (found.record.strategy === 'git-worktree') {
@@ -124,12 +139,12 @@ export async function restoreInterrupted(
       await exec('git', ['worktree', 'prune'], { cwd: found.record.repoPath }).catch(() => undefined)
     }
     await markSandboxRecord(found.recordDir, 'discarded')
-    return []
+    return { action: 'pruned', paths: [] }
   }
 
   await restoreSnapshot(found.record.snapshotDir, skillFor(found), found.record.scope)
   await markSandboxRecord(found.recordDir, 'discarded')
-  return [...found.record.scope]
+  return { action: 'restored', paths: [...found.record.scope] }
 }
 
 /** Keeps the tree as it stands and stops the record being reported again. */

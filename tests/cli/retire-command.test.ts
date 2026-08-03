@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { buildProgram } from '../../src/cli/run-command.js'
@@ -13,7 +13,8 @@ import {
 import { openLedger } from '../../src/core/ledger/db.js'
 import { readLifecycleCache } from '../../src/core/ledger/lifecycle.js'
 import { recordRun } from '../../src/core/ledger/record.js'
-import { discoverSkills } from '../../src/core/discovery/discover.js'
+import { discoverSkills, workspacePath } from '../../src/core/discovery/discover.js'
+import { writeSandboxRecord } from '../../src/core/isolation/record.js'
 import { SKILL_MD_FULL, makeGitRepo } from '../helpers/tmp-repo.js'
 import { makeFakeTool } from '../helpers/fake-tool.js'
 
@@ -92,6 +93,34 @@ describe('skillgantry retire', () => {
     ).rejects.toThrow(/uncommitted/)
     // R10.3 held: the second call never touched the file.
     expect(await readFile(join(repo, 'sk/SKILL.md'), 'utf8')).toContain('deprecated: true')
+  })
+
+  it('refuses while the skill holds an unresolved sandbox record', async () => {
+    // Design §12.2: a *new* mutating run against a skill with an unresolved
+    // record refuses, and retirement is a mutation. Only release consulted the
+    // flag, so a retire that crashed mid-apply could be retried and then
+    // `recover --restore <first>` would roll the first journal back over the
+    // second's applied bytes.
+    const { repo, program } = await harness()
+    const recordDir = join(workspacePath(repo, 'sk', false), 'skillgantry', 'retire', 'crashed')
+    await mkdir(recordDir, { recursive: true })
+    await writeSandboxRecord(recordDir, {
+      runId: 'crashed',
+      stage: 'retire',
+      strategy: 'git-worktree',
+      state: 'active',
+      scope: ['sk/SKILL.md'],
+      repoPath: repo,
+      skillId: 'repo/sk',
+      snapshotDir: '',
+      workRoot: join(repo, '..', 'gone'),
+      preimages: [],
+      openedAt: '2026-08-03T00:00:00.000Z',
+    })
+    await expect(program.parseAsync(['node', 'sg', 'retire', 'sk', '--yes'])).rejects.toThrow(
+      /skillgantry recover/,
+    )
+    expect(await readFile(join(repo, 'sk/SKILL.md'), 'utf8')).not.toContain('deprecated: true')
   })
 
   it('reports a no-op with exit 0 when the skill is already in the requested state', async () => {

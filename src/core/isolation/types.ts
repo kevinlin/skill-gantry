@@ -43,6 +43,15 @@ export type SandboxState = 'active' | 'applied' | 'discarded'
  * while a diff sat awaiting approval, otherwise left a partially modified tree
  * with nothing on disk saying so.
  */
+/**
+ * `SandboxRecord.stage` for retirement. Not a `Stage` — retirement is not one
+ * of the five — so it is a literal, and recovery routes on it to pick the
+ * `retire/` record group. One exported constant rather than the same string
+ * typed twice: a typo on either side silently broke recovery routing, with
+ * nothing failing.
+ */
+export const RETIRE_STAGE = 'retire'
+
 export interface SandboxRecord {
   runId: string
   stage: string

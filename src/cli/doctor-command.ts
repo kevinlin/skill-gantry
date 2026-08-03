@@ -1,7 +1,6 @@
 import {
   RULE_CLASS_MAP_VERSION,
   appliedRuleMapVersion,
-  discoverSkills,
   doctor,
   loadConfig,
   migrateRuleMap,
@@ -9,9 +8,8 @@ import {
   readLifecycleCache,
   type DoctorReport,
   type LifecycleState,
-  type SkillRef,
 } from '../core/index.js'
-import type { CliDeps } from './run-command.js'
+import { discoverAll, type CliDeps } from './run-command.js'
 
 /** The ledger is read here, not in `tools`, which owns no sqlite dependency. */
 function lifecycleCache(dbPath: string): ReadonlyMap<string, LifecycleState> {
@@ -79,9 +77,7 @@ export async function runDoctor(
   // Before the report is built, so one invocation shows the result.
   if (opts.migrateRuleMap) applyRuleMap(deps.dbPath, deps.write)
 
-  const config = await loadConfig(deps.home)
-  const skills: SkillRef[] = []
-  for (const repo of config.repos) skills.push(...(await discoverSkills(repo)))
+  const skills = await discoverAll(await loadConfig(deps.home))
   const report = await doctor({
     home: deps.home,
     skills,

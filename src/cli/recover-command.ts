@@ -1,19 +1,14 @@
 import {
-  discoverSkills,
   forgetInterrupted,
   loadConfig,
   restoreInterrupted,
   scanInterrupted,
   type InterruptedMutation,
-  type SkillRef,
 } from '../core/index.js'
-import type { CliDeps } from './run-command.js'
+import { discoverAll, type CliDeps } from './run-command.js'
 
 export async function detectInterrupted(home: string): Promise<InterruptedMutation[]> {
-  const config = await loadConfig(home)
-  const skills: SkillRef[] = []
-  for (const repo of config.repos) skills.push(...(await discoverSkills(repo)))
-  return scanInterrupted(skills)
+  return scanInterrupted(await discoverAll(await loadConfig(home)))
 }
 
 /**
@@ -52,11 +47,17 @@ export async function runRecover(
     const item = found.find((candidate) => candidate.record.runId === target)
     if (!item) throw new Error(`no interrupted mutation with run id ${target}`)
     if (opts.restore !== undefined) {
-      const restored = await restoreInterrupted(item)
+      const outcome = await restoreInterrupted(item)
+      // Three distinct states, not two. The `settled-applied` branch is a
+      // *completed* apply — the tree holds the bytes the user approved — so
+      // saying "never modified" there was a false statement on the one command
+      // a user reaches after a crash.
       deps.write(
-        restored.length > 0
-          ? `restored ${restored.length} path(s): ${restored.join(', ')}`
-          : `pruned the sandbox for ${item.record.runId}; the working tree was never modified`,
+        outcome.action === 'settled-applied'
+          ? `the apply for ${item.record.runId} had already completed; recorded it as applied and left the working tree as it stands`
+          : outcome.action === 'pruned'
+            ? `pruned the sandbox for ${item.record.runId}; the working tree was never modified`
+            : `restored ${outcome.paths.length} path(s): ${outcome.paths.join(', ')}`,
       )
     } else {
       await forgetInterrupted(item)

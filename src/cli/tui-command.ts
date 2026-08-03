@@ -1,6 +1,5 @@
 import {
   createQueue,
-  discoverSkills,
   loadConfig,
   loadEnvFile,
   loadToolLock,
@@ -10,10 +9,10 @@ import {
   STAGE_ORDER,
   syncLifecycle,
   type GantryConfig,
-  type SkillRef,
   type Stage,
 } from '../core/index.js'
 import { renderApp } from '../tui/index.js'
+import { discoverAll } from './run-command.js'
 
 export interface TuiOptions {
   home: string
@@ -36,8 +35,7 @@ export async function startTui(options: TuiOptions): Promise<void> {
   const lock = await loadToolLock(options.home)
   const env = await loadEnvFile(options.home)
 
-  const skills: SkillRef[] = []
-  for (const repo of config.repos) skills.push(...(await discoverSkills(repo)))
+  const skills = await discoverAll(config)
 
   const ledger = openLedger(options.dbPath)
   // R1.6: the file is the authority, so every launch self-heals a cache a

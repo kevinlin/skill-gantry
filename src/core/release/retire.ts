@@ -2,7 +2,8 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { v7 as uuidv7 } from 'uuid'
 import { openSandbox } from '../isolation/open.js'
-import type { ChangeSet } from '../isolation/types.js'
+import { RETIRE_STAGE, type ChangeSet } from '../isolation/types.js'
+import { INTERRUPTED_MUTATION_MESSAGE } from './preconditions.js'
 import type { Exec } from '../tools/exec.js'
 import type { SkillRef } from '../types.js'
 import { setDeprecated } from './frontmatter-edit.js'
@@ -14,6 +15,15 @@ export interface RetireInput {
   /** Answers the diff. R5.2 holds here as it does for a mutating stage. */
   confirm: (change: ChangeSet) => Promise<boolean>
   allowDirty?: boolean
+  /**
+   * R10.10, design §12.2: a *new* mutating run against a skill holding an
+   * unresolved sandbox record refuses. Retirement is a mutation, so the rule is
+   * not release's alone. Without it, a retire that crashed mid-apply could be
+   * retried successfully and then `recover --restore <first>` would roll the
+   * first journal back over the second's applied bytes. Supplied by the caller,
+   * which is the only place that scans workspaces.
+   */
+  interrupted?: boolean
   exec?: Exec
 }
 
@@ -33,6 +43,7 @@ export interface RetireResult {
  * scan finds an interrupted retirement with no special case.
  */
 export async function retireSkill(input: RetireInput): Promise<RetireResult> {
+  if (input.interrupted === true) throw new Error(INTERRUPTED_MUTATION_MESSAGE)
   const relPath = input.skill.relPath === '.' ? 'SKILL.md' : `${input.skill.relPath}/SKILL.md`
   const id = uuidv7()
   const recordDir = join(input.skill.workspacePath, 'skillgantry', 'retire', id)
@@ -40,7 +51,7 @@ export async function retireSkill(input: RetireInput): Promise<RetireResult> {
 
   const sandbox = await openSandbox({
     skill: input.skill,
-    stage: 'retire',
+    stage: RETIRE_STAGE,
     runId: id,
     recordDir,
     scope: [relPath],

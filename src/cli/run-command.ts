@@ -7,6 +7,7 @@ import { discoverSkills } from '../core/discovery/discover.js'
 import { openLedger } from '../core/ledger/db.js'
 import { syncLifecycle } from '../core/ledger/lifecycle.js'
 import { runPipeline } from '../core/pipeline/run.js'
+import type { GantryConfig } from '../core/config/schema.js'
 import type { SkillRef, Stage } from '../core/types.js'
 import { runDoctor } from './doctor-command.js'
 import { detectInterrupted, formatInterrupted, runRecover } from './recover-command.js'
@@ -43,6 +44,28 @@ export function defaultDeps(): CliDeps {
     dbPath: join(home, 'gantry.db'),
     write: (line) => console.log(line),
   }
+}
+
+/** Every skill in every registered repo, in config order. */
+export async function discoverAll(config: GantryConfig): Promise<SkillRef[]> {
+  const skills: SkillRef[] = []
+  for (const repo of config.repos) skills.push(...(await discoverSkills(repo)))
+  return skills
+}
+
+/**
+ * Config, the whole discovered set and the selected skill, which is what every
+ * skill-taking subcommand needs and what four of them each spelled out
+ * separately. The full set travels with the selection because `syncLifecycle`
+ * takes it (R1.6): a caller that only got the one skill would sync a single row.
+ */
+export async function selectSkill(
+  home: string,
+  selector: string,
+): Promise<{ config: GantryConfig; allSkills: SkillRef[]; skill: SkillRef }> {
+  const config = await loadConfig(home)
+  const allSkills = await discoverAll(config)
+  return { config, allSkills, skill: resolveSkill(allSkills, selector) }
 }
 
 /** Accepts `<repoId>/<name>` or a bare `<name>` when it is unambiguous. */
@@ -108,10 +131,7 @@ export function buildProgram(deps: CliDeps): GantryProgram {
     .action(async (selector: string, opts: { stage: string; json?: boolean; yes?: boolean }) => {
       await noticeInterrupted(deps)
       const requested = parseStages(opts.stage)
-      const config = await loadConfig(deps.home)
-      const allSkills: SkillRef[] = []
-      for (const repo of config.repos) allSkills.push(...(await discoverSkills(repo)))
-      const skill = resolveSkill(allSkills, selector)
+      const { config, allSkills, skill } = await selectSkill(deps.home, selector)
       const lock = await loadToolLock(deps.home)
       const env = await loadEnvFile(deps.home)
 
