@@ -928,6 +928,21 @@ apply or later         → abort  (compensating rollback via the journal)
 
 **Evidence.** `<run>/evidence/` holds the validate result, eval report, merged security findings, the tool lockfile, the skill digest, the manifest mode, the candidate manifest and the archive SHA-256.
 
+**Tool-run classification.** `StageResult` carries no message of its own, and `reduceStageOutcome` throws on an empty tool-run list, so `ReleaseStageExecutor` synthesises exactly one `ToolRunRecord` under `RELEASE_TOOL_ID` — the one external tool the stage invokes.
+
+| Situation | `ToolOutcome` | `error_kind` |
+|---|---|---|
+| vercel `skills` absent from the lock | `skipped` | `not-installed` |
+| Not authorised (headless without `--yes`) | `skipped` | `no-authorisation` |
+| A precondition refused (deprecated, gate, digest, version disagreement, unresolved mutation) | `failed` | — |
+| The installability check exited non-zero | `failed` | — |
+| `zip` / `unzip` / `skills` could not be invoked | `errored` | `spawn` |
+| The check timed out | `errored` | `timeout` |
+| The apply aborted after authorisation | `errored` | `mutation-aborted` |
+| Applied | `passed` | — |
+
+A refusal is `failed` with no `error_kind`, because the gate ran and understood the skill — the same distinction §8.1's governing rule draws between a verdict and an error. A tool run with no adapter touches no issue: `reconcile.ts` tolerates a tool it has no rule-class map for, so this `skills` tool run never enters reconciliation.
+
 Git commit and tag are offered as a separate confirmed action after `done`. `apply()` never commits.
 
 ## 13. Retirement
