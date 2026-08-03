@@ -11,6 +11,8 @@ Each section names the requirements it satisfies. Revision 2 closed the twelve f
 
 ## 1. Shape of the system
 
+*Satisfies R1.1–R1.3.*
+
 SkillGantry is an engine plus two frontends. The engine discovers skills in registered repos, installs and invokes external CLI tools against them, normalises what those tools emit, writes evidence to each skill's sidecar workspace, and records the result in a local ledger. The TUI and the headless command are both consumers of one typed event stream and one command handle.
 
 ```
@@ -92,6 +94,8 @@ Release is a module, not an adapter: it has no external tool to wrap, so it has 
 
 ### 4.1 Config schema
 
+*Satisfies R7.1, R7.2.*
+
 `~/.skillgantry/config.json`:
 
 ```jsonc
@@ -112,6 +116,8 @@ Release is a module, not an adapter: it has no external tool to wrap, so it has 
 ```
 
 Repo paths are canonicalised on registration: expanded, resolved through symlinks, trailing separator stripped. Registering a path that canonicalises onto an existing repo is rejected. `id` is a slug derived from the directory name, deduplicated with a numeric suffix.
+
+Credentials live outside this file. They are read from a single `~/.skillgantry/.env`, in whatever format the user supplied, and never written back. A mode more permissive than 600 is reported as a warning rather than an error: the file is the user's, so SkillGantry says what is wrong with it and does not change it.
 
 ### 4.2 Discovery algorithm
 
@@ -277,7 +283,7 @@ Doctor reads the skills it checks and the ledger's lifecycle column as data supp
 
 ## 6. Stage execution contract
 
-*Satisfies R4.6–R4.8, R5.1, R9 dispatch.*
+*Satisfies R4.6–R4.8, R4.10, R4.11, R5.1, R9 dispatch.*
 
 Adapter-backed stages and the native release stage share one contract, so the pipeline has a single execution path. This closes the review's finding that release had no dispatch route.
 
@@ -310,7 +316,7 @@ Fan-out tools run concurrently, capped at two, each in its own artefact director
 
 ## 7. Adapter contract
 
-*Satisfies R4.1–R4.5.*
+*Satisfies R1.5, R4.1–R4.5, R4.12.*
 
 ```ts
 type Stage    = 'validate' | 'evaluate' | 'security' | 'optimise' | 'release'
@@ -566,7 +572,7 @@ The chain halts unless the stage outcome is `passed`. The headless exit code is 
 
 ## 9. Sidecar layout
 
-*Satisfies R6.1–R6.8, R7.4, R7.7.*
+*Satisfies R4.9, R6.1–R6.8, R7.4, R7.7.*
 
 ```
 declawed-workspace/                      (mode 0700)
@@ -611,7 +617,7 @@ The workspace root is created mode 0700, and SkillGantry ensures `*-workspace/` 
 
 ### 9.3 Secret handling in artefacts
 
-*Satisfies R7.3, R7.4, R7.7.*
+*Satisfies R7.3, R7.4, R7.4a, R7.7.*
 
 Streams that SkillGantry writes — `stdout.log` and `stderr.log` — pass through `RedactionTransform` before reaching disk. The transform keeps a tail buffer so a secret split across chunk boundaries is still caught, and substitutes `«redacted»`. The placeholder carries no key name: redaction matches on the literal value, and one value may be bound to several keys, so naming one of them would be arbitrary. Values shorter than eight characters are not scrubbed, because at that length a match is more likely to be coincidence than a leak.
 
@@ -670,6 +676,8 @@ The ledger stores no raw tool output; `tool_runs.artefact_dir` points at the sid
 
 ### 10.2 Provenance
 
+*Satisfies R7.5.*
+
 `run.json` mirrors ledger columns as sibling top-level keys, none duplicating another:
 
 ```json
@@ -696,7 +704,7 @@ The ledger stores no raw tool output; `tool_runs.artefact_dir` points at the sid
 
 ### 10.3 Finding identity
 
-*Satisfies R8.4, R8.6. Supersedes the message-shape scheme in revision 1.*
+*Satisfies R8.4, R8.6, R8.13. Supersedes the message-shape scheme in revision 1.*
 
 ```
 fingerprint = sha256(skillId ‖ normalisedRelPath ‖ ruleClass).slice(0, 12)
@@ -753,6 +761,11 @@ Tool runs with outcome `errored` or `skipped` contribute nothing to either phase
 | `open` | absent from one detecting tool, another still reports it or was inconclusive | `open` | that detector's `last_absent_run` advances |
 | `open` | user acknowledges | `acknowledged` | |
 | `open` | user marks wontfix | `wontfix` | |
+| `acknowledged` | user marks wontfix | `wontfix` | triage may harden after the fact |
+| `fixed` | user marks wontfix | `wontfix` | suppresses a recurrence before it happens |
+| `acknowledged` | user reopens | `open` | undoes an acknowledgement |
+| `wontfix` | user reopens | `open` | the only way back out of a suppression |
+| `fixed` | user reopens | `open` | re-triage without waiting for a redetection |
 | `acknowledged` | detected again | `acknowledged` | `last_seen_run` updated |
 | `acknowledged` | absent from every detecting tool, all conclusive | `fixed` | |
 | `wontfix` | detected again | `wontfix` | `last_seen_run` updated only |
@@ -764,11 +777,67 @@ Tool runs with outcome `errored` or `skipped` contribute nothing to either phase
 
 ### 10.6 Rule-map migration
 
+*Satisfies R8.14.*
+
 Adding a mapping turns `unmapped:<tool>:<id>` into a `KnownRuleClass`, which changes fingerprints. Migration is explicit, versioned with the rule map, and runs inside one transaction: recompute affected fingerprints, merge issues that now collide, re-parent their detections and their `issue_detectors` rows, taking the later `last_seen_run` and the later `last_absent_run` per tool, take the strongest state by precedence `wontfix > acknowledged > open > fixed`, and write a migration note onto the surviving issue. It is never implicit.
+
+### 10.7 Statistics queries
+
+*Satisfies R7.6, R8.9.*
+
+`src/core/ledger/stats.ts` answers R8.9's five questions with SQL and nothing
+else: no fs, no subprocess, no adapter registry. Every query takes the same
+filter, so "this skill", "this repo" and "across every registered repo" are one
+code path with a narrower `where` clause rather than three queries.
+
+```ts
+interface StatsFilter {
+  skillId?: string
+  repoId?: string
+  /** R7.6: the run's provenance fingerprint, §10.2. */
+  provenanceFp?: string
+}
+```
+
+| R8.9 clause | Query | Source |
+|---|---|---|
+| stage pass rate | `stagePassRates` | `stages.outcome` grouped by `stages.stage` |
+| eval case pass rate | `evalCaseRate` | `casesTotal` / `casesPassed` / `casesErrored` from `stages.metrics_json` where `stage = 'evaluate'` |
+| wall-clock per stage | `stageWallClock` | `stages.ended_at − stages.started_at`, median and max |
+| open issue counts by severity and rule class | `openIssueCounts` | `issues` in state `open` or `acknowledged`, grouped twice |
+| run history | `runHistory` | `runs` newest first by run id |
+
+`dashboard()` composes all five plus the three counts a header needs. Medians
+and the metric sums are computed in TypeScript: SQLite has no median, and
+summing JSON in SQL would put the metric key set in two places.
+
+**Wall clock is the stage's own span, not its tools'.** `durationMs` is
+deliberately absent from `stages.metrics_json`: fan-out tools run concurrently,
+so summing their durations overstates the stage, and `started_at`/`ended_at`
+is the one field that cannot. Stage rows recorded before this section existed
+carried the *run's* span in those columns, so migration 3 nulls them — a wall
+clock that silently averages a stage's span with its run's is worse than a gap
+the query can report as one.
+
+**Stage metrics are the sum of their tool runs' count-like metrics**, reduced by
+`reduceStageMetrics` in `stages/outcome.ts` and stamped onto the `StageResult`
+by the pipeline, in one place, so an aborted stage (§8.1 rows 3b and 3c) carries
+them too.
+
+**R7.6's grouping key is a fingerprint over provenance, not the provenance
+blob.** `provenanceFingerprint()` in `ledger/fingerprint.ts` hashes a **fixed
+field order** — base URL host, model mappings sorted by key, auth token hash,
+analysis modes sorted by key — because `JSON.stringify` over an object would
+make two identical provenances hash differently for having been built in a
+different key order. It is stored on `runs.provenance_fp`, indexed, so a filter
+is a `where` clause rather than a scan that parses every row's JSON. The
+fingerprint covers `analysisModes` for the reason §7 gives: a mode change makes
+statistics incomparable, so it must show up as a boundary exactly as a provider
+change does.
 
 ## 11. Run lifecycle, commands and cancellation
 
-*Satisfies R5.2–R5.10, R5.12, R12.4, R13.2.*
+*Satisfies R5.2–R5.10, R5.12–R5.14, R12.4, R13.2.*
 
 ### 11.1 Handles
 
@@ -1023,6 +1092,19 @@ Render discipline, the whole mitigation for choosing Ink: `tool:output` chunks e
 
 Screens: Work (above), Dashboard (ledger aggregates), Issues (cross-repo table with state transitions), Tools (install, pin, verify, doctor), Settings (repos, concurrency, credentials status). Vim-style movement, `?` for help, `:` for a command palette. The queue is a panel on Work, showing `QueueHandle.snapshot()` with per-job cancel.
 
+The palette is the screen switcher: `:` opens it, typing filters the command
+list, `enter` runs the selection and `esc` cancels. Direct keys were rejected
+because Work already spends `1`–`4` on its output panels, and a second digit
+scheme reading differently per screen is how a keymap becomes unguessable.
+`esc` on any screen other than Work returns to Work.
+
+Dashboard, Issues, Tools and Settings each render one `Panel` whose body is
+windowed against `layout.rows` by `screenBodyRows()`, so §14.1's four rules
+hold on them the way they hold on Work and on help. Dashboard, Tools and
+Settings build their bodies as a flat list of rows through pure functions in
+`src/tui/rows.ts`, which is what lets the row budget be asserted without
+rendering Ink.
+
 #### 14.1 Responsive layout
 
 `layoutFor(columns, rows)` in `src/tui/layout.ts` is the single place pane sizes are decided, and it is pure: `Work` reads `useWindowSize()` and passes the result down. Nothing in the tree carries a fixed height. The fixed sizes it replaced (a 12-row log, a 5-row queue, a 24-cell skill column) rendered 26 rows into an 80×24 window and scrolled the header away.
@@ -1077,7 +1159,7 @@ Every launch, headless or not, first scans for an unresolved mutation record and
 
 ## 16. Test strategy
 
-*Satisfies R13.3, R13.4.*
+*Satisfies R13.3, R13.4, R13.6.*
 
 | Target | Method | Guards |
 |---|---|---|
@@ -1104,10 +1186,16 @@ Every launch, headless or not, first scans for an unresolved mutation record and
 | Packaging | `npm pack`, install into a clean prefix, invoke `--version` | R13.5 |
 | Local install | `scripts/install-cli.sh` over an overridden `SG_HOME`/`SG_BIN_DIR`, run twice | Linked binary answers `--version`, resolves inside the overridden home, survives a re-run, and leaves the user's own `~/.local/bin` link untouched — §2 |
 | `tui` | `ink-testing-library` on the Work screen | Smoke level only |
+| Statistics queries | In-memory SQLite, runs recorded across two repos; each R8.9 clause per skill, per repo and unfiltered; the same set filtered by provenance fingerprint | R8.9 is answerable at all, and R7.6 splits the numbers rather than reordering them |
+| Issue queries and user transitions | `listIssues` across two repos with each filter; every row of §10.5's user-action rows; `blockedBy` against a two-detector issue where one has reported absence | Triage cannot invent a transition the state machine forbids; the blocking detector is the one `reconcile` would close on |
+| Traceability | `tests/specs/traceability.test.ts` parses both documents | R13.7: a requirement owned twice, owned never, claimed by no section, or claimed and absent fails the build |
+| Screen row budget | Every screen rendered at 80×24 and 50×14 | §14.1's first rule on four new full-screen views |
 
 Fixture capture is a scripted, repeatable step tied to the pinned tool versions, so fixtures and pins cannot drift apart.
 
 ## 17. Traceability
+
+*Satisfies R13.7.*
 
 **Milestone ownership lives in exactly one place: the table in [requirements.md](requirements.md#milestone-ownership).** Revision 2 kept a second copy here, and the two drifted — R5.12 was M2 there and M5 here, while the headless mutation and subcommand requirements were M5 there and M1 here. A duplicated table is not traceability, it is two claims. This section maps requirements to design sections only; the milestone column is deliberately gone.
 
@@ -1139,7 +1227,7 @@ The mapping is checkable rather than asserted: every `*Satisfies …*` label in 
 | M3 | `tools` completed: catalogue, `npm-prefix`, `gh-release`, presets, setup wizard, doctor |
 | M4 | The three remaining selectable adapters and their parsers, the shared `v1alpha1` parser, the rule-class map and its versioned migration, fan-out policy, cross-tool merge |
 | M5 | `isolation`, `release`, `stages/mutation.ts` + `stages/release-stage.ts`, `ledger/gates.ts` + `ledger/lifecycle.ts`, retirement, the mutating-stage gate, the TUI review pane |
-| M6 | Dashboard and Issues screens, statistics queries |
+| M6 | `ledger/stats.ts`, `ledger/issue-queries.ts`, Dashboard, Issues, Tools and Settings screens, the command palette, `tui/rows.ts`, the `GantryViews` port |
 
 ## 18. What changed in revision 2
 

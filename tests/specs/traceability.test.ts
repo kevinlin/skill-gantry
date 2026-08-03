@@ -1,0 +1,76 @@
+import { readFile } from 'node:fs/promises'
+import { describe, expect, it } from 'vitest'
+
+const ID = /^R\d+\.\d+[a-z]?$/
+const RANGE = /^(R\d+\.\d+[a-z]?)[–-](R\d+\.\d+[a-z]?)$/
+const GROUP = /^R(\d+)$/
+
+/** Declaration order is the authority: `R6.1–R6.8` covers R6.9 because
+    requirements.md declares R6.9 first, and a numeric expansion reports a
+    gap that is not there. */
+function declaredIds(requirements: string): string[] {
+  return [...requirements.matchAll(/^- \*\*(R\d+\.\d+[a-z]?)\*\*/gm)].map((m) => m[1] as string)
+}
+
+function expand(token: string, ids: readonly string[]): string[] {
+  const range = RANGE.exec(token)
+  if (range) {
+    const from = ids.indexOf(range[1] as string)
+    const to = ids.indexOf(range[2] as string)
+    if (from === -1 || to === -1 || to < from) throw new Error(`unresolvable range: ${token}`)
+    return ids.slice(from, to + 1)
+  }
+  const group = GROUP.exec(token)
+  if (group) return ids.filter((id) => id.startsWith(`R${group[1] as string}.`))
+  if (!ID.test(token)) throw new Error(`unparsable requirement token: ${token}`)
+  if (!ids.includes(token)) throw new Error(`unknown requirement: ${token}`)
+  return [token]
+}
+
+/** A label may carry prose after its ids — §10.3 ends in a sentence and §6
+    says `R9 dispatch` — so each comma-separated token contributes its first
+    word only, trailing periods stripped. */
+const tokensOf = (body: string): string[] =>
+  body
+    .split(',')
+    .map((part) => (part.trim().split(/\s+/)[0] ?? '').replace(/\.+$/, ''))
+    .filter((token) => token.length > 0)
+
+describe('R13.7 traceability', () => {
+  it('gives every requirement exactly one milestone owner', async () => {
+    const requirements = await readFile('docs/specs/requirements.md', 'utf8')
+    const ids = declaredIds(requirements)
+    expect(ids.length).toBeGreaterThan(100)
+
+    const owner = new Map<string, string>()
+    const twice: string[] = []
+    for (const row of requirements.matchAll(/^\| (M\d) \| ([^|]+) \|/gm)) {
+      const milestone = row[1] as string
+      for (const token of tokensOf(row[2] as string)) {
+        for (const id of expand(token, ids)) {
+          if (owner.has(id)) twice.push(`${id}: ${owner.get(id) as string} and ${milestone}`)
+          owner.set(id, milestone)
+        }
+      }
+    }
+
+    expect(twice).toEqual([])
+    expect(ids.filter((id) => !owner.has(id))).toEqual([])
+  })
+
+  it('has a design section claiming every requirement, and claims none that does not exist', async () => {
+    const requirements = await readFile('docs/specs/requirements.md', 'utf8')
+    const design = await readFile('docs/specs/design.md', 'utf8')
+    const ids = declaredIds(requirements)
+
+    const claimed = new Set<string>()
+    for (const label of design.matchAll(/^\*Satisfies ([^*]+)\*/gm)) {
+      for (const token of tokensOf(label[1] as string)) {
+        for (const id of expand(token, ids)) claimed.add(id)
+      }
+    }
+
+    expect(ids.filter((id) => !claimed.has(id))).toEqual([])
+    expect([...claimed].filter((id) => !ids.includes(id))).toEqual([])
+  })
+})

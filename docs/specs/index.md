@@ -27,9 +27,8 @@ Which milestone owns which requirement is a separate question, answered only by 
 | [plan-m3.md](plan-m3.md) | M3 | Shipped | Tools module: catalogue, three drivers, setup wizard, doctor |
 | [plan-m4.md](plan-m4.md) | M4 | Shipped, compacted | Three remaining adapters, shared parsers, rule-class map, cross-tool merge |
 | [plan-m5.md](plan-m5.md) | M5 | Shipped, compacted | Mutation isolation, journalled apply, release stage, retirement |
+| [plan-m6.md](plan-m6.md) | M6 | In progress | Statistics queries, Dashboard, Issues, Tools and Settings screens, the command palette |
 | [plan_m3-promptfoo-removal.md](plan_m3-promptfoo-removal.md) | M3 (M4 prereq) | Shipped | Drop promptfoo from the catalogue — it evaluates prompts declared in a config, has no notion of a skill, so it is removed rather than deferred |
-
-M6 (dashboard) has no plan document yet.
 
 ## Reviews (historical)
 
