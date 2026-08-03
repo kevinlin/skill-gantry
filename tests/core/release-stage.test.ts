@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
+import { execFile } from 'node:child_process'
 import { chmod, mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { promisify } from 'node:util'
 import { ReleaseStageExecutor } from '../../src/core/stages/release-stage.js'
 import { openSandbox } from '../../src/core/isolation/open.js'
 import { openLedger } from '../../src/core/ledger/db.js'
@@ -14,6 +16,8 @@ import type { StageContext } from '../../src/core/stages/types.js'
 import type { Ledger } from '../../src/core/ledger/db.js'
 import type { SkillRef, Stage } from '../../src/core/types.js'
 import { SKILL_MD_FULL, makeGitRepo } from '../helpers/tmp-repo.js'
+
+const execFileP = promisify(execFile)
 
 /** Answers like vercel `skills` 1.5.21 does, per the probed facts. */
 async function fakeSkills(exitCode = 0): Promise<string> {
@@ -29,12 +33,18 @@ async function fakeSkills(exitCode = 0): Promise<string> {
   return bin
 }
 
-async function scene(opts: { manifest?: boolean; skillsExit?: number } = {}) {
+async function scene(
+  opts: { manifest?: boolean; skillsExit?: number; corruptManifest?: boolean } = {},
+) {
   const withManifest = opts.manifest !== false
   const repo = await makeGitRepo({
     files: {
       'sk/SKILL.md': SKILL_MD_FULL('sk'),
-      ...(withManifest ? { 'versions.json': '{\n  "skills": {\n    "sk": "1.0.0"\n  }\n}\n' } : {}),
+      ...(opts.corruptManifest
+        ? { 'versions.json': '{ not valid json' }
+        : withManifest
+          ? { 'versions.json': '{\n  "skills": {\n    "sk": "1.0.0"\n  }\n}\n' }
+          : {}),
     },
   })
   const skill: SkillRef = {
@@ -185,7 +195,15 @@ describe('ReleaseStageExecutor', () => {
     expect(evidence.archiveSha256).toMatch(/^sha256:[0-9a-f]{64}$/)
     expect(evidence.manifestMode).toBe('versions.json')
     expect(evidence.candidateManifest.length).toBeGreaterThan(0)
-    // R9.7: never a commit.
+
+    // R9.7: never a commit. Apply writes bytes directly into the live tree
+    // and never shells out to git, so the repo still has only the one commit
+    // `makeGitRepo`'s fixture made, and the applied files sit uncommitted.
+    const { stdout: log } = await execFileP('git', ['log', '--oneline'], { cwd: s.repo })
+    expect(log.trim().split('\n')).toHaveLength(1)
+    const { stdout: status } = await execFileP('git', ['status', '--porcelain'], { cwd: s.repo })
+    expect(status).toContain('sk/SKILL.md')
+    expect(status).toContain('sk_1.1.0.zip')
     await sandbox?.dispose()
   })
 
@@ -207,12 +225,19 @@ describe('ReleaseStageExecutor', () => {
 
   it('fails and leaves no repo-root archive when the installability gate refuses', async () => {
     const s = await scene({ skillsExit: 1 })
-    const { result, sandbox } = await run(s)
+    const { result, ctx, executor, sandbox } = await run(s)
     expect(result.outcome).toBe('failed')
     expect(result.toolRuns[0]?.errorKind).toBeNull()
     expect(result.toolRuns[0]?.summary).toContain('No valid skills found')
     await expect(stat(join(s.repo, 'sk_1.1.0.zip'))).rejects.toThrow()
     expect(await readFile(join(s.repo, 'sk/SKILL.md'), 'utf8')).toContain('1.0.0')
+
+    // R9.11: a failed release has nothing worth previewing or applying. A
+    // pending mutation here is what let a refused release still prompt for
+    // approval and, on apply, write a half release with no archive and no
+    // evidence — the bug this guard exists to close.
+    const pending = await executor.prepareMutation(ctx, await executor.plan(ctx), result)
+    expect(pending).toBeNull()
     await sandbox?.dispose()
   })
 
@@ -248,6 +273,15 @@ describe('ReleaseStageExecutor', () => {
     expect(sandbox).toBeUndefined()
     expect(result.outcome).toBe('skipped')
     expect(result.toolRuns[0]?.errorKind).toBe('no-authorisation')
+  })
+
+  it('refuses a present but unparseable versions.json rather than silently ignoring it', async () => {
+    const s = await scene({ corruptManifest: true })
+    const { result, sandbox } = await run(s)
+    expect(result.outcome).toBe('failed')
+    expect(result.toolRuns[0]?.summary).toContain('R9.2')
+    expect(result.toolRuns[0]?.summary).toContain('versions.json')
+    await sandbox?.dispose()
   })
 
   it('refuses when no target version was supplied — R9.10', async () => {

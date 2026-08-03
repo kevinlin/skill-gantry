@@ -14,6 +14,7 @@ import { resolveTargetVersion } from '../release/version.js'
 import { RELEASE_TOOL_ID } from '../tools/catalogue.js'
 import { type Exec, defaultExec } from '../tools/exec.js'
 import type { ErrorKind, ToolOutcome } from '../types.js'
+import { reduceStageOutcome } from './outcome.js'
 import { applyFromSandbox, discardFromSandbox, prepareFromSandbox } from './mutation.js'
 import type {
   PendingMutation,
@@ -33,7 +34,13 @@ export interface ReleaseStageOptions {
   interrupted?: boolean
 }
 
-/** Per-run state the pipeline does not carry, keyed by the run directory. */
+/**
+ * Per-run state the pipeline does not carry. A plain nullable field, not a
+ * map keyed by run directory: `run.ts` builds one `ReleaseStageExecutor` per
+ * stage invocation (§6), so one instance ever sees at most one release, and a
+ * map that nothing ever deletes from would just be a field wearing a
+ * collection's clothes.
+ */
 interface Staged {
   version: string
   archiveSha256: string
@@ -64,21 +71,14 @@ function record(
   }
 }
 
+/**
+ * §8.2's total reduction, applied to release's one synthesised tool run
+ * instead of hand-rolled a second time: a second copy of that decision table
+ * would drift the day §8.2 changes and this one is not updated to match.
+ */
 function single(stage: 'release', toolRun: ToolRunRecord): StageResult {
-  const outcome =
-    toolRun.outcome === 'passed'
-      ? 'passed'
-      : toolRun.outcome === 'failed'
-        ? 'failed'
-        : toolRun.outcome === 'skipped'
-          ? 'skipped'
-          : 'errored'
-  return {
-    stage,
-    outcome,
-    verdict: toolRun.outcome === 'failed' ? 'failed' : 'passed',
-    toolRuns: [toolRun],
-  }
+  const { outcome, verdict } = reduceStageOutcome([toolRun.outcome])
+  return { stage, outcome, verdict, toolRuns: [toolRun] }
 }
 
 /** True when a file exists at `path`, false for absent, permission-denied, or any other stat failure. */
@@ -92,6 +92,30 @@ async function pathExists(path: string): Promise<boolean> {
 }
 
 /**
+ * Row 5/6 of §12.4's classification table, for a failure this stage's own
+ * code raised or that propagated out of `packageCandidate` / `verifyInstallable`
+ * unconverted (a spawn failure classifying `unzip` itself, not the `skills`
+ * invocation `verifyInstallable` already turns into an `InstallCheckResult`).
+ * Reads the error object's own signal — `killed` and `code` — the same way
+ * Node reports it, rather than pattern-matching `message`: a timeout's message
+ * is `Command failed: …` with no "timeout" substring in it at all, so a regex
+ * over text can only ever be an approximation of what the error object already
+ * states directly.
+ */
+function classifyExecError(err: unknown): ErrorKind {
+  const failure = err as { code?: number | string; killed?: boolean } | null
+  if (failure?.killed === true) return 'timeout'
+  if (typeof failure?.code === 'string') return 'spawn'
+  // Not a Node process error: a bug, a bad frontmatter block, a manifest key
+  // release itself wrote wrong. Row 3b's kind is the closest existing fit —
+  // the sandbox held authorised, in-progress work that could not complete.
+  return 'mutation-aborted'
+}
+
+/** First line only: `skills`'s own stderr can be several lines of usage help. */
+const firstLine = (text: string): string => text.trim().split('\n')[0] ?? ''
+
+/**
  * Design §12.4. The order is inverted from revision 2, which applied first and
  * verified afterwards: a packaging or installability failure then had to undo a
  * change already live in the user's repo, and the archive — a required output —
@@ -102,14 +126,21 @@ export class ReleaseStageExecutor implements StageExecutor {
   readonly stage = 'release' as const
   readonly mutating = true
 
-  readonly #staged = new Map<string, Staged>()
+  #staged: Staged | null = null
 
   constructor(private readonly options: ReleaseStageOptions) {}
 
   async plan(ctx: StageContext): Promise<StagePlan> {
     const version = this.#targetVersion(ctx)
+    if (version === null) {
+      // No `releaseTarget`, or one that does not resolve: there is nothing
+      // this stage could stage, package or verify, so declaring a non-empty
+      // scope here would only make the pipeline open a sandbox for `execute`
+      // to immediately refuse in.
+      return { toolIds: [], policy: 'native', mutationScope: { paths: [] } }
+    }
     const manifest = await readVersionsManifest(ctx.skill.repo.path)
-    const archiveName = `${manifestKeyFor(ctx.skill)}_${version ?? '0.0.0'}.zip`
+    const archiveName = `${manifestKeyFor(ctx.skill)}_${version}.zip`
     return {
       // Empty per design §6: release selects no tool from `stageTools`. The one
       // tool it does invoke is reported as a tool run by `execute`.
@@ -128,10 +159,10 @@ export class ReleaseStageExecutor implements StageExecutor {
     }
   }
 
-  // `plan` carries nothing `execute` needs a second time — the target version
-  // and manifest mode are both re-derived here, from the live tree rather than
-  // from the plan-time snapshot, precisely because `checkPreconditions` must
-  // see whatever changed between plan and execute.
+  // `plan` carries nothing `execute` needs a second time — the manifest mode
+  // is re-derived here, from the live tree rather than the plan-time
+  // snapshot, precisely because `checkPreconditions` must see whatever
+  // changed between plan and execute.
   async execute(ctx: StageContext): Promise<StageResult> {
     const exec = this.options.exec ?? defaultExec
 
@@ -153,16 +184,29 @@ export class ReleaseStageExecutor implements StageExecutor {
         ),
       )
     }
-    if (!ctx.sandbox) {
-      return single(
-        this.stage,
-        record('errored', 'mutation-aborted', 'no sandbox was opened for the release', locked.resolvedVersion),
-      )
-    }
+
+    // resolve-target-version, ahead of the sandbox check: it is a pure
+    // function of the frontmatter version and the requested spec, so nothing
+    // is lost by computing it before depending on whether a sandbox exists —
+    // and `plan()` already declared an empty scope for exactly this failure,
+    // so the pipeline never opened one to refuse in.
     if (!ctx.releaseTarget) {
       return single(
         this.stage,
         record('failed', null, 'no target version supplied: release never infers one (R9.10)', locked.resolvedVersion),
+      )
+    }
+    let version: string
+    try {
+      version = resolveTargetVersion(ctx.skill.version, ctx.releaseTarget.version)
+    } catch (err) {
+      return single(this.stage, record('failed', null, (err as Error).message, locked.resolvedVersion))
+    }
+
+    if (!ctx.sandbox) {
+      return single(
+        this.stage,
+        record('errored', 'mutation-aborted', 'no sandbox was opened for the release', locked.resolvedVersion),
       )
     }
 
@@ -208,14 +252,6 @@ export class ReleaseStageExecutor implements StageExecutor {
       )
     }
 
-    // resolve-target-version
-    let version: string
-    try {
-      version = resolveTargetVersion(ctx.skill.version, ctx.releaseTarget.version)
-    } catch (err) {
-      return single(this.stage, record('failed', null, (err as Error).message, locked.resolvedVersion))
-    }
-
     const stagingDir = join(ctx.runDir, 'staging')
     try {
       // stage-candidate-edits
@@ -251,14 +287,22 @@ export class ReleaseStageExecutor implements StageExecutor {
         exec,
       })
       if (!check.ok) {
+        // A spawn failure or a timeout is not the tool's own verdict on the
+        // candidate — §12.4 rows 5/6, `errored`, not `failed` (row 4).
+        if (check.errorKind) {
+          return single(
+            this.stage,
+            record(
+              'errored',
+              check.errorKind,
+              `${RELEASE_TOOL_ID} ${check.errorKind === 'timeout' ? 'timed out' : 'could not be invoked'}: ${firstLine(check.output)}`,
+              locked.resolvedVersion,
+            ),
+          )
+        }
         return single(
           this.stage,
-          record(
-            'failed',
-            null,
-            `installability gate refused: ${check.output.trim().split('\n')[0] ?? ''}`,
-            locked.resolvedVersion,
-          ),
+          record('failed', null, `installability gate refused: ${firstLine(check.output)}`, locked.resolvedVersion),
         )
       }
 
@@ -270,7 +314,7 @@ export class ReleaseStageExecutor implements StageExecutor {
       await mkdir(join(inSandbox, '..'), { recursive: true })
       await copyFile(packaged.archivePath, inSandbox)
 
-      this.#staged.set(ctx.runDir, {
+      this.#staged = {
         version,
         archiveSha256: packaged.sha256,
         archiveName,
@@ -278,7 +322,7 @@ export class ReleaseStageExecutor implements StageExecutor {
         gates,
         skillDigest: currentDigest,
         manifestEntries: liveManifest.entries,
-      })
+      }
 
       return single(
         this.stage,
@@ -290,22 +334,40 @@ export class ReleaseStageExecutor implements StageExecutor {
         ),
       )
     } catch (err) {
-      const message = (err as Error).message
-      const kind: ErrorKind = /ENOENT|could not be invoked|spawn|ETIMEDOUT/i.test(message)
-        ? /ETIMEDOUT|timed out/i.test(message)
-          ? 'timeout'
-          : 'spawn'
-        : 'mutation-aborted'
-      return single(this.stage, record('errored', kind, message, locked.resolvedVersion))
+      return single(
+        this.stage,
+        record('errored', classifyExecError(err), (err as Error).message, locked.resolvedVersion),
+      )
     }
   }
 
-  prepareMutation = (ctx: StageContext): Promise<PendingMutation | null> => prepareFromSandbox(ctx)
+  /**
+   * Null unless `execute` reached `passed` and staged its state: a release
+   * that failed its own installability gate (or anything else before then)
+   * has nothing worth previewing, and `run.ts` treats a null pending mutation
+   * as R9.11's before-apply abort — a sandbox discard, nothing to compensate.
+   * Without this guard a refused release still surfaced a diff, and an
+   * apply on it would have written the version bump and changelog live with
+   * no archive and no evidence, which is not what design §12.4 promises.
+   */
+  prepareMutation = (ctx: StageContext): Promise<PendingMutation | null> =>
+    this.#staged ? prepareFromSandbox(ctx) : Promise.resolve(null)
 
   applyMutation = async (ctx: StageContext, pending: PendingMutation): Promise<void> => {
     await applyFromSandbox(ctx, pending)
-    const staged = this.#staged.get(ctx.runDir)
-    if (!staged) return
+    const staged = this.#staged
+    if (!staged) {
+      // Unreachable given `prepareMutation`'s guard: the pipeline only calls
+      // `applyMutation` on a pending mutation `prepareMutation` itself
+      // produced, and it produces one only when `#staged` is set. Thrown
+      // rather than silently skipped, because a caller that got here anyway
+      // just wrote to the live tree with no evidence bundle to show for it —
+      // exactly the failure mode R9.5 exists to make impossible.
+      throw new Error(
+        `applyMutation ran for ${ctx.runDir} with no staged release state — the live write ` +
+          'happened but no evidence will be recorded for it',
+      )
+    }
     // record-evidence, after the apply: R9.5's bundle describes a release that
     // happened, and writing it before the apply would leave evidence for one
     // that did not.

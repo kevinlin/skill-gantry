@@ -99,4 +99,33 @@ describe('verifyInstallable', () => {
     const invocation = await readFile(log, 'utf8')
     expect(invocation).not.toContain('.zip')
   })
+
+  it('reports a missing binary as errorKind spawn, distinct from the tool\'s own refusal', async () => {
+    const { packaged, stagingDir } = await archive()
+    const result = await verifyInstallable({
+      archivePath: packaged.archivePath,
+      stagingDir,
+      skillsBin: join(stagingDir, 'does-not-exist'),
+    })
+    expect(result.ok).toBe(false)
+    expect(result.errorKind).toBe('spawn')
+    // A spawn failure is not the exit code of a process that never ran.
+    expect(result.exitCode).toBeNull()
+  })
+
+  it('reports a timeout as errorKind timeout, distinct from a non-zero exit', async () => {
+    const { packaged, stagingDir } = await archive()
+    const dir = await mkdtemp(join(tmpdir(), 'sg-skills-'))
+    const bin = join(dir, 'skills')
+    await writeFile(bin, '#!/bin/sh\nsleep 5\n')
+    await chmod(bin, 0o755)
+    const result = await verifyInstallable({
+      archivePath: packaged.archivePath,
+      stagingDir,
+      skillsBin: bin,
+      timeoutMs: 100,
+    })
+    expect(result.ok).toBe(false)
+    expect(result.errorKind).toBe('timeout')
+  })
 })

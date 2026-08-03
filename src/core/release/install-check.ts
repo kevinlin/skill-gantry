@@ -18,6 +18,16 @@ export interface InstallCheckResult {
   output: string
   /** The isolated destination, kept for the evidence bundle. */
   destination: string
+  /**
+   * Set only when `ok` is false for a reason that is not the tool's own exit:
+   * the binary could not be spawned at all, or was killed for running past its
+   * timeout. `ok: false` with this `null` is the tool's own refusal — it ran,
+   * read the candidate, and exited non-zero. Design §12.4's classification
+   * table treats the two differently (`failed` vs `errored`), and a caller
+   * cannot tell them apart from `exitCode` alone: a spawn failure and a
+   * timeout both usually leave `exitCode` null too.
+   */
+  errorKind: 'spawn' | 'timeout' | null
 }
 
 /**
@@ -60,14 +70,29 @@ export async function verifyInstallable(input: InstallCheckInput): Promise<Insta
         timeoutMs: input.timeoutMs ?? 180_000,
       },
     )
-    return { ok: true, exitCode: 0, output: `${stdout}${stderr}`, destination }
+    return { ok: true, exitCode: 0, output: `${stdout}${stderr}`, destination, errorKind: null }
   } catch (err) {
-    const failure = err as { code?: number; stdout?: string | Buffer; stderr?: string | Buffer }
+    const failure = err as {
+      code?: number | string
+      killed?: boolean
+      message?: string
+      stdout?: string | Buffer
+      stderr?: string | Buffer
+    }
+    const output = `${failure.stdout?.toString() ?? ''}${failure.stderr?.toString() ?? ''}`
+    // `killed` is Node's own signal for "the timeout fired and the process was
+    // sent SIGTERM", checked first because a killed process also usually has
+    // no numeric exit code to fall back on. A string `code` (ENOENT, EACCES,
+    // ...) is a spawn failure: the process never ran, so there is no exit to
+    // report and nothing about the candidate to say `failed` about.
+    const errorKind: 'spawn' | 'timeout' | null =
+      failure.killed === true ? 'timeout' : typeof failure.code === 'string' ? 'spawn' : null
     return {
       ok: false,
       exitCode: typeof failure.code === 'number' ? failure.code : null,
-      output: `${failure.stdout?.toString() ?? ''}${failure.stderr?.toString() ?? ''}`,
+      output: output.length > 0 ? output : (failure.message ?? ''),
       destination,
+      errorKind,
     }
   }
 }
