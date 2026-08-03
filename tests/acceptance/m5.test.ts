@@ -30,7 +30,12 @@ import { runPipeline } from '../../src/core/pipeline/run.js'
 import { AdapterStageExecutor } from '../../src/core/stages/adapter-stage.js'
 import type { Adapter } from '../../src/core/adapters/types.js'
 import type { SkillRef, Stage } from '../../src/core/types.js'
-import { SKILL_MD_FULL, makeGitRepo, makeRepo } from '../helpers/tmp-repo.js'
+import { candidateManifest } from '../../src/core/discovery/candidate.js'
+import { skillDigest } from '../../src/core/discovery/digest.js'
+import { catalogueEntry } from '../../src/core/tools/catalogue.js'
+import { installTool } from '../../src/core/tools/install.js'
+import { RELEASE_TOOL_ID } from '../../src/core/tools/catalogue.js'
+import { SKILL_MD, SKILL_MD_FULL, makeGitRepo, makeRepo } from '../helpers/tmp-repo.js'
 import { makeFakeTool } from '../helpers/fake-tool.js'
 import { CORE, runInChild } from '../helpers/child.js'
 
@@ -126,6 +131,47 @@ function seedGatesPassed(
   })
 }
 
+/**
+ * Opens `dbPath`'s ledger, seeds all three gates against the skill's *current*
+ * on-disk bytes, and closes it again. The six call sites this replaces each
+ * computed the same digest by hand before seeding — one helper, not six
+ * copies of `candidateManifest` → `skillDigest` → `seedGatesPassed`.
+ */
+async function seedGatesForCurrentBytes(dbPath: string, skill: SkillRef, runId?: string): Promise<string> {
+  const digest = await skillDigest(await candidateManifest(skill))
+  const ledger = openLedger(dbPath)
+  seedGatesPassed(ledger, skill, digest, runId)
+  ledger.close()
+  return digest
+}
+
+/**
+ * The release stage's own synthesised tool run — filtered on `s.stage =
+ * 'release'`, not just "most recent run": a bare `order by r.rowid desc
+ * limit 1` with no stage filter picks an arbitrary row once a run carries
+ * more than one stage (a seeded gates run does, with three), which is exactly
+ * the ambiguity a fingerprint-free query like this must not have.
+ */
+function latestReleaseToolRun(
+  dbPath: string,
+): { errorKind: string | null; outcome: string } | undefined {
+  const ledger = openLedger(dbPath)
+  try {
+    return ledger.db
+      .prepare(
+        `select tr.error_kind as errorKind, tr.outcome as outcome
+         from tool_runs tr
+         join stages s on s.id = tr.stage_id
+         join runs r on r.id = s.run_id
+         where s.stage = 'release'
+         order by r.rowid desc limit 1`,
+      )
+      .get() as { errorKind: string | null; outcome: string } | undefined
+  } finally {
+    ledger.close()
+  }
+}
+
 const runDirOf = async (workspacePath: string): Promise<string> => {
   const runs = join(workspacePath, 'skillgantry', 'runs')
   const dirs = (await readdir(runs, { withFileTypes: true }))
@@ -158,14 +204,28 @@ async function treeDigest(root: string, dir = ''): Promise<Record<string, string
 }
 
 /**
- * Stands in for an optimise tool exercising all five of R10.8's change kinds
- * in one pass: `$1` is the sandboxed skill directory, `$2` the tool's own
- * artefact directory. Real bytes, a real shell script — only the adapter
- * registration is fake, because optimise ships none (plan-m5.md's known gap).
+ * The bytes the tool writes into `bin.dat`. A NUL byte is what both the git
+ * and the snapshot strategy's own binary detection key on (`git`'s own
+ * heuristic and `looksBinary`'s `includes(0)` respectively), and it is not
+ * valid UTF-8, so a test that accidentally read it as text would fail loudly
+ * rather than silently passing on the wrong encoding.
+ */
+const BINARY_BYTES = Buffer.from([0, 1, 2, 3, 4, 5, 0xff, 0xfe])
+
+/**
+ * Stands in for an optimise tool exercising all five of R10.8's change kinds,
+ * binary included, in one pass: `$1` is the sandboxed skill directory, `$2`
+ * the tool's own artefact directory. Real bytes, a real shell script — only
+ * the adapter registration is fake, because optimise ships none (plan-m5.md's
+ * known gap).
  */
 async function makeFiveKindTool(): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'sg-m5-fivekind-'))
   const bin = join(dir, 'fake-optimiser')
+  // printf's octal escapes, not a base64/heredoc round trip: this is a shell
+  // script writing real binary bytes, the same way the other four kinds are
+  // real text-file operations rather than a fixture pretending to be one.
+  const printfOctal = [...BINARY_BYTES].map((b) => `\\${b.toString(8).padStart(3, '0')}`).join('')
   await writeFile(
     bin,
     [
@@ -176,6 +236,7 @@ async function makeFiveKindTool(): Promise<string> {
       'rm "$1/old.txt"',
       'mv "$1/rename-me.txt" "$1/renamed.txt"',
       'chmod 644 "$1/exec.sh"',
+      `printf '${printfOctal}' > "$1/bin.dat"`,
       'printf \'{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"fake"}},"results":[]}]}\' > "$2/findings.sarif"',
       'exit 0',
     ].join('\n'),
@@ -184,7 +245,7 @@ async function makeFiveKindTool(): Promise<string> {
   return bin
 }
 
-const fiveKindAdapter = (bin: string): Adapter & { bin: string } => ({
+const fiveKindAdapter = (): Adapter => ({
   manifest: {
     id: 'fake-optimiser',
     stage: 'optimise',
@@ -200,7 +261,6 @@ const fiveKindAdapter = (bin: string): Adapter & { bin: string } => ({
     timeoutMs: 30_000,
   },
   parse: () => ({ outcome: 'passed', findings: [], metrics: {}, summary: 'rewrote' }),
-  bin,
 })
 
 /**
@@ -214,9 +274,9 @@ const fiveKindAdapter = (bin: string): Adapter & { bin: string } => ({
  * real optimise tool is catalogued.
  */
 function runFiveKindPipeline(skill: SkillRef, toolBin: string) {
-  const adapter = fiveKindAdapter(toolBin)
+  const adapter = fiveKindAdapter()
   const ledger = openLedger(':memory:')
-  return runPipeline({
+  const handle = runPipeline({
     skill,
     stages: ['optimise'],
     trigger: 'test',
@@ -247,6 +307,11 @@ function runFiveKindPipeline(skill: SkillRef, toolBin: string) {
         lookup: (id) => (id === 'fake-optimiser' ? adapter : undefined),
       }),
   })
+  // `runPipeline` never closes the ledger it is handed — the caller owns that
+  // lifetime everywhere else in this suite — and this ledger has no other
+  // owner, so it is closed here once the run (whichever way it ends) settles.
+  handle.done.finally(() => ledger.close()).catch(() => undefined)
+  return handle
 }
 
 const FIVE_KIND_FILES = {
@@ -254,6 +319,9 @@ const FIVE_KIND_FILES = {
   'sk/old.txt': 'old\n',
   'sk/rename-me.txt': 'rename me\n',
   'sk/exec.sh': '#!/bin/sh\necho hi\n',
+  // Plain text at rest, so both strategies start from a text baseline and the
+  // tool's rewrite is what turns the *change*, not the file, binary.
+  'sk/bin.dat': 'plain text for now\n',
 }
 
 async function fiveKindSkill(git: boolean): Promise<{ repo: string; skill: SkillRef }> {
@@ -271,53 +339,75 @@ async function fiveKindSkill(git: boolean): Promise<{ repo: string; skill: Skill
 }
 
 describe('M5 exit criteria', () => {
-  it('both sandbox strategies apply and roll back all five change kinds', async () => {
-    for (const git of [true, false]) {
-      // ---- apply: all five land, through a real optimise run ----
-      const { repo, skill } = await fiveKindSkill(git)
-      const tool = await makeFiveKindTool()
-      const applyHandle = runFiveKindPipeline(skill, tool)
+  it.each([
+    ['git-worktree', true],
+    ['snapshot', false],
+  ] as const)('%s applies and rolls back all five change kinds, binary included', async (_name, git) => {
+    // ---- apply: all five land, through a real optimise run ----
+    const { repo, skill } = await fiveKindSkill(git)
+    const tool = await makeFiveKindTool()
+    const applyHandle = runFiveKindPipeline(skill, tool)
 
-      let pendingScope: string[] = []
-      const drain = (async () => {
-        for await (const event of applyHandle.events) {
-          if (event.type === 'mutation:pending') {
-            pendingScope = [...event.scope]
-            applyHandle.resolveMutation(event.requestId, 'apply')
-          }
+    let pendingScope: string[] = []
+    let pendingDiff = ''
+    const drain = (async () => {
+      for await (const event of applyHandle.events) {
+        if (event.type === 'mutation:pending') {
+          pendingScope = [...event.scope]
+          pendingDiff = event.diff
+          applyHandle.resolveMutation(event.requestId, 'apply')
         }
-      })()
-      const applySummary = await applyHandle.done
-      await drain
+      }
+    })()
+    const applySummary = await applyHandle.done
+    await drain
 
-      expect(applySummary.outcome).toBe('passed')
-      // One entry per path, and no duplicate path stands in for two kinds:
-      // this is the change set's five entries, observed through the CLI's own
-      // event stream rather than by reaching into the sandbox directly.
-      expect(pendingScope.sort()).toEqual(
-        ['sk/SKILL.md', 'sk/added.txt', 'sk/exec.sh', 'sk/old.txt', 'sk/renamed.txt'].sort(),
-      )
-
-      expect(await readFile(join(repo, 'sk/SKILL.md'), 'utf8')).toBe(SKILL_MD_FULL('sk', '1.1.0'))
-      expect(await readFile(join(repo, 'sk/added.txt'), 'utf8')).toBe('added by the optimiser\n')
-      await expect(stat(join(repo, 'sk/old.txt'))).rejects.toThrow()
-      expect(await readFile(join(repo, 'sk/renamed.txt'), 'utf8')).toBe('rename me\n')
-      expect((await stat(join(repo, 'sk/exec.sh'))).mode & 0o111).toBe(0)
-
-      // ---- rollback: a fresh, identical fixture discards to the same bytes ----
-      const fresh = await fiveKindSkill(git)
-      const before = await treeDigest(fresh.repo)
-      const discardHandle = runFiveKindPipeline(fresh.skill, tool)
-      void (async () => {
-        for await (const event of discardHandle.events) {
-          if (event.type === 'mutation:pending') discardHandle.resolveMutation(event.requestId, 'discard')
-        }
-      })()
-      const discardSummary = await discardHandle.done
-      expect(discardSummary.stages[0]?.outcome).toBe('skipped')
-      expect(await treeDigest(fresh.repo)).toEqual(before)
+    expect(applySummary.outcome).toBe('passed')
+    // One entry per path, and no duplicate path stands in for two kinds:
+    // this is the change set's six entries (R10.8's five kinds, plus a binary
+    // change on top of a `modified` one), observed through the pipeline's own
+    // event stream rather than by reaching into the sandbox directly.
+    expect(pendingScope.sort()).toEqual(
+      ['sk/SKILL.md', 'sk/added.txt', 'sk/bin.dat', 'sk/exec.sh', 'sk/old.txt', 'sk/renamed.txt'].sort(),
+    )
+    // The one signal the CLI's own event stream carries that bin.dat was
+    // actually classified binary, as opposed to merely written — and the two
+    // strategies diverge in what that signal looks like. `git diff --binary`
+    // embeds a binary patch (still not a *text* diff of the bytes); the
+    // snapshot strategy's own `changeSet()` excludes a binary entry from
+    // `unifiedDiff` altogether (R10.8: it "stays in entries", not in the
+    // diff). Either way, a text-diffed bin.dat — the failure this guards
+    // against — would look nothing like what is asserted here.
+    if (git) {
+      expect(pendingDiff).toContain('GIT binary patch')
+    } else {
+      expect(pendingDiff).not.toContain('bin.dat')
     }
-  }, 60_000)
+    expect(pendingDiff).toContain('1.1.0')
+
+    expect(await readFile(join(repo, 'sk/SKILL.md'), 'utf8')).toBe(SKILL_MD_FULL('sk', '1.1.0'))
+    expect(await readFile(join(repo, 'sk/added.txt'), 'utf8')).toBe('added by the optimiser\n')
+    await expect(stat(join(repo, 'sk/old.txt'))).rejects.toThrow()
+    expect(await readFile(join(repo, 'sk/renamed.txt'), 'utf8')).toBe('rename me\n')
+    expect((await stat(join(repo, 'sk/exec.sh'))).mode & 0o111).toBe(0)
+    // The binary write landed byte-for-byte, not merely "some bytes changed":
+    // a Buffer comparison, not `utf8`, since these bytes are not valid UTF-8.
+    expect(await readFile(join(repo, 'sk/bin.dat'))).toEqual(BINARY_BYTES)
+
+    // ---- rollback: a fresh, identical fixture discards to the same bytes ----
+    const fresh = await fiveKindSkill(git)
+    const before = await treeDigest(fresh.repo)
+    const discardHandle = runFiveKindPipeline(fresh.skill, tool)
+    const discardDrain = (async () => {
+      for await (const event of discardHandle.events) {
+        if (event.type === 'mutation:pending') discardHandle.resolveMutation(event.requestId, 'discard')
+      }
+    })()
+    const discardSummary = await discardHandle.done
+    await discardDrain
+    expect(discardSummary.stages[0]?.outcome).toBe('skipped')
+    expect(await treeDigest(fresh.repo)).toEqual(before)
+  }, 30_000)
 
   it('recovers a crash during the mutating tool', async () => {
     const h = await cliHome()
@@ -449,12 +539,7 @@ for await (const event of handle.events) {
 
     const config = await loadConfig(h.home)
     const [skill] = await discoverSkills(config.repos[0] as (typeof config.repos)[number])
-    const ledger = openLedger(h.dbPath)
-    const { candidateManifest } = await import('../../src/core/discovery/candidate.js')
-    const { skillDigest } = await import('../../src/core/discovery/digest.js')
-    const digest = await skillDigest(await candidateManifest(skill as SkillRef))
-    seedGatesPassed(ledger, skill as SkillRef, digest)
-    ledger.close()
+    await seedGatesForCurrentBytes(h.dbPath, skill as SkillRef)
 
     // Without --allow-dirty: refused, naming the dirty path.
     h.out.length = 0
@@ -494,12 +579,7 @@ for await (const event of handle.events) {
 
     const config = await loadConfig(h.home)
     const [skill] = await discoverSkills(config.repos[0] as (typeof config.repos)[number])
-    const ledger = openLedger(h.dbPath)
-    const { candidateManifest } = await import('../../src/core/discovery/candidate.js')
-    const { skillDigest } = await import('../../src/core/discovery/digest.js')
-    const digest = await skillDigest(await candidateManifest(skill as SkillRef))
-    seedGatesPassed(ledger, skill as SkillRef, digest)
-    ledger.close()
+    await seedGatesForCurrentBytes(h.dbPath, skill as SkillRef)
 
     // Drives the CLI's own `--yes` auto-resolve loop, and hijacks its `write`
     // seam to land a hand edit on the live tree the instant the diff is
@@ -534,22 +614,11 @@ for await (const event of handle.events) {
       'hand-edited between preview and approval\n',
     )
 
-    const ledger2 = openLedger(h.dbPath)
-    try {
-      const row = ledger2.db
-        .prepare(
-          `select tr.error_kind as errorKind, tr.outcome as outcome
-           from tool_runs tr
-           join stages s on s.id = tr.stage_id
-           join runs r on r.id = s.run_id
-           order by r.rowid desc limit 1`,
-        )
-        .get() as { errorKind: string | null; outcome: string } | undefined
-      // R5.13: the run still finalised, so this row exists at all.
-      expect(row).toMatchObject({ errorKind: 'mutation-aborted', outcome: 'errored' })
-    } finally {
-      ledger2.close()
-    }
+    // R5.13: the run still finalised, so this row exists at all.
+    expect(latestReleaseToolRun(h.dbPath)).toMatchObject({
+      errorKind: 'mutation-aborted',
+      outcome: 'errored',
+    })
   }, 30_000)
 
   it('blocks a release whose gates passed against different bytes', async () => {
@@ -569,12 +638,7 @@ for await (const event of handle.events) {
 
     const config = await loadConfig(h.home)
     const [skill] = await discoverSkills(config.repos[0] as (typeof config.repos)[number])
-    const ledger = openLedger(h.dbPath)
-    const { candidateManifest } = await import('../../src/core/discovery/candidate.js')
-    const { skillDigest } = await import('../../src/core/discovery/digest.js')
-    const digestAtGateTime = await skillDigest(await candidateManifest(skill as SkillRef))
-    seedGatesPassed(ledger, skill as SkillRef, digestAtGateTime)
-    ledger.close()
+    await seedGatesForCurrentBytes(h.dbPath, skill as SkillRef)
 
     // Edited after the gates ran: the candidate's digest now disagrees.
     await writeFile(
@@ -600,12 +664,7 @@ for await (const event of handle.events) {
 
     const config = await loadConfig(h.home)
     const [skill] = await discoverSkills(config.repos[0] as (typeof config.repos)[number])
-    const ledger = openLedger(h.dbPath)
-    const { candidateManifest } = await import('../../src/core/discovery/candidate.js')
-    const { skillDigest } = await import('../../src/core/discovery/digest.js')
-    const digest = await skillDigest(await candidateManifest(skill as SkillRef))
-    seedGatesPassed(ledger, skill as SkillRef, digest)
-    ledger.close()
+    await seedGatesForCurrentBytes(h.dbPath, skill as SkillRef)
 
     const code = await h.exec(['release', 'sk', '--version', 'minor', '--yes'])
     expect(code).toBe(0)
@@ -614,6 +673,11 @@ for await (const event of handle.events) {
     expect(await readFile(join(repo, 'sk/CHANGELOG.md'), 'utf8')).toContain('1.1.0')
     // R9.1: SkillGantry never creates a versions.json where none existed.
     await expect(stat(join(repo, 'versions.json'))).rejects.toThrow()
+    // The positive control the three "leaves no archive" cases need: this is
+    // the one case that actually releases end to end, so the archive really
+    // has to exist here, or `.rejects.toThrow()` elsewhere would be trivially
+    // true for a tool that never wrote one at all.
+    expect((await stat(join(repo, 'sk_1.1.0.zip'))).size).toBeGreaterThan(0)
 
     const runDir = await runDirOf((skill as SkillRef).workspacePath)
     const evidence = JSON.parse(await readFile(join(runDir, 'evidence', 'release.json'), 'utf8')) as {
@@ -636,12 +700,7 @@ for await (const event of handle.events) {
 
     const config = await loadConfig(h.home)
     const [skill] = await discoverSkills(config.repos[0] as (typeof config.repos)[number])
-    const ledger = openLedger(h.dbPath)
-    const { candidateManifest } = await import('../../src/core/discovery/candidate.js')
-    const { skillDigest } = await import('../../src/core/discovery/digest.js')
-    const digest = await skillDigest(await candidateManifest(skill as SkillRef))
-    seedGatesPassed(ledger, skill as SkillRef, digest)
-    ledger.close()
+    await seedGatesForCurrentBytes(h.dbPath, skill as SkillRef)
 
     // `zip --version` still answers (so the mutation preflight and the
     // sandbox open), but the real archive call gets nothing but a nonzero
@@ -667,21 +726,10 @@ for await (const event of handle.events) {
     // reserved for the binary itself failing to spawn (ENOENT). The brief's
     // shorthand "errors with spawn" is read here as "the stage errors",
     // verified against the actual, documented classification.
-    const ledger2 = openLedger(h.dbPath)
-    try {
-      const row = ledger2.db
-        .prepare(
-          `select tr.error_kind as errorKind, tr.outcome as outcome
-           from tool_runs tr
-           join stages s on s.id = tr.stage_id
-           join runs r on r.id = s.run_id
-           order by r.rowid desc limit 1`,
-        )
-        .get() as { errorKind: string | null; outcome: string } | undefined
-      expect(row).toMatchObject({ errorKind: 'mutation-aborted', outcome: 'errored' })
-    } finally {
-      ledger2.close()
-    }
+    expect(latestReleaseToolRun(h.dbPath)).toMatchObject({
+      errorKind: 'mutation-aborted',
+      outcome: 'errored',
+    })
 
     await expect(stat(join(repo, 'sk_1.1.0.zip'))).rejects.toThrow()
     expect(await readFile(join(repo, 'sk/SKILL.md'), 'utf8')).toContain('1.0.0')
@@ -700,39 +748,23 @@ for await (const event of handle.events) {
     // The real vercel `skills` binary is not part of this offline suite (see
     // plan-m5.md and tests/core/release-stage.test.ts): the lock points at a
     // shim answering exactly like 1.5.21 does on a refusal, per the probed
-    // facts, and `pnpm test:integration` is what invokes the genuine binary.
+    // facts. This case stays faked in every mode, `pnpm test:integration`
+    // included — the describe block below is the one that gates on
+    // `SG_INTEGRATION` and checks the genuine binary actually refuses the
+    // way this shim assumes.
     const skillsBin = await fakeSkillsBin(1)
     await saveToolLock(h.home, { version: 1, tools: { skills: skillsLockEntry(skillsBin) } })
 
     const config = await loadConfig(h.home)
     const [skill] = await discoverSkills(config.repos[0] as (typeof config.repos)[number])
-    const ledger = openLedger(h.dbPath)
-    const { candidateManifest } = await import('../../src/core/discovery/candidate.js')
-    const { skillDigest } = await import('../../src/core/discovery/digest.js')
-    const digest = await skillDigest(await candidateManifest(skill as SkillRef))
-    seedGatesPassed(ledger, skill as SkillRef, digest)
-    ledger.close()
+    await seedGatesForCurrentBytes(h.dbPath, skill as SkillRef)
 
     const code = await h.exec(['release', 'sk', '--version', 'minor', '--yes'])
     expect(code).toBe(1)
 
-    const ledger2 = openLedger(h.dbPath)
-    try {
-      const row = ledger2.db
-        .prepare(
-          `select tr.error_kind as errorKind, tr.outcome as outcome
-           from tool_runs tr
-           join stages s on s.id = tr.stage_id
-           join runs r on r.id = s.run_id
-           order by r.rowid desc limit 1`,
-        )
-        .get() as { errorKind: string | null; outcome: string } | undefined
-      // The tool ran and refused on its own terms — `failed` (row 4), not
-      // `errored`: this is what distinguishes it from the packaging case above.
-      expect(row).toMatchObject({ errorKind: null, outcome: 'failed' })
-    } finally {
-      ledger2.close()
-    }
+    // The tool ran and refused on its own terms — `failed` (row 4), not
+    // `errored`: this is what distinguishes it from the packaging case above.
+    expect(latestReleaseToolRun(h.dbPath)).toMatchObject({ errorKind: null, outcome: 'failed' })
     const stageJson = JSON.parse(
       await readFile(join(await runDirOf((skill as SkillRef).workspacePath), '05-release/stage.json'), 'utf8'),
     ) as { toolRuns: Array<{ summary: string }> }
@@ -867,8 +899,13 @@ for await (const event of handle.events) {
     })
     ledger2.close()
 
+    const headBefore = (await execFileP('git', ['rev-parse', 'HEAD'], { cwd: repo })).stdout
     const releaseCode = await h.exec(['release', 'sk', '--version', 'minor', '--yes'])
     expect(releaseCode).toBe(0)
+    // R9.7: applying never creates a commit. The release wrote real,
+    // uncommitted bytes above (SKILL.md, versions.json, the archive) — HEAD
+    // not moving is what proves apply stopped at the working tree.
+    expect((await execFileP('git', ['rev-parse', 'HEAD'], { cwd: repo })).stdout).toBe(headBefore)
 
     const ledger3 = openLedger(h.dbPath)
     try {
@@ -896,3 +933,46 @@ for await (const event of handle.events) {
     }
   })
 })
+
+// The only M5 acceptance case reaching the network: it installs the genuine
+// vercel `skills` 1.5.21 and checks it refuses the way case 9 above's shim
+// assumes it does, for a real reason (a missing `description`, plan-m5.md's
+// own known gap) rather than an exit code the shim was simply told to return.
+// Case 9 itself stays faked in every mode — this is what keeps that fake
+// honest, the same way `tests/acceptance/m1.test.ts`'s exit criterion 8 does
+// for skillspector.
+describe.skipIf(!process.env.SG_INTEGRATION)(
+  'the installability gate against the genuine vercel `skills` binary',
+  () => {
+    it('refuses a skill with no description, for real', async () => {
+      const h = await cliHome()
+      const repo = await makeGitRepo({
+        files: {
+          // `SKILL_MD`, not `SKILL_MD_FULL`: no `description`, which is the one
+          // documented, real reason vercel `skills` refuses to install a
+          // candidate (plan-m5.md's "Known gaps").
+          'sk/SKILL.md': SKILL_MD('sk'),
+          'versions.json': '{\n  "skills": {\n    "sk": "1.0.0"\n  }\n}\n',
+        },
+      })
+      await registerRepo(h.home, repo)
+
+      const spec = catalogueEntry(RELEASE_TOOL_ID)
+      if (!spec) throw new Error('the release tool dropped out of the catalogue')
+      await installTool(h.home, spec)
+
+      const config = await loadConfig(h.home)
+      const [skill] = await discoverSkills(config.repos[0] as (typeof config.repos)[number])
+      await seedGatesForCurrentBytes(h.dbPath, skill as SkillRef)
+
+      const code = await h.exec(['release', 'sk', '--version', 'minor', '--yes'])
+      expect(code).toBe(1)
+
+      // The genuine binary refuses on its own terms too — `failed`, not
+      // `errored` — which is the one shape case 9's shim has to keep true.
+      expect(latestReleaseToolRun(h.dbPath)).toMatchObject({ errorKind: null, outcome: 'failed' })
+      await expect(stat(join(repo, 'sk_1.1.0.zip'))).rejects.toThrow()
+      expect(await readFile(join(repo, 'sk/SKILL.md'), 'utf8')).not.toContain('1.1.0')
+    }, 180_000)
+  },
+)

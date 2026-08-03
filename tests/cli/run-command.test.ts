@@ -177,3 +177,34 @@ describe('skillgantry run', () => {
     expect(typeof h.program.exitCode).toBe('number')
   })
 })
+
+describe('skillgantry --version', () => {
+  // R13.5's verify clause is literally `skillgantry --version` from a clean
+  // prefix. Commander scans the whole argv for the root's own options before
+  // ever dispatching to a subcommand unless `enablePositionalOptions` is set,
+  // so `release --version <target>` was silently answered by the *root's*
+  // `--version` and never reached the subcommand's own required option — a
+  // regression a prior task introduced by dropping the root's `--version`
+  // alias entirely instead. Both flags, and both call sites, are pinned here
+  // so neither can regress silently again.
+  it('prints the version on the long flag', async () => {
+    const h = await harness(SARIF([]))
+    await expect(run(h.program, ['--version'])).rejects.toMatchObject({ code: 'commander.version' })
+  })
+
+  it('prints the version on -V', async () => {
+    const h = await harness(SARIF([]))
+    await expect(run(h.program, ['-V'])).rejects.toMatchObject({ code: 'commander.version' })
+  })
+
+  it("reaches release's own --version <target> option, not the root flag", async () => {
+    const h = await harness(SARIF([]))
+    // Before the fix, this `--version` was answered by the root program: the
+    // call rejected with `commander.version` and never ran the release
+    // action at all. It has nothing locked or gated, so it still fails —
+    // but by running the real action (a normal non-zero exit), not by the
+    // root's version handler short-circuiting the parse.
+    await run(h.program, ['release', 'declawed', '--version', 'minor', '--yes'])
+    expect(h.program.exitCode).toBe(1)
+  })
+})

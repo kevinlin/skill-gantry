@@ -89,10 +89,15 @@ async function noticeInterrupted(deps: CliDeps): Promise<void> {
 export function buildProgram(deps: CliDeps): GantryProgram {
   const program = new Command() as GantryProgram
   program.name('skillgantry').description('SkillOps orchestrator for skill maintainers')
-  // `-V` only: the default alias also registers `--version`, which the
-  // `release` subcommand needs for its own required option (R9.10) and
-  // commander resolves a root-level flag before a subcommand's.
-  program.version('0.1.0', '-V')
+  // Without this, commander scans the *whole* argv for the root's own options
+  // before ever dispatching to a subcommand, so `release sk --version minor`
+  // was caught by the root's `--version` and never reached the subcommand's
+  // own required option (R9.10) — confirmed by a standalone commander repro,
+  // not merely suspected. `enablePositionalOptions` stops that scan at the
+  // first positional token (the subcommand name), which is what R13.5 needs:
+  // root `-V`/`--version` and `release --version <target>` both work.
+  program.enablePositionalOptions()
+  program.version('0.1.0')
 
   program
     .command('run')
