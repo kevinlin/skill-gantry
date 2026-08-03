@@ -1,16 +1,51 @@
 import {
   STAGE_ORDER,
+  type DashboardStats,
+  type DoctorReport,
+  type IssueFilter,
+  type IssueRow,
   type JobRecord,
+  type ProvenanceOption,
   type QueueEvent,
   type RawFinding,
   type RunEvent,
   type SkillRef,
   type Stage,
   type StageOutcome,
+  type StatsFilter,
 } from '../core/index.js'
+import type { SettingsView } from './views.js'
 
 export const PANELS = ['log', 'findings', 'artefacts', 'skill'] as const
 export type Panel = (typeof PANELS)[number]
+
+export const SCREENS = ['work', 'dashboard', 'issues', 'tools', 'settings'] as const
+export type Screen = (typeof SCREENS)[number]
+
+export interface PaletteCommand {
+  id: string
+  label: string
+  action: { kind: 'screen'; screen: Screen } | { kind: 'quit' } | { kind: 'refresh' }
+}
+
+export const PALETTE_COMMANDS: readonly PaletteCommand[] = [
+  ...SCREENS.map((screen) => ({
+    id: screen,
+    label: `go to ${screen}`,
+    action: { kind: 'screen' as const, screen },
+  })),
+  { id: 'refresh', label: 'reload this screen from the ledger', action: { kind: 'refresh' } },
+  { id: 'quit', label: 'quit SkillGantry', action: { kind: 'quit' } },
+]
+
+/** Substring on id or label, so `:iss` and `:go to iss` both find Issues. */
+export const paletteMatches = (query: string): PaletteCommand[] => {
+  const needle = query.trim().toLowerCase()
+  if (needle.length === 0) return [...PALETTE_COMMANDS]
+  return PALETTE_COMMANDS.filter(
+    (command) => command.id.includes(needle) || command.label.toLowerCase().includes(needle),
+  )
+}
 
 export const FOCUSES = ['skills', 'stages', 'queue'] as const
 export type Focus = (typeof FOCUSES)[number]
@@ -79,6 +114,34 @@ export interface AppState {
    * displacements against the review on screen rather than the whole session.
    */
   displacedReviews: number
+  screen: Screen
+  palette: { open: boolean; query: string; selected: number }
+  /**
+   * Ledger-backed views. `null` means "not loaded yet", which the screens show
+   * as a loading row — distinct from an empty result, which is a real answer
+   * and reads as "no runs recorded".
+   */
+  dashboard: DashboardStats | null
+  provenances: ProvenanceOption[]
+  statsFilter: StatsFilter
+  issues: IssueRow[]
+  issueFilter: IssueFilter
+  selectedIssue: number
+  tools: DoctorReport | null
+  settings: SettingsView | null
+  /** First visible body row on a row-list screen, moved by `scroll-screen`. */
+  screenOffset: number
+  /**
+   * Body rows the current screen built. The reducer cannot compute it — the row
+   * count depends on the terminal width, which only the component knows — and
+   * clamping a scroll against a stale count is what let `j` at the bottom of a
+   * list walk the offset into the hundreds.
+   */
+  screenRowCount: number
+  /** Set when the port rejected; cleared by the next successful load. */
+  viewError: string | null
+  /** Bumped by `refresh`, watched by the loading effect. */
+  reloads: number
 }
 
 export type Action =
@@ -101,6 +164,23 @@ export type Action =
   /** `viewport` is the diff rows the pane can show, so the clamp leaves a full
       window at the bottom rather than a single line. */
   | { type: 'scroll-review'; delta: number; viewport: number }
+  | { type: 'set-screen'; screen: Screen }
+  | { type: 'palette-open' }
+  | { type: 'palette-input'; query: string }
+  | { type: 'palette-move'; delta: number }
+  | { type: 'palette-close' }
+  | { type: 'set-dashboard'; stats: DashboardStats }
+  | { type: 'set-provenances'; options: ProvenanceOption[] }
+  | { type: 'set-stats-filter'; filter: StatsFilter }
+  | { type: 'set-issues'; rows: IssueRow[] }
+  | { type: 'select-issue'; delta: number }
+  | { type: 'set-issue-filter'; filter: IssueFilter }
+  | { type: 'set-tools'; report: DoctorReport }
+  | { type: 'set-settings'; view: SettingsView }
+  | { type: 'set-screen-row-count'; count: number }
+  | { type: 'scroll-screen'; delta: number; viewport: number }
+  | { type: 'refresh-views' }
+  | { type: 'view-error'; message: string }
 
 const emptyStages = (): Record<Stage, StageCell> =>
   Object.fromEntries(
@@ -138,6 +218,20 @@ export function initialState(skills: readonly SkillRef[], concurrency: number): 
     help: false,
     pending: null,
     displacedReviews: 0,
+    screen: 'work',
+    palette: { open: false, query: '', selected: 0 },
+    dashboard: null,
+    provenances: [],
+    statsFilter: {},
+    issues: [],
+    issueFilter: {},
+    selectedIssue: 0,
+    tools: null,
+    settings: null,
+    screenOffset: 0,
+    screenRowCount: 0,
+    viewError: null,
+    reloads: 0,
   }
 }
 
@@ -312,6 +406,83 @@ export function reducer(state: AppState, action: Action): AppState {
       const offset = Math.min(maxOffset, Math.max(0, state.pending.offset + action.delta))
       return { ...state, pending: { ...state.pending, offset } }
     }
+    case 'set-screen':
+      // The palette closes and the offset resets with the switch: leaving the
+      // palette open over the new screen sent the first keystroke there to a
+      // filter the user could no longer see, and a carried-over offset opens
+      // the next screen scrolled to a row it does not have.
+      return {
+        ...state,
+        screen: action.screen,
+        palette: { open: false, query: '', selected: 0 },
+        screenOffset: 0,
+      }
+    case 'palette-open':
+      return { ...state, palette: { open: true, query: '', selected: 0 } }
+    case 'palette-input':
+      return {
+        ...state,
+        palette: {
+          open: true,
+          query: action.query,
+          selected: clamp(0, paletteMatches(action.query).length),
+        },
+      }
+    case 'palette-move':
+      return {
+        ...state,
+        palette: {
+          ...state.palette,
+          selected: clamp(
+            state.palette.selected + action.delta,
+            paletteMatches(state.palette.query).length,
+          ),
+        },
+      }
+    case 'palette-close':
+      return { ...state, palette: { open: false, query: '', selected: 0 } }
+    case 'set-dashboard':
+      return { ...state, dashboard: action.stats, viewError: null }
+    case 'set-provenances':
+      return { ...state, provenances: action.options }
+    case 'set-stats-filter':
+      // Replaced, not merged: a filter that keeps a stale skillId while the
+      // user changes provenance answers a question nobody asked.
+      return { ...state, statsFilter: action.filter, dashboard: null, screenOffset: 0 }
+    case 'set-issues':
+      return {
+        ...state,
+        issues: action.rows,
+        selectedIssue: clamp(state.selectedIssue, action.rows.length),
+        viewError: null,
+      }
+    case 'select-issue':
+      return {
+        ...state,
+        selectedIssue: clamp(state.selectedIssue + action.delta, state.issues.length),
+      }
+    case 'set-issue-filter':
+      return { ...state, issueFilter: action.filter, selectedIssue: 0, screenOffset: 0 }
+    case 'set-tools':
+      return { ...state, tools: action.report, viewError: null }
+    case 'set-settings':
+      return { ...state, settings: action.view, viewError: null }
+    case 'set-screen-row-count':
+      return { ...state, screenRowCount: action.count }
+    case 'scroll-screen': {
+      // Clamped the way `scroll-review` is: to the last *full* window, so
+      // holding `j` cannot drive the offset past the end and leave one row on
+      // screen needing as many `k` presses before the view moves again.
+      const maxOffset = Math.max(0, state.screenRowCount - Math.max(1, action.viewport))
+      return {
+        ...state,
+        screenOffset: Math.min(maxOffset, Math.max(0, state.screenOffset + action.delta)),
+      }
+    }
+    case 'refresh-views':
+      return { ...state, reloads: state.reloads + 1 }
+    case 'view-error':
+      return { ...state, viewError: action.message }
     case 'set-statuses':
       return {
         ...state,

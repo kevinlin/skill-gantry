@@ -6,7 +6,7 @@ import type {
   StageResult,
   ToolRunRecord,
 } from '../../src/core/index.js'
-import { initialState, reducer, selectedSkill } from '../../src/tui/store.js'
+import { initialState, paletteMatches, reducer, selectedSkill } from '../../src/tui/store.js'
 
 const skill = (id: string): SkillRef => ({
   id,
@@ -228,5 +228,65 @@ describe('navigation', () => {
   it('stores a flushed log window without inspecting it', () => {
     const state = reducer(start(), { type: 'log-flush', lines: ['a', 'b'], dropped: 7 })
     expect(state.log).toEqual({ lines: ['a', 'b'], dropped: 7 })
+  })
+})
+
+describe('screens and the palette — R11.3', () => {
+  it('starts on Work', () => {
+    expect(initialState([], 2).screen).toBe('work')
+  })
+
+  it('switches screen', () => {
+    const state = reducer(initialState([], 2), { type: 'set-screen', screen: 'issues' })
+    expect(state.screen).toBe('issues')
+  })
+
+  it('filters the command list as the user types, and clamps the selection', () => {
+    let state = reducer(initialState([], 2), { type: 'palette-open' })
+    expect(state.palette.open).toBe(true)
+    state = reducer(state, { type: 'palette-input', query: 'iss' })
+    expect(paletteMatches(state.palette.query).map((command) => command.id)).toEqual(['issues'])
+    state = reducer(state, { type: 'palette-move', delta: 5 })
+    expect(state.palette.selected).toBe(0)
+  })
+
+  it('resets the query when it closes, so the next `:` starts clean', () => {
+    let state = reducer(initialState([], 2), { type: 'palette-open' })
+    state = reducer(state, { type: 'palette-input', query: 'set' })
+    state = reducer(state, { type: 'palette-close' })
+    expect(state.palette).toEqual({ open: false, query: '', selected: 0 })
+  })
+
+  it('clamps the issue selection to the rows it was given', () => {
+    let state = reducer(initialState([], 2), {
+      type: 'set-issues',
+      rows: [{ fingerprint: 'a' }, { fingerprint: 'b' }] as never,
+    })
+    state = reducer(state, { type: 'select-issue', delta: 9 })
+    expect(state.selectedIssue).toBe(1)
+  })
+
+  it('drops a stale selection when a filter shortens the list', () => {
+    let state = reducer(initialState([], 2), {
+      type: 'set-issues',
+      rows: [{ fingerprint: 'a' }, { fingerprint: 'b' }] as never,
+    })
+    state = reducer(state, { type: 'select-issue', delta: 1 })
+    state = reducer(state, { type: 'set-issues', rows: [{ fingerprint: 'a' }] as never })
+    expect(state.selectedIssue).toBe(0)
+  })
+
+  it('resets the scroll offset when the screen changes', () => {
+    let state = reducer(initialState([], 2), { type: 'set-screen-row-count', count: 40 })
+    state = reducer(state, { type: 'scroll-screen', delta: 5, viewport: 4 })
+    expect(state.screenOffset).toBe(5)
+    state = reducer(state, { type: 'set-screen', screen: 'tools' })
+    expect(state.screenOffset).toBe(0)
+  })
+
+  it('clamps the scroll to the last full window, not to the last row', () => {
+    let state = reducer(initialState([], 2), { type: 'set-screen-row-count', count: 10 })
+    state = reducer(state, { type: 'scroll-screen', delta: 99, viewport: 4 })
+    expect(state.screenOffset).toBe(6)
   })
 })

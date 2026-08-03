@@ -4,6 +4,7 @@ import type { SkillRef } from '../../src/core/index.js'
 import { App } from '../../src/tui/app.js'
 import { fakeRun, type FakeRun } from '../helpers/fake-run.js'
 import { renderInk } from '../helpers/render-ink.js'
+import { fakeViews } from '../helpers/fake-views.js'
 
 const skill = (id: string): SkillRef => ({
   id,
@@ -31,7 +32,7 @@ function harness() {
     },
   })
   const ui = renderInk(
-    <App skills={SKILLS} queue={queue} stages={['security']} concurrency={2} intervalMs={20} />,
+    <App skills={SKILLS} queue={queue} stages={['security']} concurrency={2} views={fakeViews()} intervalMs={20} />,
   )
   return { queue, runs, ui }
 }

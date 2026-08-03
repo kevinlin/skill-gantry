@@ -3,6 +3,7 @@ import type { JobSpec, QueueHandle, SkillRef } from '../../src/core/index.js'
 import { AsyncEventQueue } from '../../src/core/pipeline/queue.js'
 import { App } from '../../src/tui/app.js'
 import { renderInk } from '../helpers/render-ink.js'
+import { fakeViews } from '../helpers/fake-views.js'
 
 const skill = (id: string): SkillRef => ({
   id,
@@ -41,7 +42,7 @@ describe('batch enqueue — R5.5', () => {
   it('sends every marked skill and stage as one batch', async () => {
     const { queue, batches } = recordingQueue()
     const ui = renderInk(
-      <App skills={SKILLS} queue={queue} stages={['security']} concurrency={2} intervalMs={20} />,
+      <App skills={SKILLS} queue={queue} stages={['security']} concurrency={2} views={fakeViews()} intervalMs={20} />,
     )
     await ui.settle()
 
@@ -71,7 +72,7 @@ describe('batch enqueue — R5.5', () => {
   it('falls back to the selected skill and the configured stages', async () => {
     const { queue, batches } = recordingQueue()
     const ui = renderInk(
-      <App skills={SKILLS} queue={queue} stages={['security']} concurrency={2} intervalMs={20} />,
+      <App skills={SKILLS} queue={queue} stages={['security']} concurrency={2} views={fakeViews()} intervalMs={20} />,
     )
     await ui.settle()
     ui.stdin.send('r')

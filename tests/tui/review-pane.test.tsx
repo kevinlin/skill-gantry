@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { App } from '../../src/tui/app.js'
 import { reducer, initialState } from '../../src/tui/store.js'
 import { renderInk } from '../helpers/render-ink.js'
+import { fakeViews } from '../helpers/fake-views.js'
 import { fakeQueue } from '../helpers/fake-run.js'
 import type { QueueEvent, SkillRef } from '../../src/core/index.js'
 
@@ -124,7 +125,7 @@ describe('the review store', () => {
 describe('the review pane', () => {
   it('replaces the screen, shows the scope and the diff, and offers a and d', async () => {
     const queue = fakeQueue()
-    const { frames, unmount } = renderInk(<App skills={[skill('sk')]} queue={queue} stages={['release']} concurrency={2} intervalMs={5} />)
+    const { frames, unmount } = renderInk(<App skills={[skill('sk')]} queue={queue} stages={['release']} concurrency={2} views={fakeViews()} intervalMs={5} />)
     queue.emit(pendingEvent('j1'))
     await new Promise((r) => setTimeout(r, 30))
     const frame = frames.at(-1) as string
@@ -138,7 +139,7 @@ describe('the review pane', () => {
   it('routes a on the keyboard to queue.resolveMutation', async () => {
     const queue = fakeQueue()
     const resolve = vi.spyOn(queue, 'resolveMutation')
-    const { stdin, unmount } = renderInk(<App skills={[skill('sk')]} queue={queue} stages={['release']} concurrency={2} intervalMs={5} />)
+    const { stdin, unmount } = renderInk(<App skills={[skill('sk')]} queue={queue} stages={['release']} concurrency={2} views={fakeViews()} intervalMs={5} />)
     queue.emit(pendingEvent('j1'))
     await new Promise((r) => setTimeout(r, 30))
     stdin.send('a')
@@ -153,7 +154,7 @@ describe('the review pane', () => {
     // keystroke and this is the one screen whose keypress writes to the repo.
     const queue = fakeQueue()
     const resolve = vi.spyOn(queue, 'resolveMutation')
-    const { stdin, unmount } = renderInk(<App skills={[skill('sk')]} queue={queue} stages={['release']} concurrency={2} intervalMs={5} />)
+    const { stdin, unmount } = renderInk(<App skills={[skill('sk')]} queue={queue} stages={['release']} concurrency={2} views={fakeViews()} intervalMs={5} />)
     queue.emit(pendingEvent('j1'))
     await new Promise((r) => setTimeout(r, 30))
     stdin.send('\x01')
@@ -170,7 +171,7 @@ describe('the review pane', () => {
 
   it('swallows movement while the review is open, like help', async () => {
     const queue = fakeQueue()
-    const { stdin, frames, unmount } = renderInk(<App skills={[skill('sk'), skill('other')]} queue={queue} stages={['release']} concurrency={2} intervalMs={5} />)
+    const { stdin, frames, unmount } = renderInk(<App skills={[skill('sk'), skill('other')]} queue={queue} stages={['release']} concurrency={2} views={fakeViews()} intervalMs={5} />)
     queue.emit(pendingEvent('j1'))
     await new Promise((r) => setTimeout(r, 30))
     stdin.send('j')
@@ -183,7 +184,7 @@ describe('the review pane', () => {
   it('moves the window on the first j press, rather than centring on the offset', async () => {
     const queue = fakeQueue()
     const { stdin, frames, unmount } = renderInk(
-      <App skills={[skill('sk')]} queue={queue} stages={['release']} concurrency={2} intervalMs={5} />,
+      <App skills={[skill('sk')]} queue={queue} stages={['release']} concurrency={2} views={fakeViews()} intervalMs={5} />,
       { columns: 80, rows: 24 },
     )
     const longDiff = Array.from({ length: 200 }, (_, i) => `+line ${i}`).join('\n')
@@ -203,7 +204,7 @@ describe('the review pane', () => {
   it('shows the review pane over help, so a cannot authorise a diff the user cannot see', async () => {
     const queue = fakeQueue()
     const { stdin, frames, unmount } = renderInk(
-      <App skills={[skill('sk')]} queue={queue} stages={['release']} concurrency={2} intervalMs={5} />,
+      <App skills={[skill('sk')]} queue={queue} stages={['release']} concurrency={2} views={fakeViews()} intervalMs={5} />,
     )
     stdin.send('?')
     await new Promise((r) => setTimeout(r, 30))
@@ -220,7 +221,7 @@ describe('the review pane', () => {
   it('shows the review pane even on a too-small terminal, rather than the size warning', async () => {
     const queue = fakeQueue()
     const { frames, unmount } = renderInk(
-      <App skills={[skill('sk')]} queue={queue} stages={['release']} concurrency={2} intervalMs={5} />,
+      <App skills={[skill('sk')]} queue={queue} stages={['release']} concurrency={2} views={fakeViews()} intervalMs={5} />,
       { columns: 40, rows: 10 },
     )
     queue.emit(pendingEvent('j1'))
@@ -234,7 +235,7 @@ describe('the review pane', () => {
   it('shows a displaced review as a visible count rather than silently dropping it', async () => {
     const queue = fakeQueue()
     const { frames, unmount } = renderInk(
-      <App skills={[skill('sk')]} queue={queue} stages={['release']} concurrency={2} intervalMs={5} />,
+      <App skills={[skill('sk')]} queue={queue} stages={['release']} concurrency={2} views={fakeViews()} intervalMs={5} />,
     )
     queue.emit(pendingEvent('j1'))
     await new Promise((r) => setTimeout(r, 30))
@@ -252,7 +253,7 @@ describe('the review pane', () => {
     const queue = fakeQueue()
     for (const [columns, rows] of [[80, 24], [50, 14]] as const) {
       const { frames, unmount } = renderInk(
-        <App skills={[skill('sk')]} queue={queue} stages={['release']} concurrency={2} intervalMs={5} />,
+        <App skills={[skill('sk')]} queue={queue} stages={['release']} concurrency={2} views={fakeViews()} intervalMs={5} />,
         { columns, rows },
       )
       queue.emit({ ...pendingEvent('j1'), event: { ...(pendingEvent('j1') as { event: { type: string } }).event, diff: Array.from({ length: 200 }, (_, i) => `+line ${i}`).join('\n') } } as QueueEvent)

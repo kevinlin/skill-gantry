@@ -15,6 +15,7 @@ import { SKILL_MD, makeRepo } from '../helpers/tmp-repo.js'
 import { makeFakeTool } from '../helpers/fake-tool.js'
 import { fakeExecutor } from '../helpers/fake-executor.js'
 import { renderInk } from '../helpers/render-ink.js'
+import { fakeViews } from '../helpers/fake-views.js'
 
 const SARIF_EMPTY = JSON.stringify({
   version: '2.1.0',
@@ -74,7 +75,7 @@ describe('M2 exit criteria', () => {
         startRun: (_job, spec) => runPipeline({ ...input, skill: spec.skill, stages: spec.stages }),
       })
       const ui = renderInk(
-        <App skills={[skill]} queue={queue} stages={['security']} concurrency={2} intervalMs={20} />,
+        <App skills={[skill]} queue={queue} stages={['security']} concurrency={2} views={fakeViews()} intervalMs={20} />,
       )
       await ui.settle()
 
@@ -277,7 +278,7 @@ describe('M2 exit criteria', () => {
           queue={queue}
           stages={['security']}
           concurrency={1}
-          intervalMs={100}
+          views={fakeViews()} intervalMs={100}
         />,
       )
       await ui.settle()

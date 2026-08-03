@@ -61,6 +61,19 @@ export function reviewDiffRows(layout: Layout): number {
   return Math.max(0, layout.rows - REVIEW_CHROME_ROWS[layout.chrome] - 1)
 }
 
+/**
+ * Rows a full-screen view spends before its first body row: the panel's chrome
+ * and title, plus the footer hint the screen prints below it. Same shape as
+ * `REVIEW_CHROME_ROWS` and Help's, and here rather than in four components for
+ * §14.1's third rule — three panes each re-deriving their own chrome cost is
+ * how a panel falls off the bottom when `Panel`'s padding changes.
+ */
+const SCREEN_CHROME_ROWS = { boxed: 4, bare: 2 } as const
+
+export function screenBodyRows(layout: Layout): number {
+  return Math.max(1, layout.rows - SCREEN_CHROME_ROWS[layout.chrome] - 1)
+}
+
 export type LayoutMode = 'too-small' | 'narrow' | 'standard'
 
 export interface Layout {

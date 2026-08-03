@@ -1,10 +1,16 @@
 import { useEffect, useReducer, useRef } from 'react'
-import { useApp, useInput, useWindowSize } from 'ink'
+import { Box, Text, useApp, useInput, useWindowSize } from 'ink'
 import type { QueueHandle, SkillRef, Stage } from '../core/index.js'
+import { Dashboard } from './components/Dashboard.js'
+import { Issues } from './components/Issues.js'
+import { Palette } from './components/Palette.js'
+import { Settings } from './components/Settings.js'
+import { Tools } from './components/Tools.js'
 import { Work } from './components/Work.js'
-import { layoutFor, reviewDiffRows } from './layout.js'
+import { layoutFor, reviewDiffRows, truncate } from './layout.js'
 import { LogPump } from './log-buffer.js'
-import { PANELS, initialState, reducer, selectedSkill } from './store.js'
+import { PANELS, initialState, paletteMatches, reducer, selectedSkill } from './store.js'
+import type { AppState } from './store.js'
 import { type GantryViews, listArtefacts, loadSkillMd, loadSkillStatuses } from './views.js'
 
 export interface AppProps {
@@ -19,11 +25,24 @@ export interface AppProps {
   intervalMs?: number
 }
 
+/** The palette above the same footer hint every screen prints. */
+function PaletteScreen({ state }: { state: AppState }): React.ReactElement {
+  const { columns, rows } = useWindowSize()
+  const layout = layoutFor(columns, rows)
+  return (
+    <Box flexDirection="column" width={columns}>
+      <Palette palette={state.palette} layout={layout} />
+      <Text dimColor>{truncate('enter run · esc cancel', columns)}</Text>
+    </Box>
+  )
+}
+
 export function App({
   skills,
   queue,
   stages,
   concurrency,
+  views,
   intervalMs,
 }: AppProps): React.ReactElement {
   const [state, dispatch] = useReducer(reducer, skills, (list) => initialState(list, concurrency))
@@ -33,6 +52,15 @@ export function App({
   const reviewRows = reviewDiffRows(layoutFor(columns, rows))
   const { exit } = useApp()
   const byId = useRef(new Map(skills.map((skill) => [skill.id, skill])))
+  /**
+   * The palette's input state, mirrored outside React. Key handling has to be
+   * synchronous and React batches the dispatches from several keypresses
+   * delivered in one tick: reading `state.palette` instead meant `:` and the
+   * first letter arrived together, the letter's handler still saw the palette
+   * closed, and every character but the last was lost — typing `issues`
+   * selected whatever `s` matched. State stays what the frame renders.
+   */
+  const palette = useRef({ open: false, query: '' })
 
   const pump = useRef<LogPump | null>(null)
   if (pump.current === null) {
@@ -87,6 +115,31 @@ export function App({
     }
   }, [state.panel, current?.skillId, current?.runDir])
 
+  // Keyed on the screen, its filters and `reloads`: a screen the user is not
+  // looking at is not queried, and `refresh` is what re-runs the one they are.
+  useEffect(() => {
+    if (state.pending) return
+    const fail = (err: unknown): void =>
+      dispatch({ type: 'view-error', message: (err as Error).message })
+    if (state.screen === 'dashboard') {
+      void views
+        .dashboard(state.statsFilter)
+        .then((stats) => dispatch({ type: 'set-dashboard', stats }), fail)
+      void views
+        .provenances()
+        .then((options) => dispatch({ type: 'set-provenances', options }), fail)
+    }
+    if (state.screen === 'issues') {
+      void views.issues(state.issueFilter).then((rows) => dispatch({ type: 'set-issues', rows }), fail)
+    }
+    if (state.screen === 'tools') {
+      void views.tools().then((report) => dispatch({ type: 'set-tools', report }), fail)
+    }
+    if (state.screen === 'settings') {
+      void views.settings().then((view) => dispatch({ type: 'set-settings', view }), fail)
+    }
+  }, [state.screen, state.statsFilter, state.issueFilter, state.reloads])
+
   useInput((input, key) => {
     // Ink normalises a modified key onto the bare letter — `input` becomes
     // `keypress.name` when ctrl is held, and an alt-prefixed `\x1ba` has its
@@ -113,6 +166,49 @@ export function App({
         dispatch({ type: 'scroll-review', delta: -1, viewport: reviewRows })
       return
     }
+    if (palette.current.open) {
+      const matches = paletteMatches(palette.current.query)
+      const type = (query: string): void => {
+        palette.current = { open: true, query }
+        dispatch({ type: 'palette-input', query })
+      }
+      const close = (): void => {
+        palette.current = { open: false, query: '' }
+        dispatch({ type: 'palette-close' })
+      }
+      if (key.escape) close()
+      else if (key.return) {
+        const chosen = matches[state.palette.selected]
+        palette.current = { open: false, query: '' }
+        if (chosen?.action.kind === 'screen') {
+          dispatch({ type: 'set-screen', screen: chosen.action.screen })
+        } else if (chosen?.action.kind === 'refresh') {
+          dispatch({ type: 'refresh-views' })
+          dispatch({ type: 'palette-close' })
+        } else if (chosen?.action.kind === 'quit') exit()
+        else close()
+      } else if (key.downArrow || (key.ctrl && input === 'n')) {
+        dispatch({ type: 'palette-move', delta: 1 })
+      } else if (key.upArrow || (key.ctrl && input === 'p')) {
+        dispatch({ type: 'palette-move', delta: -1 })
+      } else if (key.backspace || key.delete) {
+        type(palette.current.query.slice(0, -1))
+      } else if (plain && input.length > 0) {
+        type(palette.current.query + input)
+      }
+      return
+    }
+    if (plain && input === ':') {
+      palette.current = { open: true, query: '' }
+      dispatch({ type: 'palette-open' })
+      return
+    }
+    // esc anywhere but Work goes home, so a user who palette-jumped by mistake
+    // is one keystroke from where they came from.
+    if (key.escape && state.screen !== 'work') {
+      dispatch({ type: 'set-screen', screen: 'work' })
+      return
+    }
     if (plain && input === '?') {
       dispatch({ type: 'toggle-help' })
       return
@@ -123,6 +219,10 @@ export function App({
       if (key.escape) dispatch({ type: 'toggle-help', open: false })
       return
     }
+    // Every binding below belongs to Work. `r` on the Issues screen must not
+    // enqueue a batch and `x` must not cancel a job the user cannot see, so the
+    // guard is one gate rather than a condition repeated eight times.
+    if (state.screen !== 'work') return
     if (key.tab) {
       dispatch({ type: 'cycle-focus', delta: key.shift ? -1 : 1 })
       return
@@ -178,5 +278,20 @@ export function App({
     }
   })
 
-  return <Work state={state} />
+  // The review pane stays the first branch: it is the one screen that wins over
+  // every modal, because `a` on it writes to the user's repo.
+  if (state.pending) return <Work state={state} />
+  if (state.palette.open) return <PaletteScreen state={state} />
+  switch (state.screen) {
+    case 'dashboard':
+      return <Dashboard state={state} />
+    case 'issues':
+      return <Issues state={state} />
+    case 'tools':
+      return <Tools state={state} />
+    case 'settings':
+      return <Settings state={state} />
+    default:
+      return <Work state={state} />
+  }
 }

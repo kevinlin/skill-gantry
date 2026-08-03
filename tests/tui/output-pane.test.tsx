@@ -8,6 +8,7 @@ import { listArtefacts, loadSkillMd, loadSkillStatuses } from '../../src/tui/vie
 import { SKILL_MD, makeRepo } from '../helpers/tmp-repo.js'
 import { fakeRun } from '../helpers/fake-run.js'
 import { renderInk } from '../helpers/render-ink.js'
+import { fakeViews } from '../helpers/fake-views.js'
 
 async function fixture(): Promise<{ skills: SkillRef[]; runDir: string }> {
   const root = await makeRepo({
@@ -33,7 +34,7 @@ async function fixture(): Promise<{ skills: SkillRef[]; runDir: string }> {
 const harness = (skills: readonly SkillRef[]) => {
   const queue = createQueue({ concurrency: 1, startRun: (job) => fakeRun(job.jobId).handle })
   const ui = renderInk(
-    <App skills={skills} queue={queue} stages={['security']} concurrency={1} intervalMs={20} />,
+    <App skills={skills} queue={queue} stages={['security']} concurrency={1} views={fakeViews()} intervalMs={20} />,
   )
   return { queue, ui }
 }
@@ -113,7 +114,7 @@ describe('output pane — R11.2', () => {
       },
     })
     const ui = renderInk(
-      <App skills={skills} queue={queue} stages={['security']} concurrency={1} intervalMs={20} />,
+      <App skills={skills} queue={queue} stages={['security']} concurrency={1} views={fakeViews()} intervalMs={20} />,
     )
     await ui.settle()
     const [jobId] = queue.enqueue([{ skill: skills[0]!, stages: ['security'] }])
