@@ -5,6 +5,10 @@ import { Work } from '../../src/tui/components/Work.js'
 import { MIN_COLUMNS, MIN_ROWS, layoutFor, truncate, windowFor } from '../../src/tui/layout.js'
 import { initialState, type AppState } from '../../src/tui/store.js'
 import { renderInk } from '../helpers/render-ink.js'
+import { App } from '../../src/tui/app.js'
+import { createQueue } from '../../src/core/index.js'
+import { fakeRun } from '../helpers/fake-run.js'
+import { emptyDashboard, emptySettings, fakeViews, toolFinding } from '../helpers/fake-views.js'
 
 function frameAt(node: ReactElement, columns: number, rows: number): string {
   const harness = renderInk(node, { columns, rows })
@@ -160,4 +164,146 @@ describe('Work screen fits its terminal', () => {
     const frame = frameAt(<Work state={state} />, 80, 16)
     expect(frame).toMatch(/\+\d+ more/)
   })
+})
+
+/** More rows than any terminal below can show: a budget only holds where there
+    is overflow to truncate. */
+const BUSY_VIEWS = () =>
+  fakeViews({
+    dashboard: async () => ({
+      ...emptyDashboard,
+      repos: 2,
+      skills: 3,
+      runs: 30,
+      stagePassRates: [{ stage: 'validate' as const, runs: 30, passed: 20, rate: 0.667 }],
+      wallClock: [{ stage: 'validate' as const, runs: 30, medianMs: 2_500, maxMs: 90_000 }],
+      evalCases: { casesTotal: 60, casesPassed: 41, casesErrored: 2, rate: 41 / 60 },
+      openBySeverity: [{ severity: 'high' as const, count: 12 }],
+      openByRuleClass: Array.from({ length: 8 }, (_, i) => ({
+        ruleClass: `rule-class-number-${i}`,
+        count: i + 1,
+      })),
+      history: Array.from({ length: 30 }, (_, i) => ({
+        runId: `019283af-0000-7000-8000-0000000000${String(i).padStart(2, '0')}`,
+        skillId: 'alpha/a-rather-long-skill-identifier',
+        repoId: 'alpha',
+        outcome: 'passed',
+        startedAt: '2026-08-03T10:00:00.000Z',
+        endedAt: '2026-08-03T10:01:00.000Z',
+        provenanceFp: 'abc123abc123',
+      })),
+    }),
+    issues: async () =>
+      Array.from({ length: 40 }, (_, i) => ({
+        fingerprint: `fp${String(i).padStart(10, '0')}`,
+        skillId: 'alpha/a-rather-long-skill-identifier',
+        repoId: 'alpha',
+        ruleClass: 'prompt-injection',
+        relPath: `declawed/scripts/a-fairly-long-path-${i}.py`,
+        severity: 'high' as const,
+        state: 'open' as const,
+        occurrenceCount: 2,
+        detectors: ['skillspector', 'skill-scanner'],
+        blockedBy: ['skill-scanner'],
+        lastSeenRun: '019283af-0000-7000-8000-000000000001',
+      })),
+    tools: async () => ({
+      runtimes: [
+        {
+          runtime: 'uv' as const,
+          present: false,
+          version: null,
+          installCommand: 'curl -LsSf https://astral.sh/uv/install.sh | sh',
+        },
+      ],
+      tools: Array.from({ length: 12 }, (_, i) =>
+        toolFinding(`tool-number-${i}`, 'version-drift', 'locked 0.4.0, reports 0.5.0'),
+      ),
+      lifecycle: Array.from({ length: 4 }, (_, i) => ({
+        skillId: `alpha/skill-${i}`,
+        file: 'deprecated' as const,
+        ledger: 'active' as const,
+      })),
+      failed: true,
+    }),
+    settings: async () => ({
+      ...emptySettings,
+      concurrency: 4,
+      repos: Array.from({ length: 6 }, (_, i) => ({
+        id: `repo-${i}`,
+        name: `repo-${i}`,
+        path: `/Users/someone/dev/a-rather-long-repository-path-${i}`,
+        isGit: true,
+        skills: 20,
+      })),
+      credentials: Array.from({ length: 4 }, (_, i) => ({
+        label: `tool-${i}`,
+        satisfied: false,
+        detail: 'needs one of Anthropic (ANTHROPIC_AUTH_TOKEN) or OpenAI (OPENAI_API_KEY)',
+      })),
+      envWarnings: ['/home/.skillgantry/.env is more permissive than 600 (mode 644)'],
+    }),
+  })
+
+describe('every M6 screen fits its terminal — §14.1', () => {
+  for (const [columns, rows] of [
+    [200, 60],
+    [120, 40],
+    [100, 30],
+    [80, 24],
+    [60, 20],
+    [50, 14],
+  ] as const) {
+    for (const screen of ['dashboard', 'issues', 'tools', 'settings']) {
+      it(`fits ${screen} at ${columns}x${rows}`, async () => {
+        const queue = createQueue({ concurrency: 1, startRun: () => fakeRun('r1').handle })
+        const ui = renderInk(
+          <App
+            skills={NAMES.map(skill)}
+            queue={queue}
+            stages={['security']}
+            concurrency={2}
+            views={BUSY_VIEWS()}
+            intervalMs={20}
+          />,
+          { columns, rows },
+        )
+        await ui.settle()
+        ui.stdin.send(':')
+        for (const char of screen) ui.stdin.send(char)
+        ui.stdin.send('\r')
+        await ui.settle(60)
+        const frame = ui.lastFrame()
+        const size = measure(frame)
+        ui.unmount()
+        // Guards the budget assertion against a navigation that silently failed:
+        // a Work frame fits every size, so it would pass without proving anything.
+        expect(frame.toLowerCase()).toContain(screen)
+        expect(size.rows).toBeLessThanOrEqual(rows)
+        expect(size.columns).toBeLessThanOrEqual(columns)
+      })
+    }
+
+    it(`fits the palette at ${columns}x${rows}`, async () => {
+      const queue = createQueue({ concurrency: 1, startRun: () => fakeRun('r1').handle })
+      const ui = renderInk(
+        <App
+          skills={NAMES.map(skill)}
+          queue={queue}
+          stages={['security']}
+          concurrency={2}
+          views={BUSY_VIEWS()}
+          intervalMs={20}
+        />,
+        { columns, rows },
+      )
+      await ui.settle()
+      ui.stdin.send(':')
+      await ui.settle(40)
+      const size = measure(ui.lastFrame())
+      ui.unmount()
+      expect(size.rows).toBeLessThanOrEqual(rows)
+      expect(size.columns).toBeLessThanOrEqual(columns)
+    })
+  }
 })

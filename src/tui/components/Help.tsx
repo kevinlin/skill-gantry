@@ -11,8 +11,15 @@ const KEYS: readonly (readonly [string, string])[] = [
   ['h / l', 'move along the lifecycle rail'],
   ['tab, shift-tab', 'cycle focus: skills → stages → queue'],
   ['space', 'mark the selected skill or stage'],
-  ['r', 'run every marked skill and stage as one batch'],
+  ['r', 'Work: run every marked skill and stage as one batch'],
   ['x', 'cancel the selected job'],
+  [':', 'command palette: go to a screen, refresh, quit'],
+  ['esc', 'back to Work from any screen'],
+  ['p', 'Dashboard: filter by provenance fingerprint'],
+  ['s', 'Dashboard: narrow to the selected skill'],
+  ['a / w / o', 'Issues: acknowledge, wontfix, reopen'],
+  ['f', 'Issues: cycle the state filter'],
+  ['r', 'Tools: re-probe runtimes and re-verify every locked tool'],
   ['1 – 4', 'Log, Findings, Artefacts, SKILL.md'],
   ['a', 'apply a pending mutation, once its diff is reviewed'],
   ['d, esc', 'discard a pending mutation'],
@@ -47,8 +54,10 @@ export function Help({ layout }: { layout: Layout }): React.ReactElement {
 
   return (
     <Panel title="SkillGantry — keys" focused chrome={layout.chrome}>
+      {/* Keyed on both halves: `r` now names two bindings, one per screen, so
+          the key alone is no longer unique. */}
       {shown.map(([key, description]) => (
-        <Box key={key}>
+        <Box key={`${key} ${description}`}>
           <Box width={keyWidth} flexShrink={0}>
             <Text wrap="truncate" color="cyan">
               {truncate(key, keyWidth - 1)}
