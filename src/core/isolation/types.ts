@@ -38,12 +38,6 @@ export type SandboxStrategy = 'git-worktree' | 'snapshot'
 export type SandboxState = 'active' | 'applied' | 'discarded'
 
 /**
- * R10.10's marker. Written before any mutating tool starts, because the apply
- * journal only exists from apply onward: a crash during tool execution, or
- * while a diff sat awaiting approval, otherwise left a partially modified tree
- * with nothing on disk saying so.
- */
-/**
  * `SandboxRecord.stage` for retirement. Not a `Stage` — retirement is not one
  * of the five — so it is a literal, and recovery routes on it to pick the
  * `retire/` record group. One exported constant rather than the same string
@@ -52,6 +46,12 @@ export type SandboxState = 'active' | 'applied' | 'discarded'
  */
 export const RETIRE_STAGE = 'retire'
 
+/**
+ * R10.10's marker. Written before any mutating tool starts, because the apply
+ * journal only exists from apply onward: a crash during tool execution, or
+ * while a diff sat awaiting approval, otherwise left a partially modified tree
+ * with nothing on disk saying so.
+ */
 export interface SandboxRecord {
   runId: string
   stage: string

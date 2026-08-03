@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { chmod, mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
+import { chmod, lstat, mkdir, mkdtemp, readFile, readlink, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { applyJournalled, readJournal, rollbackJournal } from '../../src/core/isolation/journal.js'
@@ -160,5 +160,53 @@ describe('applyJournalled', () => {
     await expect(stat(join(s.live, 'sk/new.txt'))).rejects.toThrow()
     // Mode change reversed: the original permission bits are restored.
     expect((await stat(join(s.live, 'sk/mode.txt'))).mode & 0o777).toBe(0o644)
+  })
+
+  // §4.4 and R2.10: a link is stored as a link everywhere else in the system —
+  // the candidate manifest, the digest, the snapshot copy and the archive — and
+  // the journal was the one stage that read through it. `readFile` on a symlink
+  // returns the target's bytes, so the apply wrote a regular file over the
+  // user's link and the rollback restored a copy of whatever it had pointed at.
+  it('applies and rolls back a symlink as a link, never as its target bytes', async () => {
+    const s = await scene()
+    await writeFile(join(s.live, 'sk/target.txt'), 'pointed-at\n')
+    await symlink('target.txt', join(s.live, 'sk/link.txt'))
+    await writeFile(join(s.source, 'sk/target.txt'), 'pointed-at\n')
+    await symlink('other.txt', join(s.source, 'sk/link.txt'))
+    s.change.entries.push({ path: 'sk/link.txt', kind: 'modified', binary: false })
+    s.change.preimages.push(await preimageOf(s.live, 'sk/link.txt'))
+
+    await apply(s)
+    expect((await lstat(join(s.live, 'sk/link.txt'))).isSymbolicLink()).toBe(true)
+    expect(await readlink(join(s.live, 'sk/link.txt'))).toBe('other.txt')
+    // The link was retargeted, not dereferenced: what it used to point at is
+    // untouched, which a `readFile`-based apply could not have left true.
+    expect(await readFile(join(s.live, 'sk/target.txt'), 'utf8')).toBe('pointed-at\n')
+
+    const journal = await readJournal(s.recordDir)
+    await writeFile(join(s.recordDir, 'journal.json'), JSON.stringify({ ...journal, complete: false }))
+    await rollbackJournal(s.recordDir)
+    expect((await lstat(join(s.live, 'sk/link.txt'))).isSymbolicLink()).toBe(true)
+    expect(await readlink(join(s.live, 'sk/link.txt'))).toBe('target.txt')
+  })
+
+  // The other half of the same rule, on the read side. A dangling link used to
+  // read as "the path does not exist" — sha256 null — so drift could not see a
+  // retarget onto a missing file, and rollback would have deleted the link
+  // instead of putting it back.
+  it('preimages a dangling symlink as present, by its target string', async () => {
+    const s = await scene()
+    await symlink('nowhere.txt', join(s.live, 'sk/dangling.txt'))
+    const preimage = await preimageOf(s.live, 'sk/dangling.txt')
+    expect(preimage.sha256).not.toBeNull()
+    expect(preimage.mode).not.toBeNull()
+
+    await symlink('elsewhere.txt', join(s.source, 'sk/dangling.txt'))
+    s.change.entries.push({ path: 'sk/dangling.txt', kind: 'modified', binary: false })
+    s.change.preimages.push(preimage)
+    // Retargeted between preview and apply: drift, not a silently equal pair.
+    await rm(join(s.live, 'sk/dangling.txt'))
+    await symlink('somewhere-else.txt', join(s.live, 'sk/dangling.txt'))
+    await expect(apply(s)).rejects.toThrow('preimage-drift: sk/dangling.txt')
   })
 })

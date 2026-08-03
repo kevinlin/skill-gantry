@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { copyFile, cp, lstat, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { copyFile, cp, lstat, mkdir, mkdtemp, readFile, readlink, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, normalize, sep } from 'node:path'
 import type { SkillRef } from '../types.js'
@@ -25,13 +25,23 @@ export interface SandboxInput {
   exec?: Exec
 }
 
-const sha256 = (bytes: Buffer): string => createHash('sha256').update(bytes).digest('hex')
+const sha256 = (bytes: Buffer | string): string => createHash('sha256').update(bytes).digest('hex')
 
+/**
+ * A symlink is hashed by its target string, never by following it — the same
+ * rule §4.4 already applies to the candidate digest. Following it made a link
+ * indistinguishable from a copy of whatever it pointed at: a dangling one read
+ * as "the path does not exist", so the drift recheck saw no change where the
+ * link had been retargeted at a missing file, and rollback would have deleted
+ * a link it was meant to restore. The mode comes from `lstat`, so it carries
+ * `S_IFLNK` and is what later tells the journal which kind it is putting back.
+ */
 export async function preimageOf(root: string, relPath: string): Promise<Preimage> {
   try {
     const abs = join(root, relPath)
     const info = await lstat(abs)
-    return { path: relPath, sha256: sha256(await readFile(abs)), mode: info.mode }
+    const content = info.isSymbolicLink() ? await readlink(abs) : await readFile(abs)
+    return { path: relPath, sha256: sha256(content), mode: info.mode }
   } catch {
     return { path: relPath, sha256: null, mode: null }
   }
@@ -138,26 +148,37 @@ async function dirtyPaths(
     const field = fields[i] as string
     // `status -z` puts the NEW path first for a rename and the old one after,
     // which is the opposite of `diff --raw -z`.
-    const raw = field.slice(3)
-    if (field.startsWith('R') || field.startsWith('C')) i += 1
-    const relPath = raw.endsWith('/') ? raw.slice(0, -1) : raw
-    if (inScope.has(relPath) || inScope.has(raw)) {
-      paths.push(relPath)
-      continue
+    const raw = [field.slice(3)]
+    if (field.startsWith('R') || field.startsWith('C')) {
+      i += 1
+      // Both halves, because both are dirty. Only the new one used to be taken,
+      // so a *staged* rename left HEAD's copy of the old path sitting in the
+      // seeded worktree — two files where the user has one — and the candidate
+      // digest disagreed with the live one all over again. An unstaged rename
+      // never had the problem: git reports it as a separate ` D` and `??`.
+      const old = fields[i]
+      if (old !== undefined) raw.push(old)
     }
-    // Outside the scope: dirty only counts when the path is part of the
-    // candidate. Membership is asked of the manifest rather than re-derived
-    // from an exclusion list here — that duplication was R6.8's bug. A path
-    // the manifest excludes but that exists on disk (the sidecar workspace,
-    // `.gitignore` on a repo-root skill, a previous release archive) is not
-    // candidate bytes; a path that no longer exists is a deletion the manifest
-    // walk could not have seen, and deletions inside the candidate do count.
-    if (!underCandidateRoot(relPath, policy.root)) continue
-    if (policy.allowed.has(relPath) || containsAllowed(policy, relPath)) {
-      paths.push(relPath)
-      continue
+    for (const each of raw) {
+      const relPath = each.endsWith('/') ? each.slice(0, -1) : each
+      if (inScope.has(relPath) || inScope.has(each)) {
+        paths.push(relPath)
+        continue
+      }
+      // Outside the scope: dirty only counts when the path is part of the
+      // candidate. Membership is asked of the manifest rather than re-derived
+      // from an exclusion list here — that duplication was R6.8's bug. A path
+      // the manifest excludes but that exists on disk (the sidecar workspace,
+      // `.gitignore` on a repo-root skill, a previous release archive) is not
+      // candidate bytes; a path that no longer exists is a deletion the manifest
+      // walk could not have seen, and deletions inside the candidate do count.
+      if (!underCandidateRoot(relPath, policy.root)) continue
+      if (policy.allowed.has(relPath) || containsAllowed(policy, relPath)) {
+        paths.push(relPath)
+        continue
+      }
+      if (!(await pathExists(join(repoPath, relPath)))) paths.push(relPath)
     }
-    if (!(await pathExists(join(repoPath, relPath)))) paths.push(relPath)
   }
   return paths
 }

@@ -158,6 +158,31 @@ describe('GitWorktreeSandbox', () => {
     await sandbox.dispose()
   })
 
+  // A *staged* rename is the one status entry that names two paths, new first.
+  // Taking only the new one left HEAD's copy of the old path in the seeded
+  // worktree, so the candidate held two files where the user has one and the
+  // digest disagreed with the live tree — the same unactionable
+  // `digest-mismatch` refusal the candidate-wide dirty check exists to remove.
+  // An unstaged rename never had the problem: git reports ` D` and `??`.
+  it('seeds a staged rename by both halves, so the old path leaves the worktree', async () => {
+    const { repo, skill, recordDir } = await fixture()
+    await run('git', ['mv', 'sk/old.txt', 'sk/renamed.txt'], { cwd: repo })
+
+    const sandbox = await openGitWorktreeSandbox({
+      skill,
+      stage: 'release',
+      runId: 'r',
+      recordDir,
+      scope: SCOPE,
+      allowDirty: true,
+    })
+    await expect(stat(sandbox.resolve('sk/old.txt'))).rejects.toThrow()
+    expect(await readFile(sandbox.resolve('sk/renamed.txt'), 'utf8')).toBe('old\n')
+    // Seeded, so the user's own rename is not a change the tool made.
+    expect((await sandbox.changeSet()).entries).toEqual([])
+    await sandbox.dispose()
+  })
+
   it('leaves the user tree untouched on discard and removes the worktree on dispose', async () => {
     const { repo, sandbox, recordDir } = await open()
     const before = await readFile(join(repo, 'sk/SKILL.md'), 'utf8')

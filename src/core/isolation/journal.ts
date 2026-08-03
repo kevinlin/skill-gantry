@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
-import { chmod, copyFile, mkdir, open, readFile, rename, rm } from 'node:fs/promises'
+import { constants } from 'node:fs'
+import { chmod, copyFile, lstat, mkdir, open, readFile, readlink, rename, rm, symlink } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { Exec } from '../tools/exec.js'
 import { preimageOf } from './git-worktree.js'
@@ -123,6 +124,14 @@ export async function recheckPreimages(liveRoot: string, change: ChangeSet): Pro
   return drifted
 }
 
+/**
+ * True for a mode `lstat` took over a symlink. The journal never adds a "kind"
+ * field for this: `priorMode` already carries `S_IFLNK`, and a second field
+ * saying the same thing is a second field that can disagree.
+ */
+const isSymlinkMode = (mode: number | null): boolean =>
+  mode !== null && (mode & constants.S_IFMT) === constants.S_IFLNK
+
 /** Temp file in the target's own directory, fsynced, then renamed over it. */
 async function writeAtomic(dest: string, bytes: Buffer, mode: number | undefined): Promise<void> {
   await mkdir(dirname(dest), { recursive: true })
@@ -135,6 +144,21 @@ async function writeAtomic(dest: string, bytes: Buffer, mode: number | undefined
     await handle.close()
   }
   if (mode !== undefined) await chmod(temp, mode & 0o7777)
+  await rename(temp, dest)
+}
+
+/**
+ * The link equivalent of `writeAtomic`, and the reason it cannot share its
+ * body: a symlink has no bytes to write and no mode to chmod (`chmod` follows
+ * the link, so applying the stored `0o777` would have altered the *target*'s
+ * permissions). Same temp-then-rename shape, so a target being replaced is
+ * never observed missing.
+ */
+async function linkAtomic(dest: string, target: string): Promise<void> {
+  await mkdir(dirname(dest), { recursive: true })
+  const temp = `${dest}.sg-tmp`
+  await rm(temp, { force: true })
+  await symlink(target, temp)
   await rename(temp, dest)
 }
 
@@ -168,7 +192,14 @@ export async function applyJournalled(input: ApplyInput): Promise<void> {
       // is deduplicated by content and a rollback never has to reason about
       // which path a shared blob belongs to.
       ref = createHash('sha256').update(path).digest('hex').slice(0, 16)
-      await writeDurable(join(bytesDir, ref), await readFile(join(liveRoot, path)))
+      // A link's backup is its target string, not the target's bytes. Reading
+      // through it stored a copy of a file the mutation never touched, and the
+      // rollback then put that copy back as a regular file — the link was gone
+      // either way, and a dangling one could not be backed up at all.
+      const backup = isSymlinkMode(prior.mode)
+        ? await readlink(join(liveRoot, path))
+        : await readFile(join(liveRoot, path))
+      await writeDurable(join(bytesDir, ref), backup)
     }
     entries.push({ path, priorSha: prior.sha256, priorMode: prior.mode, priorBytesRef: ref })
   }
@@ -198,7 +229,16 @@ export async function applyJournalled(input: ApplyInput): Promise<void> {
     // Snapshot strategy: source and live are the same tree, so the bytes are
     // already in place and only the removals and modes remain.
     if (sourceRoot !== liveRoot) {
-      await writeAtomic(join(liveRoot, entry.path), await readFile(join(sourceRoot, entry.path)), entry.mode)
+      const source = join(sourceRoot, entry.path)
+      const info = await lstat(source)
+      if (info.isSymbolicLink()) {
+        // Recreated as a link. `readFile` here wrote a regular file holding the
+        // target's bytes into the user's tree, so a sandbox that preserved the
+        // link (§4.4, R2.10) still applied it as a copy.
+        await linkAtomic(join(liveRoot, entry.path), await readlink(source))
+      } else {
+        await writeAtomic(join(liveRoot, entry.path), await readFile(source), entry.mode)
+      }
     }
   }
   for (const path of removed) await rm(join(liveRoot, path), { force: true })
@@ -242,11 +282,12 @@ export async function rollbackJournal(recordDir: string): Promise<string[]> {
     if (entry.priorBytesRef === null) {
       await rm(dest, { force: true })
     } else {
-      await writeAtomic(
-        dest,
-        await readFile(join(recordDir, BYTES_DIR, entry.priorBytesRef)),
-        entry.priorMode ?? undefined,
-      )
+      const backup = join(recordDir, BYTES_DIR, entry.priorBytesRef)
+      if (isSymlinkMode(entry.priorMode)) {
+        await linkAtomic(dest, await readFile(backup, 'utf8'))
+      } else {
+        await writeAtomic(dest, await readFile(backup), entry.priorMode ?? undefined)
+      }
     }
     restored.push(entry.path)
   }
