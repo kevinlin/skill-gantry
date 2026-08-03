@@ -98,3 +98,22 @@ export type {
   SandboxRecord,
   SandboxStrategy,
 } from './isolation/types.js'
+export {
+  dashboard,
+  evalCaseRate,
+  openIssueCounts,
+  provenanceOptions,
+  runHistory,
+  stagePassRates,
+  stageWallClock,
+  type DashboardStats,
+  type EvalCaseRate,
+  type ProvenanceOption,
+  type RuleClassCount,
+  type RunHistoryRow,
+  type SeverityCount,
+  type StagePassRate,
+  type StageWallClock,
+  type StatsFilter,
+} from './ledger/stats.js'
+export { provenanceFingerprint, type ProvenanceLike } from './ledger/fingerprint.js'
