@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** revision 1, aligned to [design.md](design.md) revision 3, [requirements.md](requirements.md) revision 6, and shipped M1–M4.
+**Status:** shipped. Revision 1, aligned to [design.md](design.md) revision 3, [requirements.md](requirements.md) revision 6, and shipped M1–M4. See § Deviations found while implementing for where the code and this plan parted company.
 
 **Goal:** Let SkillGantry write to the user's repo without ever being able to lose their work. Two mutation sandboxes behind one interface, a journalled apply with a preimage recheck, crash recovery from a marker written before the first byte moves, and on top of that the release stage: package, prove the archive installs, then touch the working tree once.
 
-**Architecture:** M5 adds two modules to `src/core/` — `isolation` and `release` — plus one native stage executor, a diff review pane in the TUI, and three subcommands. The pipeline owns the sandbox lifecycle so both mutating stages share one path; the executor only declares scope and decides. No adapter and no catalogue entry: release wraps no tool of its own.
+**Architecture:** M5 adds two modules to `src/core/` — `isolation` and `release` — plus one native stage executor, a diff review pane in the TUI, and three subcommands (`release`, `retire`, `recover`), taking the CLI to six. The pipeline owns the sandbox lifecycle so both mutating stages share one path; the executor only declares scope and decides. No adapter and no catalogue entry: release wraps no tool of its own.
 
 **Tech Stack:** everything M1–M4 ship, and no new npm dependency. `git`, `zip` and `unzip` are invoked as external commands through the existing `Exec` seam, matching the choice already made for `tar`/`unzip` in `tools/gh-release.ts`.
 
@@ -6396,23 +6396,23 @@ Every requirement M5 owns, and the task that satisfies it. A requirement with no
 | R1.6 frontmatter is the authority, the ledger a cache reconciled on discovery | 10 (`syncLifecycle`, `recordRun`), 11 (preconditions read the candidate's frontmatter), 13 |
 | R5.2 no write without authorisation, diff before write in every mode | 7 (the gate and `authorised`), 12 (headless diff ordering), 13 (retirement), 14 (terminal confirmation of a displayed diff) |
 | R9.1 dual version bump, or `SKILL.md` alone with no manifest, never creating one | 8 (`setManifestVersion`, `readVersionsManifest`), 11 (`stageCandidateEdits`) |
-| R9.2 refuse when the two versions disagree, reporting both | 8 (`version-disagreement`) |
+| R9.2 refuse when the two versions disagree, reporting both | 8 (`version-disagreement`), 11 (a `versions.json` that exists but does not parse refuses too, rather than falling through to the no-manifest path and releasing over a manifest that may already contradict it) |
 | R9.3 changelog entry at `<skillDir>/CHANGELOG.md` | 8 (`prependChangelogEntry`), 11 |
 | R9.4 archive is exactly the candidate manifest, staged, reviewed, journalled, rolled back | 9 (`packageCandidate`), 11 (copied into the sandbox so it joins the change set), 15 |
 | R9.5 evidence bundle | 9 (`writeEvidenceBundle`), 11 (written after the apply) |
 | R9.6 installability by extracting and installing that directory | 9 (`verifyInstallable`) |
 | R9.6a packaging and verification before any write to the working tree | 11 (the state machine's order), 15 |
-| R9.7 no commit or tag as part of applying | 11 (nothing in `apply` invokes git commit), 15 |
+| R9.7 no commit or tag as part of applying | 11, 15. Nothing in the apply path invokes git. The one `git commit` in the codebase is the dirty-override seed (Task 3), which runs at sandbox *open*, inside the throwaway worktree, with `--no-verify`; its objects are unreachable garbage once the worktree is removed and the user's own history is never written |
 | R9.8 refuse unless the recent gates passed, or when deprecated | 8 (`checkPreconditions`), 11 |
 | R9.9 refuse unless each gate run's digest equals the candidate's | 8 (`digest-mismatch`), 11, 15 |
 | R9.10 target version supplied explicitly | 8 (`resolveTargetVersion`), 11 (refuses with none), 12 (`--version` is required) |
 | R9.11 release as an explicit state machine with an abort path from every state | 11 |
 | R10.1 sandbox over a declared path scope, possibly outside the skill directory | 3, 4 (scope is an input), 11 (`releaseScope` spans the repo root) |
 | R10.2 git-backed repo uses a detached worktree | 3 |
-| R10.3 refuse a dirty skill unless overridden; the override seeds and records preimages | 3, 15 |
+| R10.3 refuse a dirty skill unless overridden; the override seeds and records preimages | 3, 13 (`retire --allow-dirty` reaches the same guard), 15. Both the check and the seed span the whole candidate, not only the declared scope: the digest is taken over the candidate, so leaving the rest at HEAD made release refuse with an unactionable `digest-mismatch` |
 | R10.4 non-git repo copies the declared scope to `snapshot-pre/`, modes and links preserved | 4 |
 | R10.5 one interface, an identical review | 2 (one diff renderer), 4 (`openSandbox` dispatch) |
-| R10.6 rollback restores every path in the declared scope | 4 (`restoreSnapshot`), 5 (`rollbackJournal`), 15 |
+| R10.6 rollback restores every path in the declared scope | 4 (`restoreSnapshot`), 5 (`rollbackJournal`), 15. `restoreSnapshot` restores the scope but deletes only what the manifest-filtered copy could have captured — restoring "every path" literally deleted live files the snapshot deliberately never took, the repo's own `.gitignore` and any stale archive among them |
 | R10.7 applying never creates a commit | 5 (the journal writes files and nothing else) |
 | R10.8 the change set represents all five kinds, not only text | 3, 4, 15 |
 | R10.9 journal before any target is modified, compensating rollback, no atomicity claim | 5 |
@@ -6453,6 +6453,17 @@ Every requirement M5 owns, and the task that satisfies it. A requirement with no
 - **`syncLifecycle` ignores a skill the ledger has never seen.** A repo registered but never run has no `skills` row, so a deprecated skill in it is invisible to a ledger query until its first run. Discovery is the authority and reads the file, so nothing behaves wrongly; only the cache lags.
 - **R13.7's mechanical coverage check still does not exist.** M3 and M4 both recorded it; M5 edits the ownership table by hand again, in Task 1, so the gap is now three milestones old and belongs to whichever milestone next touches traceability.
 
+Found while implementing, and left standing:
+
+- **The TUI holds one pending-review slot, and a displacement is only ever a bug signal.** Two reviews cannot legitimately be live at once: `pool.ts` admits one mutating job at a time and `run.ts` serialises pendings within a job. So the `(+N waiting)` count does not mean "another skill is queued behind this diff" — it means the slot still held a request whose resolution the store never saw. It resets when the slot empties. If R5.12 later admits two mutating jobs concurrently, the slot becomes a real queue and this count stops being diagnostic.
+- **`abortedStage` uses the stage name as the tool id when the stage selected no tool.** Release plans no tools, so an aborted release records a `tool_runs` row whose `tool_id` is `release`. Reconciliation tolerates it (no adapter, no rule classes), but per-tool statistics will show it as a tool.
+- **The `--stage optimise --yes` selection is checked mid-loop, not before the run.** R4.11 says an unauthorised mutating stage is rejected "before the run starts"; on the default config, where `optimise` selects no tool, an authorised request throws inside the stage loop and escapes before `finalizeRun`. A pre-run selection check in `run-command.ts` closes it.
+- **`src/cli/index.ts` does not catch `program.parseAsync`.** A commander rejection surfaces as an unhandled rejection trace rather than commander's one-line stderr and exit 1. The reachable case is `release` with no `--version`. Pre-existing shape, newly reachable.
+- **A no-op retirement leaves an empty record directory.** `retire/<id>/` is created before the no-change check, so declining or re-retiring an already-deprecated skill leaves a settled but empty directory behind.
+- **`journal-bytes/` creation is not separately fsynced.** The first backup file's `fsyncDir` covers it in practice, since a directory with no entries has nothing to lose.
+- **`ENTRIES_PER_CALL` batching in `archive.ts` is untested.** No fixture approaches the 500-entry threshold that would split the `zip` invocation.
+- **`resolve('')` normalises to `'.'` and returns the work root** instead of rejecting as a scope escape. Nothing passes an empty path; the guard is one case short of total.
+
 ## Self-review
 
 **Spec coverage.** Every requirement in the M5 row of the ownership table maps to a task above, and the four whose contracts M5 amends are named in the Spec amendments section with the defect that forced each. R9.11's "abort path from every state" is Task 11's state machine plus Task 7's row-3b handling: an abort before apply is a sandbox discard, and an abort at or after apply is a journal rollback.
@@ -6463,6 +6474,29 @@ Every requirement M5 owns, and the task that satisfies it. A requirement with no
 
 **Scope.** Fifteen tasks, one milestone, one deliverable: SkillGantry can write to the user's repo, and every way that write can go wrong has a marker on disk, a preview before it happens, and a path back.
 
+## Deviations found while implementing
+
+Where the shipped code diverged from this plan's literal instructions, and why. A plan is a record of intent; these are the places building against it proved the intent wrong.
+
+1. **`unzip` is probed with `-v`, not `--version`.** `unzip --version` exits non-zero on a working binary, so the preflight reported a false negative on every machine.
+2. **The diff renderer rewrites header lines only.** The plan's global `replaceAll` over the diff text mangled any body line containing the temp path fragment, including git's own `a/` and `b/` prefixes. Rewriting `---`/`+++`/`diff --git` lines alone is the correction. `Binary files a/X and b/Y differ` is still not rewritten and leaks the temp path. The `diffBuffers` helper this task specified was written, never called by either sandbox, and removed.
+3. **Three git facts the plan had wrong.** `git add -A -- <pathspec>` is fatal when the pathspec matches nothing, so the scope is staged path by path; the dirty-override seed must be committed *inside* the worktree or the baseline stays at the original HEAD and the user's own edit reads as the tool's; and a fixture `chmod` dirties the repo under `core.fileMode`.
+4. **The candidate manifest is the exclusion authority for the snapshot copy**, not the bespoke list the plan wrote — CLAUDE.md's single-authority rule. An outside-root scope path falls back to a documented raw copy. Copy-time exclusions therefore come from the manifest while `changeSet()`'s expansion stays manifest-unaware: an added archive is a change to represent even though the manifest excludes an existing one from candidacy.
+5. **The journal fsyncs a barrier before the first live write.** The plan wrote the prior bytes and the journal in program order with no `sync`, which does not give R10.9 what it needs: a power loss can persist the live mutation while the backup naming it is still in write-back cache.
+6. **Recovery distinguishes a complete journal from an absent one.** The plan's `rollbackJournal` returned `[]` for both, so a crash landing between the journal's completion mark and `markSandboxRecord('applied')` fell through to a full snapshot restore and reverted an apply the user had approved.
+7. **`restoreSnapshot(snapshotDir, skill, scope)`** takes a `SkillRef` and an explicit scope, not the plan's optional `excluded` parameter with a permissive default, which was a trap for every later caller. It is also bounded by the candidate policy: it never deletes a live path the manifest-filtered copy could not have captured.
+8. **`execute()` runs inside the sandbox disposal `try`.** The plan left it outside, so a release executor throwing out of `execute` skipped disposal and left the worktree registered and the record `active` forever.
+9. **The release stage's `passed` is "staged and proven installable".** `prepareMutation` returns null unless `execute` reached that state. The plan let a refused release still yield an approvable change set, which could have half-applied a version bump with no archive and no evidence.
+10. **Exec failures are classified from the error object, not its message.** The plan's regex over `err.message` never matched: a timeout's message is `Command failed: …` with no "timeout" in it. `killed` and a string `code` are what Node actually states.
+11. **`enablePositionalOptions()` on the root program.** Without it commander scans the whole argv for the root's own options first, so `release <skill> --version minor` was caught by the root `--version` and never reached the subcommand. Confirmed against a standalone commander repro.
+12. **`retireSkill` takes `allowDirty` from the caller.** The plan defaulted it to true, which removed R10.3's decision from the user and made `--allow-dirty` inert. A no-op retirement now exits 0 with a message, while a genuine decline still exits 1.
+13. **The review pane is the first branch in both `Work.tsx` and `app.tsx`.** The plan rendered help and the too-small notice ahead of it while giving the review keymap precedence, so `a` could authorise a write whose diff was never displayed. `offset` means first-visible in both the reducer and the component, clamped at both ends.
+14. **The release scope is force-staged.** `git add -A` silently skips a gitignored path, and the release archive is exactly the kind of file a repo gitignores — so release reported `passed` with no zip in the change set and evidence that said otherwise.
+15. **A failure after the apply is `mutation-incomplete`, not a discard.** The plan had one abort kind. Settling a completed apply as an abort flipped a git sandbox's marker to `discarded` over a written tree, putting it beyond recovery, or restored the pre-tool snapshot over an approved apply.
+16. **Recovery sweeps `<target>.sg-tmp` before deciding anything.** A crash between `writeAtomic`'s temp file and its rename leaves one inside the candidate root, where it changes every later digest and so blocks the next release.
+17. **The journal handles symlinks as links.** It was the one place in the system still reading through them: the apply wrote a regular file over a user's link, the rollback restored a copy of its target, and a dangling link preimaged as "does not exist" so drift could not see a retarget.
+
 ## Changelog
 
 - 2026-08-03 — revision 1, written against design.md revision 3, requirements.md revision 6 and shipped M1–M4. Facts probed against vercel `skills` 1.5.21, `zip`/`unzip`, `git` 2.x and the real `versions.json` of `zapac-agent-skills`.
+- 2026-08-03 — **Shipped.** Fifteen tasks plus a whole-branch review and its fix wave. Deviations recorded above; four coverage rows corrected where the shipped contract turned out narrower or wider than this plan claimed; eight gaps found during implementation added to Known gaps. design.md took six amendments, recorded in its §18.3.

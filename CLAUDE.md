@@ -8,6 +8,8 @@ SkillGantry is a SkillOps orchestrator for maintainers of agent skills. It disco
 
 Lifecycle stages: `validate`, `evaluate`, `security`, `optimise`, `release`.
 
+Release and retirement also write to the user's repo, and every part of that is built so a crash cannot lose their work: a marker on disk before the first byte moves, a diff before any write, and a path back from every failure. Read the isolation and release sections below before touching either.
+
 ## Commands
 
 ```bash
@@ -31,12 +33,17 @@ pnpm vitest run tests/core/reconcile.test.ts -t 'closes only when every detector
 
 Adapter fixtures are regenerated, not hand-edited: `scripts/capture-fixtures.sh <skills-repo>`. It refuses to run unless the installed tool matches the pinned version, so fixtures and pins cannot drift apart.
 
-The CLI has three subcommands plus a root action, all built by `buildProgram(deps)` in `src/cli/run-command.ts`:
+The CLI has six subcommands plus a root action, all built by `buildProgram(deps)` in `src/cli/run-command.ts`:
 
-- `skillgantry run <skill> [--json] [--yes]` — headless.
-- `skillgantry doctor [--json]` — re-verify the lock, report drift.
+- `skillgantry run <skill> --stage <list> [--json] [--yes]` — headless.
+- `skillgantry doctor [--json] [--migrate-rule-map]` — re-verify the lock, report drift.
 - `skillgantry setup` — the Ink wizard.
+- `skillgantry release <skill> --version <target> [--yes] [--json] [--allow-dirty] [--notes <text>]` — the one command that writes to the user's repo.
+- `skillgantry retire <skill> [--undo] [--superseded-by <id>] [--yes] [--json] [--allow-dirty]` — deprecation through the same mutation path, outside the pipeline.
+- `skillgantry recover [--restore <runId>] [--forget <runId>] [--json]` — resolve a mutation a crash interrupted.
 - `skillgantry [--concurrency <n>]` — no subcommand falls through to the root action, which routes to the wizard when `needsSetup(home)` and otherwise launches the Ink work screen.
+
+`program.enablePositionalOptions()` is load-bearing, not tidiness: without it commander scans the whole argv for the root's own options before dispatching, so `release <skill> --version minor` was caught by the root `--version` and never reached the subcommand. Every launch path first prints one `warning:` line per unresolved mutation record, and never blocks on one.
 
 ## Specs are the source of truth
 
@@ -77,13 +84,15 @@ Rule applied throughout `src/core/`: a module that owns I/O does not also own de
 | `tools/` | catalogue and presets, runtime probe, three install drivers (`uv.ts`, `npm.ts`, `gh-release.ts`) behind `install.ts` dispatch, verify-by-invocation, lockfile, `doctor.ts` drift report, `setup.ts` state machine | fs, net, subprocess |
 | `adapters/` | manifest + `parse` per tool (`skillspector`, `skill-lint`, `skill-up`, `skill-scanner`), shared `sarif.ts` / `eval-report.ts` parsers, `paths.ts` rebasing, versioned rule-class map | **none** |
 | `runner/` | spawn one tool: env injection, timeout with process-group kill, stream redaction, artefact load | subprocess, fs |
-| `stages/` | `StageExecutor` contract, `AdapterStageExecutor`, outcome reduction | — |
-| `pipeline/` | stage sequencing, event emission, run finalisation, cancellation, mutation gate | — |
-| `queue/` | bounded worker pool, job state machine, one tagged event stream | — |
+| `stages/` | `StageExecutor` contract, `AdapterStageExecutor`, `ReleaseStageExecutor`, the shared sandbox-backed `mutation.ts` hooks, outcome reduction | — |
+| `pipeline/` | stage sequencing, sandbox lifecycle, event emission, run finalisation, cancellation, mutation gate | — |
+| `queue/` | bounded worker pool, job state machine, one tagged event stream, mutation resolution routing | — |
 | `workspace/` | sidecar writer: run dirs, `run.json`, `stage.json`, `latest`, `index.ndjson` | fs |
-| `ledger/` | SQLite schema and migrations, fingerprinting, reconciliation, issue state machine | sqlite |
+| `isolation/` | `MutationSandbox` over a declared path scope (`git-worktree.ts`, `snapshot.ts`, `open.ts` dispatch), `sandbox.json` record, journalled apply with preimage recheck, crash recovery | fs, subprocess |
+| `ledger/` | SQLite schema and migrations, fingerprinting, reconciliation, issue state machine, gate and lifecycle queries | sqlite |
+| `release/` | version resolution, frontmatter and changelog edits, `versions.json`, preconditions, archive, installability check, evidence bundle, retirement | fs, subprocess |
 
-`adapters` and `ledger` depend on nothing else in the engine. They hold the subtlest rules and are tested exhaustively with no mocking.
+`adapters` depends on nothing else in the engine and `ledger` on nothing but the rule-class map. They hold the subtlest rules and are tested exhaustively with no mocking.
 
 `queue/pool.ts` schedules; it never builds a run. The caller injects `startRun`, which is why `src/cli/tui-command.ts` is the only place config, lock, env, ledger and pipeline meet.
 
@@ -92,6 +101,27 @@ Rule applied throughout `src/core/`: a module that owns I/O does not also own de
 Same split as the rest of the engine: `catalogue.ts` and `setup.ts` are pure decisions, the three drivers own subprocess and network. Every driver takes an injected `Exec` (`exec.ts`, 300 s default ceiling) and `gh-release.ts` also takes `fetchImpl`, which is what keeps `pnpm test` offline — real installs live in the `SG_INTEGRATION` suite. `install.ts` dispatches on `installKind` and writes the lock entry only after `verifyTool` gets a semver out of the binary.
 
 `tools/**` must not open the ledger. Doctor's lifecycle check therefore takes ledger state as an argument, from `src/cli/` — the same rule that keeps `queue/` out of the ledger.
+
+### Mutation isolation
+
+Two sandbox strategies behind one `MutationSandbox` interface, chosen by `openSandbox()` on `repo.isGit`. The git strategy adds a detached worktree at HEAD; the snapshot strategy copies the declared scope to `<run>/snapshot-pre/` and lets the tool write the real tree. Both produce the same `ChangeSet` and the same preview text — one renderer, `git diff --no-index` for the snapshot side.
+
+**The pipeline owns the sandbox lifecycle, not the executor.** `run.ts` opens it, gates the mutation, applies or discards, and disposes in a `finally` that `execute()` is inside. A throw that skipped disposal left a worktree registered and the record `active` forever. An executor only declares `mutationScope` and decides.
+
+The write order is the whole design, and it is ordered by what a crash at each point costs:
+
+1. `sandbox.json` before any mutating tool starts (R10.10) — the apply journal does not exist yet, so this is the only thing that makes a crash *during the tool* recoverable.
+2. Prior bytes and `journal.json`, both fsynced, before the first live target moves (R10.9). Not program order: durable on disk, or a power loss persists the mutation while its backup sits in write-back cache.
+3. Preimage recheck immediately before the write (R10.11), aborting on drift by name. The window it closes is as wide as the approval timeout.
+4. Temp-write, fsync, rename per target; then mark the journal complete.
+
+`isolation/**` never opens the ledger. `journal.ts` is a compensating-transaction record, not an atomicity guarantee: POSIX offers no multi-file atomic write and SkillGantry claims none.
+
+### Release
+
+`ReleaseStageExecutor` runs design §12.4's state machine, and the order is inverted from the obvious one: everything is staged, packaged and proven installable **inside the sandbox**, and the user's tree is touched once at the end when nothing is left that can fail on its own merits. An abort before apply is a sandbox discard with nothing to compensate.
+
+Retirement (`release/retire.ts`) is not a stage and does not run through the pipeline. It drives the same declared-scope, diff-preview, confirmation and journal path directly, with its record under `<workspacePath>/skillgantry/retire/<id>/` — which is why one recovery scan finds an interrupted retirement and an interrupted release with no special case.
 
 ### The TUI
 
@@ -116,7 +146,12 @@ The setup wizard is a second app, not a screen of the first: `setup-app.tsx` own
 - **`SKILL.md` frontmatter is the authority** for a skill's lifecycle state. Ledger lifecycle columns are a derived cache; a divergence is drift to report, not an error — which is exactly what `doctor` reports it as.
 - **Log text never enters React state line by line.** Tool output goes to a ring buffer outside the component tree (2000 lines, 100 ms flush, design §14) and a tick copies the visible window in. The reducer test asserts this by dispatching a `tool:output` event and expecting no state change.
 - **Cancellation has exactly four phases**: `queued` (queue-owned), `running`, `awaiting-approval`, `finalising` (pipeline-owned). A cancelled run still finalises.
-- **Mutating stages are `optimise` and `release`.** The set lives in `queue/types.ts` so the queue can serialise them without importing a stage executor. Neither stage ships yet; the gate, timeout and serialisation do.
+- **Mutating stages are `optimise` and `release`.** The set lives in `queue/types.ts` so the queue can serialise them without importing a stage executor. Release ships; optimise ships its path but no tool, because both D7 candidates are unpublished.
+- **An aborted apply and an interrupted one are different error kinds.** `mutation-aborted` means nothing was written; `mutation-incomplete` means the apply completed and something after it threw. The sandbox record is the authority for telling them apart — both strategies mark it `applied` only once the journal is complete — because settling a completed apply as an abort either puts a written tree beyond recovery's reach or restores a pre-tool snapshot over work the user approved.
+- **An aborted stage keeps its tool runs.** `abortedStage` appends its synthesised run to whatever the tools already produced; replacing them discarded the partial evidence R5.13 requires an aborted run to keep.
+- **The release executor's `passed` means "staged and proven installable", not "applied".** The write is the pipeline's, through `gateMutation`, so it is the two abort kinds above that say whether bytes reached the tree.
+- **Symlinks are hashed by target, never followed** — in the candidate digest, the snapshot copy, the archive, and the journal. A link is put back as a link on rollback, keyed off the `S_IFLNK` bit in the recorded mode rather than a second field that could disagree with it.
+- **The dirty-scope override seeds, it does not merely permit.** `--allow-dirty` copies every dirty path in the *candidate* into the worktree, not just the dirty scope paths: the digest is taken over the whole candidate, so leaving the rest at HEAD made release refuse with an unactionable `digest-mismatch`. The seed commit runs `--no-verify`, because a worktree shares `.git/hooks` with its parent and a husky repo would otherwise break the override.
 
 ## Conventions
 
@@ -132,7 +167,11 @@ Lint enforces the invariants, so a violation fails `pnpm lint` rather than revie
 
 ## Testing
 
-Tests mirror `src/` under `tests/core/`, plus `tests/tui/`, `tests/cli/` and `tests/acceptance/`. Helpers: `tests/helpers/tmp-repo.ts` builds a fixture repo in a temp dir, `tests/helpers/fake-tool.ts` writes executable shell scripts standing in for real tools (including a grandchild-spawning script for the process-tree kill test), `tests/helpers/fake-executor.ts` and `fake-run.ts` stand in for a stage executor and a `RunHandle` so queue and store tests never spawn.
+Tests mirror `src/` under `tests/core/`, plus `tests/tui/`, `tests/cli/` and `tests/acceptance/`. Helpers: `tests/helpers/tmp-repo.ts` builds a fixture repo in a temp dir (`makeGitRepo()` for the worktree strategy), `tests/helpers/fake-tool.ts` writes executable shell scripts standing in for real tools (including a grandchild-spawning script for the process-tree kill test), `fake-mutating-tool.ts` writes one that edits inside the sandbox, `fake-release.ts` stands in for vercel `skills`, `fake-executor.ts` and `fake-run.ts` stand in for a stage executor and a `RunHandle` so queue and store tests never spawn, and `child.ts` runs the CLI in a second process for the crash cases.
+
+Crash recovery is the one thing a unit test cannot prove. A fabricated `sandbox.json` shows that recovery *reads* a marker; only killing a real child mid-mutation shows that something wrote one nothing meant to write. Both live in `tests/acceptance/m5.test.ts`.
+
+A test harness that stands in for `run.ts` must re-root `skill.dir` and `skill.repo.path` into the sandbox the way `run.ts` does. Leaving the live `skill` in place is what let `candidateManifest` and `readVersionsManifest` be exercised against the live tree while production ran them against the sandbox — the blind spot that hid the untracked-candidate-file digest mismatch.
 
 `tests/tui/store.test.ts` dispatches actions and asserts state; the component tests render through `tests/helpers/render-ink.tsx`, which drives Ink with a fake TTY and `debug: true`, and assert on frames. `deps.startTui` and `deps.startSetup` on `CliDeps` are the seams that let the `tests/cli/` tests assert a launch without a terminal.
 

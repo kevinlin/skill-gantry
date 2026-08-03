@@ -5,7 +5,7 @@
 **Layer:** design (layer 2 of 3: [requirements](requirements.md) → design → plan)
 **Traces to:** [requirements.md](requirements.md), [decision-log.md](decision-log.md)
 
-Each section names the requirements it satisfies. Revision 2 closed the twelve findings of the first review; revision 3 closes the eleven of the second. §18 records what changed in each. §18.2 records the three sections M3 planning amended.
+Each section names the requirements it satisfies. Revision 2 closed the twelve findings of the first review; revision 3 closes the eleven of the second. §18 records what changed in each. §18.2 records the three sections M3 planning amended, and §18.3 the six M5's implementation did.
 
 ---
 
@@ -63,24 +63,28 @@ Local installation is `pnpm run install:cli`, which packs the working tree, inst
 
 Twelve modules under `src/core/`. Rule applied throughout: a module that owns I/O does not also own decisions.
 
-Release is a module, not an adapter: it has no external tool to wrap, so it has no manifest and no `parse`. It does depend on `tools`, because vercel `skills` must be installed for the installability check. Nine external tools are installed in total: eight adapter-backed, plus vercel `skills`.
+Release is a module, not an adapter: it has no external tool to wrap, so it has no manifest and no `parse`. It does depend on `tools`, because vercel `skills` must be installed for the installability check. Five external tools are installed in total: four adapter-backed, plus vercel `skills`. Revision 2 planned eight adapter-backed tools, one per D7 candidate; M3 dropped four of them after probing — agentskills, SkillOpt and SkillHone are published nowhere installable, and promptfoo drives off a per-skill config no skill carries (decision-log §10).
+
+"Depends on" is a *value* import between modules. A type-only import is not a dependency here — several modules take another's shape without being able to call into it, which is how `runner` runs a tool it never looks up and `workspace` writes a `StageResult` it never builds.
 
 | Module | Job | Depends on | Owns I/O |
 |---|---|---|---|
-| `config` | Load/save `~/.skillgantry/config.json`; read and mode-check `.env`; build the redaction value set | — | fs |
+| `config` | Load/save `~/.skillgantry/config.json`; read and mode-check `.env`; build the redaction value set | `discovery` | fs |
 | `discovery` | Repo path → `SkillRef[]`; frontmatter parse; git detection; `workspacePath()`; `candidateManifest()`; `skillDigest()`; `materialiseCandidate()` | — | fs |
-| `tools` | Tool root, three install drivers, lockfile with resolved executables, verify-by-invocation, doctor | `config` | fs, net, subprocess |
-| `adapters` | Eight manifest + parse modules; shared SARIF and skill-up parsers; rule-class map | — | **none** |
-| `runner` | Spawn one tool: env injection, timeout with process-tree kill, stream redaction, artefact loading, exit classification | `config`, `tools` | subprocess, fs |
-| `stages` | `StageExecutor` contract; `AdapterStageExecutor`; `ReleaseStageExecutor`; outcome reduction | `adapters`, `runner`, `release` | — |
-| `pipeline` | Stage sequencing, mutation gating, event emission, run finalisation transaction | `stages`, `workspace`, `isolation`, `ledger` | — |
+| `tools` | Tool root, three install drivers, lockfile with resolved executables, verify-by-invocation, doctor | `config`, `discovery` | fs, net, subprocess |
+| `adapters` | Four manifest + parse modules; shared SARIF and skill-up parsers; rule-class map | — | **none** |
+| `runner` | Spawn one tool: env injection, timeout with process-tree kill, stream redaction, artefact loading, exit classification | — | subprocess, fs |
+| `stages` | `StageExecutor` contract; `AdapterStageExecutor`; `ReleaseStageExecutor`; outcome reduction | `adapters`, `discovery`, `ledger`, `queue`, `release`, `runner`, `tools` | — |
+| `pipeline` | Stage sequencing, mutation gating, event emission, run finalisation transaction | `adapters`, `config`, `discovery`, `isolation`, `ledger`, `stages`, `workspace` | — |
 | `queue` | Bounded worker pool, batch enqueue, cancellation, mutating-stage serialisation | `pipeline` | — |
-| `workspace` | Sidecar writer: run dir claim, `run.json`, `stage.json`, per-tool dirs, `latest`, `index.ndjson`, gitignore fix, per-skill finalisation lock | `config`, `discovery` | fs |
-| `isolation` | `MutationSandbox` over a declared path scope; git worktree and snapshot implementations; journalled apply | `discovery` | fs, subprocess |
-| `ledger` | SQLite schema and migrations, fingerprinting, reconciliation, issue state machine, stats queries | — | sqlite |
-| `release` | Release state machine, version resolution, changelog, archive, evidence bundle, installability check | `workspace`, `ledger`, `runner`, `tools`, `discovery` | fs, subprocess |
+| `workspace` | Sidecar writer: run dir claim, `run.json`, `stage.json`, per-tool dirs, `latest`, `index.ndjson`, gitignore fix, per-skill finalisation lock | — | fs |
+| `isolation` | `MutationSandbox` over a declared path scope; git worktree and snapshot implementations; journalled apply; crash recovery | `discovery`, `tools` | fs, subprocess |
+| `ledger` | SQLite schema and migrations, fingerprinting, reconciliation, issue state machine, stats queries | `adapters` | sqlite |
+| `release` | Release state machine, version resolution, changelog, archive, evidence bundle, installability check | `discovery`, `isolation`, `ledger`, `tools` | fs, subprocess |
 
-`adapters` and `ledger` have no dependency on the rest of the engine. That is deliberate: they hold the two subtlest rules in the system and can be tested exhaustively with no mocking, which is what makes M1 a genuine validation of the design.
+`adapters` depends on nothing else in the engine, and `ledger` on nothing but the rule-class map `reconcile` cannot classify without. That is deliberate: they hold the two subtlest rules in the system and can be tested exhaustively with no mocking, which is what makes M1 a genuine validation of the design.
+
+`stages` reaching `queue` is one import and one direction only: `MUTATING_STAGES`, the set the queue serialises on. It lives there so the queue can serialise a mutating stage without importing a stage executor, and `AdapterStageExecutor` reads the same set rather than declaring a second one that could disagree.
 
 ## 4. Discovery, config and identity
 
@@ -502,7 +506,8 @@ Evaluated in order; the first row that matches wins.
 | 1 | Tool not in the lock, or lock entry has no runnable `bin` | `skipped` | `not-installed` | no |
 | 2 | `credentials` unsatisfied by the environment | `skipped` | `no-credentials` | no |
 | 3 | Mutating stage reached without authorisation | `skipped` | `no-authorisation` | no |
-| 3b | Mutation apply aborted after authorisation (preimage drift, journal failure, sandbox open failure) | `errored` | `mutation-aborted` | no |
+| 3b | Mutation apply aborted after authorisation with nothing written (preimage drift, journal failure, sandbox open failure) | `errored` | `mutation-aborted` | no |
+| 3c | The apply completed and a later step of the same stage threw | `errored` | `mutation-incomplete` | no |
 | 4 | Cancelled (§11.4) | `errored` | `cancelled` | no |
 | 5 | Timeout fired, process tree killed | `errored` | `timeout` | no |
 | 6 | A declared artefact exceeds the size cap | `errored` | `artefact-too-large` | no |
@@ -517,7 +522,9 @@ Evaluated in order; the first row that matches wins.
 
 Rows 7 and 8 are ordered so a missing report is classified before the parser is ever handed an empty map; revision 2 left this to whichever error the parser happened to throw. Row 11 is the rule that matters most in practice: a scanner exiting 1 with a clean report has passed, and the parse says so.
 
-Row 3b is the one row a *stage* rather than a tool produces. R10.11 aborts an apply when a target has drifted since the change set was built, and that is neither a tool failure nor a verdict about the skill: the tools ran and were understood, and then the write was refused. Without the row, `applyMutation` throwing propagated out of the pipeline and the run rejected, discarding the partial evidence R5.13 requires a cancelled or aborted run to keep.
+Rows 3b and 3c are the two a *stage* rather than a tool produces. R10.11 aborts an apply when a target has drifted since the change set was built, and that is neither a tool failure nor a verdict about the skill: the tools ran and were understood, and then the write was refused. Without the row, `applyMutation` throwing propagated out of the pipeline and the run rejected, discarding the partial evidence R5.13 requires a cancelled or aborted run to keep.
+
+Row 3c exists because the two cases need opposite recovery and one kind could not carry both. The sandbox record is the authority for telling them apart — both strategies mark it `applied` only once the journal is complete — so the split is read off disk rather than inferred from how far the code got. Settling a completed apply as an abort flipped a git sandbox's marker to `discarded` over a written tree, putting it beyond recovery's reach, and on the snapshot strategy restored the pre-tool state over an apply the user had approved. Neither row keeps its stage's tool runs out of the record: an aborted stage carries whatever the tools produced before the abort, and appends its own synthesised run, because R5.13's partial evidence is the point.
 
 Only rows 10 to 12b feed issue reconciliation: the tool actually ran and its output was understood. Every other row leaves the ledger's issue states untouched, which is the fail-safe that stops a crashed or absent scanner from closing everything it once found.
 
@@ -837,10 +844,11 @@ Revision 1 scoped the sandbox to the skill directory, which the review showed ca
 
 ```ts
 interface MutationSandbox {
+  strategy: 'git-worktree' | 'snapshot'
   workRoot: string                          // repo root inside the sandbox
   resolve(repoRelPath: string): string
   changeSet(): Promise<ChangeSet>
-  apply(): Promise<void>
+  apply(changeSet: ChangeSet): Promise<void>
   discard(): Promise<void>
   dispose(): Promise<void>
 }
@@ -854,8 +862,11 @@ interface ChangeSet {
     binary: boolean
   }>
   unifiedDiff: string                       // text entries only, for preview
+  preimages: Preimage[]                     // what each target looked like here
 }
 ```
+
+`apply` takes the change set rather than re-deriving one, which is what makes R10.11's recheck compare against the values captured at preview: a set derived at apply would compare the tree against itself and never see drift. The preimages travel with it for the same reason.
 
 **`GitWorktreeSandbox`**: `git worktree add --detach <tmp> HEAD` materialises the whole repo, so repo-root files are in scope. `changeSet()` combines `git status --porcelain=v1 -z` with `git diff --binary`, restricted to the declared scope paths, so adds, deletes, renames, mode changes and binary files are all represented — none of which a scoped text diff could express.
 
@@ -876,11 +887,19 @@ Three holes in revision 2's recovery model, all of them windows before `apply()`
   "runId": "…", "stage": "optimise", "strategy": "snapshot",
   "state": "active",                       // active | applied | discarded
   "scope": ["declawed/SKILL.md", "…"],
-  "snapshotDir": "…/snapshot-pre",
+  "repoPath": "…", "skillId": "…",
+  "skillRelPath": "declawed",              // '.' for a repo-root skill
+  "rootSkill": false,
+  "snapshotDir": "…/snapshot-pre",         // empty for the git strategy
+  "workRoot": "…",                         // the sandbox root, so recovery can prune it
   "preimages": [{ "path": "…", "sha256": "…", "mode": 33188 }],
   "openedAt": "…"
 }
 ```
+
+The last five fields are what let recovery run with no live `SkillRef` — a record outlives the run that discovered it, and re-running discovery to recover from a crash would make recovery depend on the config still naming the repo. `skillRelPath` and `rootSkill` are not redundant with `skillId`: `restoreSnapshot` filters the live side through the candidate manifest, so without them it could not tell which live files the snapshot deliberately never captured, and a repo-root restore deleted the repo's `.gitignore` and any stale archive.
+
+`stage` is a plain string, not one of the five: retirement writes the same record under `retire/`, which is what lets one recovery path serve both (§13).
 
 **Where startup is.** `src/cli/` detects on every launch — before the Work screen, before a headless run — and prints one line per unresolved record naming `skillgantry recover`. It does not block the launch: an old marker the user has decided to leave alone must not make the tool unusable. What does block is a *new* mutating run against a skill that holds an unresolved record, which refuses, because applying a second mutation over an unrecovered first is how a compensating rollback stops being able to compensate.
 
@@ -930,16 +949,32 @@ apply or later         → abort  (compensating rollback via the journal)
 
 **Tool-run classification.** `StageResult` carries no message of its own, and `reduceStageOutcome` throws on an empty tool-run list, so `ReleaseStageExecutor` synthesises exactly one `ToolRunRecord` under `RELEASE_TOOL_ID` — the one external tool the stage invokes.
 
+Evaluated in order, like §8.1's table; the first row that matches wins.
+
+| # | Situation | `ToolOutcome` | `error_kind` |
+|---|---|---|---|
+| 1 | Not authorised (headless without `--yes`) | `skipped` | `no-authorisation` |
+| 2 | vercel `skills` absent from the lock | `skipped` | `not-installed` |
+| 3 | No target version supplied, or one that does not resolve against the frontmatter version (R9.10) | `failed` | — |
+| 4 | No sandbox was opened for the stage | `errored` | `mutation-aborted` |
+| 5 | `versions.json` exists but does not read as `{"skills": {…}}` | `failed` | — |
+| 6 | A precondition refused (deprecated, gate, digest, version disagreement, unresolved mutation) | `failed` | — |
+| 7 | The installability check exited non-zero | `failed` | — |
+| 8 | `zip` / `unzip` / `skills` could not be invoked | `errored` | `spawn` |
+| 9 | Packaging or the check timed out | `errored` | `timeout` |
+| 10 | Anything else thrown while staging, packaging or verifying | `errored` | `mutation-aborted` |
+| 11 | Staged, packaged and proven installable | `passed` | — |
+
+Rows 3 to 5 precede the preconditions deliberately: each is a question about the *request* rather than about the skill, and answering "your `versions.json` is unparseable" as a generic gate refusal told the user nothing they could act on. Row 4 is unreachable in the shipped pipeline — `plan()` declares an empty scope for a request that cannot resolve a version, so no sandbox is opened for `execute` to refuse in — and it is stated anyway, because a `StageResult` is what the executor owes its caller in every branch.
+
+**Row 11 is `passed` before the apply, not after it.** The executor's job ends at a verified staging directory; the write itself is the pipeline's, through `gateMutation`. So the tool run says the release was *proven releasable*, and whether the bytes then reached the user's tree is carried by the two rows below, which the pipeline writes over the stage result:
+
 | Situation | `ToolOutcome` | `error_kind` |
 |---|---|---|
-| vercel `skills` absent from the lock | `skipped` | `not-installed` |
-| Not authorised (headless without `--yes`) | `skipped` | `no-authorisation` |
-| A precondition refused (deprecated, gate, digest, version disagreement, unresolved mutation) | `failed` | — |
-| The installability check exited non-zero | `failed` | — |
-| `zip` / `unzip` / `skills` could not be invoked | `errored` | `spawn` |
-| The check timed out | `errored` | `timeout` |
-| The apply aborted after authorisation | `errored` | `mutation-aborted` |
-| Applied | `passed` | — |
+| The apply was refused with nothing written — preimage drift (R10.11), a journal that could not be written, a sandbox that could not be opened, or a non-process failure raised inside the stage | `errored` | `mutation-aborted` |
+| The apply completed and something after it threw — the evidence bundle is the reachable case | `errored` | `mutation-incomplete` |
+
+The two are §8.1's rows 3b and 3c, and they call for opposite recovery, which is why `mutation-aborted` cannot cover both: nothing is compensated for an apply that completed, and treating one as the other either flips a sandbox marker to `discarded` over a written tree, so recovery never offers it again, or restores a pre-tool snapshot over an apply the user approved.
 
 A refusal is `failed` with no `error_kind`, because the gate ran and understood the skill — the same distinction §8.1's governing rule draws between a verdict and an error. A tool run with no adapter touches no issue: `reconcile.ts` tolerates a tool it has no rule-class map for, so this `skills` tool run never enters reconciliation.
 
@@ -958,7 +993,7 @@ Retirement writes `metadata.deprecated: true` into `SKILL.md` frontmatter throug
 - Reversal is one file write; the ledger follows on discovery.
 - A mismatch is not an error state. It is reported in `doctor` as `lifecycle-drift` and resolved by reconciling to the file.
 
-**Invocation.** `skillgantry retire <skill> [--undo] [--superseded-by <id>] [--yes]`. Retirement is not one of the five stages, so it does not run through the pipeline; it runs the same declared-scope, diff-preview, confirmation and journal path directly, with its sandbox and journal under `<workspacePath>/skillgantry/retire/<id>/`. That directory shape is deliberate: startup recovery scans for `sandbox.json` under the workspace, so an interrupted retirement is recovered by the same code as an interrupted release, with no special case.
+**Invocation.** `skillgantry retire <skill> [--undo] [--superseded-by <id>] [--yes] [--json] [--allow-dirty]`. Retirement is not one of the five stages, so it does not run through the pipeline; it runs the same declared-scope, diff-preview, confirmation and journal path directly, with its sandbox and journal under `<workspacePath>/skillgantry/retire/<id>/`. That directory shape is deliberate: startup recovery scans for `sandbox.json` under the workspace, so an interrupted retirement is recovered by the same code as an interrupted release, with no special case.
 
 The cache still earns its place: the Issues and Dashboard screens filter deprecated skills across every registered repo without reading 76 files.
 
@@ -1021,15 +1056,24 @@ Discoverability is layered rather than crammed into the header: a five-key foote
 *Satisfies R12.1–R12.4, R12.5a, R12.5b.*
 
 ```
-skillgantry run <skill> [--repo <path>] --stage validate,evaluate,security
-                        [--json] [--yes] [--concurrency N]
-skillgantry doctor [--json]
-skillgantry release <skill> --version <semver|major|minor|patch> [--yes] [--json]
-skillgantry retire <skill> [--undo] [--superseded-by <id>] [--yes] [--json]
+skillgantry run <skill> --stage validate,evaluate,security [--json] [--yes]
+skillgantry doctor [--json] [--migrate-rule-map]
+skillgantry setup
+skillgantry release <skill> --version <semver|major|minor|patch>
+                            [--yes] [--json] [--allow-dirty] [--notes <text>]
+skillgantry retire <skill> [--undo] [--superseded-by <id>]
+                           [--yes] [--json] [--allow-dirty]
 skillgantry recover [--restore <runId>] [--forget <runId>] [--json]
+skillgantry [--concurrency <n>]                    # no subcommand: the TUI
 ```
 
+A skill is named by `<repoId>/<name>`, by a bare name when that is unambiguous, or by the `name` its frontmatter declares — which is what a repo-root skill is usually called, since its id comes from the directory. There is no `--repo` filter: revision 2 listed one, nothing required it, and the selector already disambiguates.
+
+`--concurrency` belongs to the root action alone, because it sizes the worker pool for a session and a headless `run` executes one skill. Root `--version` and `release --version` are distinct options on distinct commands; commander only keeps them apart under `enablePositionalOptions`, without which the root swallows the argument before the subcommand is reached.
+
 Consumes the same event stream, rendering line output or newline-delimited JSON. Exits non-zero when any executed stage outcome is not `passed`. Mutating stages are skipped without `--yes`; with it, the diff is emitted before the write.
+
+Every launch, headless or not, first scans for an unresolved mutation record and prints one `warning:` line per record naming `skillgantry recover` (§12.2). It never blocks the launch.
 
 ## 16. Test strategy
 
@@ -1144,11 +1188,24 @@ Two problems this document could not have caught before a plan tried to build ag
 
 Also made explicit rather than implied: the two doctor conditions that report without failing, and where doctor's skill and ledger inputs come from (§5.3).
 
+## 18.3 What changed while M5 was implemented
+
+Amendments this document took from building against it, each corrected in the branch that proved it wrong rather than left to drift. Recorded in [plan-m5.md](plan-m5.md).
+
+| Problem | Resolution |
+|---|---|
+| One abort kind could not describe both an apply that wrote nothing and one that completed before a later step threw, though the two call for opposite recovery | §8.1 gains row 3c, `mutation-incomplete`, read off the sandbox record rather than inferred from how far the code got; §12.4 states both |
+| §12.4's table named an outcome the executor cannot reach and omitted five it can, and read `passed` as "applied" though the executor's `passed` means "staged and proven installable" — the write is the pipeline's | Table re-derived from the shipped branches, ordered first-match-wins, with the apply's own two outcomes stated separately below it |
+| §12.1's `MutationSandbox` and §12.2's `sandbox.json` were written before recovery had to work without a live `SkillRef` | `apply` takes the change set, `ChangeSet` carries preimages, and the record carries the five fields recovery rebuilds a `SkillRef` from |
+| §3 still counted eight adapter-backed tools, and its "Depends on" column predated `isolation`, `release` and the module moves M4 and M5 made | Counts corrected to the four shipped adapters; the column re-derived from real value imports, with type-only imports named as non-dependencies |
+| §15 listed a `--repo` filter nothing required or shipped, and omitted the flags that did | Command list re-derived from the shipped program, including where `--concurrency` and `--version` actually live |
+| The journal read through symlinks, so an apply wrote a regular file over a user's link and a rollback restored a copy of its target — the one place in the system not already following §4.4's link rule | Links are hashed by target string and put back as links, keyed off the `S_IFLNK` bit the recorded mode already carries |
+
 ## 19. Risks carried into implementation
 
 | Risk | Mitigation |
 |---|---|
-| Adapter contract shaped by Python tooling; five of the eight tool adapters are Python, and M1 validates against one | Pull skill-lint (TypeScript, different output shape) forward if M4 planning shows contract strain |
+| Adapter contract shaped by Python tooling; two of the four shipped adapters are Python, and M1 validated against one | Closed in M4: skill-lint (TypeScript) and skill-up (Go) both ship, and the contract took neither |
 | Merge-first identity understates occurrence counts | `occurrence_count` and per-detection rows preserve the detail; revisit if the Issues screen proves it insufficient |
 | Unredacted native artefacts under the sidecar | 0700, gitignored, `redacted: false` recorded; no tool's input can reach them (§4.4); revisit if a scanner is found to echo credentials into its own report |
 | Materialising a candidate costs a copy per run for repo-root skills | Only non-self-contained candidates are copied, which is the repo-root case alone; the 22-skill reference repo copies nothing |
