@@ -13,7 +13,7 @@ import type { MutationSandbox } from '../isolation/types.js'
 import type { Ledger } from '../ledger/db.js'
 import { recordRun } from '../ledger/record.js'
 import { AdapterStageExecutor } from '../stages/adapter-stage.js'
-import { haltsChain } from '../stages/outcome.js'
+import { haltsChain, reduceStageMetrics } from '../stages/outcome.js'
 import { ReleaseStageExecutor } from '../stages/release-stage.js'
 import type {
   PendingMutation,
@@ -325,6 +325,19 @@ export function runPipeline(input: RunPipelineInput): RunHandle {
         ...(input.allowDirty === undefined ? {} : { allowDirty: input.allowDirty }),
       }
 
+      const stageStartedAt = nowIso()
+
+      // Stamped here rather than in each executor: `abortedStage` builds a
+      // StageResult too, and three call sites remembering to fill the same
+      // three fields is three chances for a stage to reach the ledger with a
+      // span that is not its own.
+      const stamp = (settled: StageResult): StageResult => ({
+        ...settled,
+        metrics: reduceStageMetrics(settled.toolRuns),
+        startedAt: stageStartedAt,
+        endedAt: nowIso(),
+      })
+
       const plan = await executor.plan(ctx0)
       queue.push({ type: 'stage:start', runId: id, stage, toolIds: plan.toolIds })
       for (const toolId of plan.toolIds) {
@@ -367,7 +380,7 @@ export function runPipeline(input: RunPipelineInput): RunHandle {
       }
 
       if (openFailure !== null) {
-        const result = abortedStage(stage, plan, `sandbox: ${openFailure}`)
+        const result = stamp(abortedStage(stage, plan, `sandbox: ${openFailure}`))
         await writeStageJson(stageDir, result)
         results.push(result)
         queue.push({ type: 'stage:done', runId: id, stage, outcome: result.outcome, result })
@@ -388,7 +401,7 @@ export function runPipeline(input: RunPipelineInput): RunHandle {
         for (const toolRun of executed.toolRuns) {
           queue.push({ type: 'tool:done', runId: id, stage, toolId: toolRun.toolId, result: toolRun })
         }
-        result = await gateMutation(executor, ctx, plan, executed, progress)
+        result = stamp(await gateMutation(executor, ctx, plan, executed, progress))
       } catch (err) {
         // No sandbox means this stage never touched isolation (not mutating,
         // or not authorised), so there is nothing of row 3b's to report —
@@ -410,12 +423,14 @@ export function runPipeline(input: RunPipelineInput): RunHandle {
           // with a complete journal — so recovery would never offer it again —
           // and, on the snapshot strategy, restored the pre-tool state over an
           // apply the user had approved.
-          result = abortedStage(stage, plan, (err as Error).message, executed, 'mutation-incomplete')
+          result = stamp(
+            abortedStage(stage, plan, (err as Error).message, executed, 'mutation-incomplete'),
+          )
         } else {
           // Row 3b. R10.11 aborts an authorised apply on drift, and R5.13 requires
           // the run to finalise anyway so its partial evidence survives.
           await executor.discardMutation?.(ctx, { diff: '', scope: [] }).catch(() => undefined)
-          result = abortedStage(stage, plan, (err as Error).message, executed)
+          result = stamp(abortedStage(stage, plan, (err as Error).message, executed))
         }
       } finally {
         await sandbox?.dispose()

@@ -1,5 +1,13 @@
 import { atLeastSeverity, maxSeverity } from '../types.js'
-import type { RawFinding, Severity, StageOutcome, ToolOutcome } from '../types.js'
+import type {
+  MetricKey,
+  Metrics,
+  RawFinding,
+  Severity,
+  StageOutcome,
+  ToolOutcome,
+} from '../types.js'
+import type { ToolRunRecord } from './types.js'
 
 export const TOOL_OUTCOMES: readonly ToolOutcome[] = ['passed', 'failed', 'errored', 'skipped']
 
@@ -65,6 +73,24 @@ export function reduceStageOutcome(outcomes: readonly ToolOutcome[]): StageVerdi
   if (ran > 0) return { outcome: 'degraded', verdict }
   if (errored > 0) return { outcome: 'errored', verdict }
   return { outcome: 'skipped', verdict }
+}
+
+/**
+ * A stage's metrics are the sum of its tool runs' count-like metrics.
+ *
+ * `durationMs` is dropped rather than summed: fan-out tools run concurrently,
+ * so their durations added together overstate the stage, and
+ * `stages.started_at`/`ended_at` is the one field that cannot.
+ */
+export function reduceStageMetrics(toolRuns: readonly ToolRunRecord[]): Metrics {
+  const out: Metrics = {}
+  for (const run of toolRuns) {
+    for (const [key, value] of Object.entries(run.metrics) as [MetricKey, number][]) {
+      if (key === 'durationMs') continue
+      out[key] = (out[key] ?? 0) + value
+    }
+  }
+  return out
 }
 
 /** The read-only chain continues only while stages pass outright. */

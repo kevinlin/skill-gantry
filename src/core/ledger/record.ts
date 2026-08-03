@@ -101,9 +101,9 @@ export function recordRun(ledger: Ledger, input: RunRecordInput): RunDelta {
         stage.stage,
         stage.outcome,
         stage.verdict,
-        input.startedAt,
-        input.endedAt,
-        '{}',
+        stage.startedAt ?? null,
+        stage.endedAt ?? null,
+        JSON.stringify(stage.metrics ?? {}),
       )
       const stageId = (db.prepare('select last_insert_rowid() as id').get() as { id: number }).id
 

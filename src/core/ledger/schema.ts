@@ -112,4 +112,11 @@ export const MIGRATIONS: readonly string[] = [
     note       text
   );
   `,
+  `
+  -- Every stage row written before this migration carried the *run's* span in
+  -- these two columns, so a wall-clock query would report each stage of a run
+  -- as taking the whole run. A gap the query can report is better than an
+  -- average of two different measurements, so the wrong values go.
+  update stages set started_at = null, ended_at = null;
+  `,
 ]

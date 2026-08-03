@@ -75,6 +75,16 @@ export interface StageResult {
   outcome: StageOutcome
   verdict: 'passed' | 'failed'
   toolRuns: ToolRunRecord[]
+  /**
+   * All three are stamped by the pipeline after the stage settles, in one
+   * place, so an aborted stage (§8.1 rows 3b and 3c) carries them too rather
+   * than each executor remembering to. Absent means "not recorded" and reaches
+   * the ledger as null: a stage span defaulted to the run's is the lie
+   * migration 3 exists to delete.
+   */
+  metrics?: Metrics
+  startedAt?: string
+  endedAt?: string
 }
 
 export interface PendingMutation {
