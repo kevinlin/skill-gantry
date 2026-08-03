@@ -88,6 +88,7 @@ export {
   scanInterrupted,
   type InterruptedMutation,
 } from './isolation/recover.js'
+export { retireSkill, type RetireInput, type RetireResult } from './release/retire.js'
 export type {
   ChangeEntry,
   ChangeKind,

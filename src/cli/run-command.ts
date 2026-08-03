@@ -11,6 +11,7 @@ import type { SkillRef, Stage } from '../core/types.js'
 import { runDoctor } from './doctor-command.js'
 import { detectInterrupted, formatInterrupted, runRecover } from './recover-command.js'
 import { runRelease, type ReleaseOptions } from './release-command.js'
+import { runRetire, type RetireOptions } from './retire-command.js'
 import { needsSetup, startSetup, type SetupOptions } from './setup-command.js'
 import { startTui, type TuiOptions } from './tui-command.js'
 
@@ -190,6 +191,19 @@ export function buildProgram(deps: CliDeps): GantryProgram {
     .action(async (selector: string, opts: ReleaseOptions) => {
       await noticeInterrupted(deps)
       program.exitCode = await runRelease(deps, selector, opts)
+    })
+
+  program
+    .command('retire')
+    .argument('<skill>', 'skill id or bare name')
+    .option('--undo', 'clear the deprecation instead of setting it')
+    .option('--superseded-by <id>', 'the skill that replaces this one')
+    .option('--yes', 'prior authorisation for the write')
+    .option('--json', 'emit the pending mutation as JSON')
+    .option('--allow-dirty', 'proceed against a skill with uncommitted changes')
+    .action(async (selector: string, opts: RetireOptions) => {
+      await noticeInterrupted(deps)
+      program.exitCode = await runRetire(deps, selector, opts)
     })
 
   program
