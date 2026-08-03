@@ -89,7 +89,7 @@ Rule applied throughout `src/core/`: a module that owns I/O does not also own de
 | `queue/` | bounded worker pool, job state machine, one tagged event stream, mutation resolution routing | — |
 | `workspace/` | sidecar writer: run dirs, `run.json`, `stage.json`, `latest`, `index.ndjson` | fs |
 | `isolation/` | `MutationSandbox` over a declared path scope (`git-worktree.ts`, `snapshot.ts`, `open.ts` dispatch), `sandbox.json` record, journalled apply with preimage recheck, crash recovery | fs, subprocess |
-| `ledger/` | SQLite schema and migrations, fingerprinting, reconciliation, issue state machine, gate and lifecycle queries | sqlite |
+| `ledger/` | SQLite schema and migrations, fingerprinting, reconciliation, issue state machine, gate and lifecycle queries, statistics and issue-triage queries | sqlite |
 | `release/` | version resolution, frontmatter and changelog edits, `versions.json`, preconditions, archive, installability check, evidence bundle, retirement | fs, subprocess |
 
 `adapters` depends on nothing else in the engine and `ledger` on nothing but the rule-class map. They hold the subtlest rules and are tested exhaustively with no mocking.
@@ -125,7 +125,11 @@ Retirement (`release/retire.ts`) is not a stage and does not run through the pip
 
 ### The TUI
 
-`src/tui/store.ts` is a reducer over `Action`, and every input — queue events, log flushes, key presses — is an action. The components are thin. `views.ts` holds the reads the store cannot do itself (`SKILL.md`, artefact listing, last outcome per skill from the sidecar `index.ndjson` rather than the ledger, since cross-repo ledger aggregates are M6).
+`src/tui/store.ts` is a reducer over `Action`, and every input — queue events, log flushes, key presses — is an action. The components are thin. `views.ts` holds the reads the store cannot do itself (`SKILL.md`, artefact listing, last outcome per skill from the sidecar `index.ndjson` — the Work screen's per-skill status stays a sidecar read, because it is a per-skill question the sidecar already answers).
+
+**Every ledger read reaches the TUI through one injected port.** `views.ts` declares `GantryViews`; `src/cli/gantry-views.ts` implements it, which is the only place the ledger, `doctor`, config and `.env` meet for a screen. The same seam shape as `startRun`: the TUI may not open the ledger and may not spawn, so a screen asks for data and gets it. The port opens and closes the ledger per call rather than holding a handle — a long-lived WAL reader in the writer's process serves a snapshot from before the run it was opened to show.
+
+Dashboard, Issues, Tools and Settings are reached through the `:` palette, never a direct key: Work already spends `1`–`4` on its output panels. `esc` on any other screen returns to Work. Palette key routing reads a ref, not state — React batches keypresses that arrive in one tick, and reading state meant every character but the last was lost. Dashboard, Tools and Settings build their bodies as flat `ScreenRow[]` lists in `src/tui/rows.ts`, which is what lets §14.1's row budget be asserted without rendering Ink.
 
 `layout.ts` holds the size decisions, and holds all of them: `layoutFor(columns, rows)` is pure, `Work` calls `useWindowSize()` and passes the result down, and no component carries a fixed height. `components/Panel.tsx` is the one place the `boxed`/`bare` chrome choice is read. Design §14.1 states the three rules a frame has to obey to stay inside its row budget; break one and a panel falls off the bottom of an 80×24.
 

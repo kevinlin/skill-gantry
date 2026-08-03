@@ -4402,7 +4402,14 @@ Every requirement M6 owns, and the task that satisfies it. A requirement with no
 
 ## Deviations found while implementing
 
-*Filled in as the branch lands. A plan is a record of intent; this section records where building against it proved the intent wrong.*
+1. **The palette reads its open flag and query from a ref, not from state** (Task 7). The plan's keymap branched on `state.palette.open` and appended to `state.palette.query`. React batches the dispatches from keypresses that arrive in one tick, so every handler in that batch saw the same stale value: `:` and the first letter arrived together, the letter's handler still saw the palette closed and fell through to Work's bindings, and typing `issues` filtered on whatever the last character matched. `app.tsx` now keeps `{ open, query }` in a ref for key routing and dispatches for rendering. Key handling has to be synchronous; state is what the frame draws.
+2. **The Issues screen gives the rule class its own column** (Task 9). The plan put `ruleClass`, `relPath` and the blockers in one field truncated by `truncateMiddle`, which elides the *head* so a basename survives — and at 100 columns that ate the rule class the plan's own test asserts is visible. The rule class is what names an issue, so it gets a fixed column and only the path plus blockers absorb the truncation.
+3. **`toolsRows` names `lifecycle-drift` on each row rather than as a heading** (Task 10). The plan's heading was `Lifecycle drift` while its test asserted the token `lifecycle-drift`. The row now carries the kind in `doctor`'s own vocabulary, so the screen and the headless report call one condition by one name.
+4. **Row casts go through `unknown`** (Tasks 4, 5). `node:sqlite` types `.all()` as `Record<string, SQLOutputValue>[]`, which does not overlap a named interface, so `as SeverityCount[]` fails `tsc`. Matched the existing `as unknown as` form in `reconcile.ts` and `rule-map-migration.ts` rather than inventing a third convention.
+5. **The four screen stubs render `state.viewError ?? 'loading…'`** (Task 7). The plan's placeholder destructured `state` as `_state`, which `@typescript-eslint/no-unused-vars` rejects. Reading the error is what the finished screens do anyway, so the stub does it too.
+6. **`Help.tsx` keys its rows on key plus description.** `r` now names two bindings, enqueue on Work and re-probe on Tools, so the key alone is no longer a unique React key.
+7. **The acceptance suite waits 3 s on the Tools screen** (Task 12). It is the one screen whose port call spawns: `doctor` invokes each runtime's version argv, which the plan's shared 60 ms settle catches mid-probe.
+8. **The layout regression asserts the frame is the screen it navigated to** (Task 11). A Work frame fits every size, so a budget assertion alone would have passed on a palette navigation that silently failed. No screen overflowed, so the plan's Step 3 was a no-op.
 
 ## Changelog
 
