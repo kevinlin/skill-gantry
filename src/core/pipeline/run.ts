@@ -13,6 +13,7 @@ import type { Ledger } from '../ledger/db.js'
 import { recordRun } from '../ledger/record.js'
 import { AdapterStageExecutor } from '../stages/adapter-stage.js'
 import { haltsChain } from '../stages/outcome.js'
+import { ReleaseStageExecutor } from '../stages/release-stage.js'
 import type {
   PendingMutation,
   ReleaseTarget,
@@ -39,6 +40,15 @@ import { AsyncEventQueue } from './queue.js'
 /** Test seam and M5 seam: the pipeline never names a concrete executor. */
 export type StageExecutorFactory = (stage: Stage) => StageExecutor
 
+/**
+ * Callers that pass no executor factory and no ledger — there are none left in
+ * this codebase, but the export is kept for callers outside it — get the
+ * adapter executor for every stage, `release` included, which throws `unknown
+ * tool: release` the moment `AdapterStageExecutor.plan()` runs. `release` has
+ * no adapter by design (design §5.1a); reaching this factory for it is a
+ * caller that never supplied the ledger a `ReleaseStageExecutor` needs, not a
+ * stage `AdapterStageExecutor` can be taught to run.
+ */
 export const defaultExecutorFactory: StageExecutorFactory = (stage) =>
   new AdapterStageExecutor(stage)
 
@@ -61,6 +71,8 @@ export interface RunPipelineInput {
   releaseTarget?: ReleaseTarget
   /** R10.3's override, off by default. */
   allowDirty?: boolean
+  /** R10.10: supplied by `src/cli/`, the only place that scans workspaces. */
+  interrupted?: boolean
 }
 
 export interface RunSummary {
@@ -117,7 +129,19 @@ function abortedStage(
 export function runPipeline(input: RunPipelineInput): RunHandle {
   const queue = new AsyncEventQueue<RunEvent>()
   const cancellation = new Cancellation()
-  const makeExecutor = input.executorFactory ?? defaultExecutorFactory
+  // Built per-run rather than reusing `defaultExecutorFactory`: a
+  // `ReleaseStageExecutor` needs the ledger (R9.8/R9.9's gate query) and the
+  // interrupted flag (R10.10), neither of which a stage-only factory
+  // signature can carry.
+  const makeExecutor: StageExecutorFactory =
+    input.executorFactory ??
+    ((stage) =>
+      stage === 'release'
+        ? new ReleaseStageExecutor({
+            ledger: input.ledger,
+            ...(input.interrupted === undefined ? {} : { interrupted: input.interrupted }),
+          })
+        : new AdapterStageExecutor(stage))
   const gate = new MutationGate()
   const mutationTimeoutMs = input.mutationTimeoutMs ?? DEFAULT_MUTATION_TIMEOUT_MS
 
