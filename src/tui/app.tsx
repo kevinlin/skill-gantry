@@ -1,6 +1,12 @@
 import { useEffect, useReducer, useRef } from 'react'
 import { Box, Text, useApp, useInput, useWindowSize } from 'ink'
-import type { QueueHandle, SkillRef, Stage } from '../core/index.js'
+import type {
+  IssueAction,
+  IssueState,
+  QueueHandle,
+  SkillRef,
+  Stage,
+} from '../core/index.js'
 import { Dashboard } from './components/Dashboard.js'
 import { Issues } from './components/Issues.js'
 import { Palette } from './components/Palette.js'
@@ -208,6 +214,38 @@ export function App({
     // is one keystroke from where they came from.
     if (key.escape && state.screen !== 'work') {
       dispatch({ type: 'set-screen', screen: 'work' })
+      return
+    }
+    if (state.screen === 'issues') {
+      const row = state.issues[state.selectedIssue]
+      const act = (action: IssueAction): void => {
+        if (!row) return
+        // Re-read rather than patch: a locally-patched row the current filter no
+        // longer admits stays on screen and cannot be acted on again, and the
+        // ledger is the authority for what the transition actually produced.
+        void views
+          .actOnIssue(row.fingerprint, action)
+          .then(() => dispatch({ type: 'refresh-views' }))
+          .catch((err: unknown) =>
+            dispatch({ type: 'view-error', message: (err as Error).message }),
+          )
+      }
+      if ((plain && input === 'j') || key.downArrow) dispatch({ type: 'select-issue', delta: 1 })
+      else if ((plain && input === 'k') || key.upArrow) dispatch({ type: 'select-issue', delta: -1 })
+      else if (plain && input === 'a') act('acknowledge')
+      else if (plain && input === 'w') act('wontfix')
+      else if (plain && input === 'o') act('reopen')
+      else if (plain && input === 'f') {
+        const states: Array<IssueState | undefined> = [
+          undefined,
+          'open',
+          'acknowledged',
+          'wontfix',
+          'fixed',
+        ]
+        const next = states[(states.indexOf(state.issueFilter.state) + 1) % states.length]
+        dispatch({ type: 'set-issue-filter', filter: next === undefined ? {} : { state: next } })
+      }
       return
     }
     if (state.screen === 'dashboard') {
