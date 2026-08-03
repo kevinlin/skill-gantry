@@ -207,6 +207,28 @@ export async function applyJournalled(input: ApplyInput): Promise<void> {
 }
 
 /**
+ * Removes the `<target>.sg-tmp` files `writeAtomic` leaves behind when a crash
+ * lands between creating one and renaming it over its target. They matter
+ * beyond tidiness: a leftover temp inside the candidate root is a file the
+ * manifest walk would pick up, so it changes every later digest — and a digest
+ * change is what makes release refuse. Swept during recovery, which is the one
+ * moment something is known to have crashed mid-apply.
+ */
+export async function sweepApplyTemps(journal: Journal): Promise<string[]> {
+  const swept: string[] = []
+  for (const entry of journal.entries) {
+    const temp = `${join(journal.liveRoot, entry.path)}.sg-tmp`
+    try {
+      await rm(temp)
+      swept.push(entry.path)
+    } catch {
+      // Not there is the normal case.
+    }
+  }
+  return swept
+}
+
+/**
  * Compensating rollback (R10.9). Returns the paths it restored, so a caller can
  * report them; an empty array means the journal was complete and nothing needed
  * compensating.

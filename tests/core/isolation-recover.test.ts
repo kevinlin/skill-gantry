@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { restoreSnapshot } from '../../src/core/isolation/snapshot.js'
 import { forgetInterrupted, restoreInterrupted, scanInterrupted } from '../../src/core/isolation/recover.js'
@@ -125,6 +125,26 @@ describe('startup recovery', () => {
     // Must still hold the approved bytes, not the snapshot's pre-stage ones.
     expect(await readFile(join(repo, 'sk/SKILL.md'), 'utf8')).toBe('applied by the optimiser\n')
     expect((await readSandboxRecord(recordDir))?.state).toBe('applied')
+  })
+
+  it('sweeps a leftover .sg-tmp, which would otherwise change every later digest', async () => {
+    const { repo, skill, recordDir } = await interrupted()
+    await writeFile(
+      join(recordDir, 'journal.json'),
+      JSON.stringify({
+        runId: 'run-a',
+        stage: 'optimise',
+        liveRoot: repo,
+        complete: true,
+        entries: [{ path: 'sk/SKILL.md', priorSha: 'x', priorMode: 33188, priorBytesRef: 'aa' }],
+      }),
+    )
+    // What `writeAtomic` leaves behind when a crash lands between creating the
+    // temp file and renaming it over the target. It sits inside the candidate
+    // root, so the manifest walk picks it up and the digest moves.
+    await writeFile(join(repo, 'sk/SKILL.md.sg-tmp'), 'half a write\n')
+    await restoreInterrupted((await scanInterrupted([skill]))[0]!)
+    await expect(stat(join(repo, 'sk/SKILL.md.sg-tmp'))).rejects.toThrow()
   })
 
   it('restores a git-strategy record by pruning, leaving the tree alone', async () => {

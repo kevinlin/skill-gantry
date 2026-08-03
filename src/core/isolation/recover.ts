@@ -2,7 +2,7 @@ import { rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { SkillRef } from '../types.js'
 import { type Exec, defaultExec } from '../tools/exec.js'
-import { readJournal, rollbackJournal } from './journal.js'
+import { readJournal, rollbackJournal, sweepApplyTemps } from './journal.js'
 import { markSandboxRecord, scanSandboxRecords } from './record.js'
 import { restoreSnapshot } from './snapshot.js'
 import { RETIRE_STAGE, type SandboxRecord } from './types.js'
@@ -114,6 +114,10 @@ export async function restoreInterrupted(
   exec: Exec = defaultExec,
 ): Promise<RecoveryOutcome> {
   const journal = await readJournal(found.recordDir)
+  // Before either journal branch: a crash between `writeAtomic`'s temp file and
+  // its rename leaves `<target>.sg-tmp` inside the candidate root, where it
+  // changes every later digest and so blocks the next release.
+  if (journal) await sweepApplyTemps(journal)
 
   if (journal?.complete) {
     await markSandboxRecord(found.recordDir, 'applied')

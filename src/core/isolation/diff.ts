@@ -1,6 +1,3 @@
-import { mkdtemp, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { type Exec, defaultExec } from '../tools/exec.js'
 
 /** An absent side renders against /dev/null, which git accepts as a path. */
@@ -62,25 +59,4 @@ function rewriteHeaders(stdout: string, from: string, to: string, label: string)
       return line
     })
     .join('\n')
-}
-
-/** A pair of temp files, for diffing bytes that are not both on disk. */
-export async function diffBuffers(
-  before: Buffer | null,
-  after: Buffer | null,
-  label: string,
-  exec: Exec = defaultExec,
-): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), 'sg-diff-'))
-  let a: string | null = null
-  let b: string | null = null
-  if (before) {
-    a = join(dir, 'before')
-    await writeFile(a, before)
-  }
-  if (after) {
-    b = join(dir, 'after')
-    await writeFile(b, after)
-  }
-  return unifiedDiffFor(a, b, label, exec)
 }
