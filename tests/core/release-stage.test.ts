@@ -34,12 +34,18 @@ async function fakeSkills(exitCode = 0): Promise<string> {
 }
 
 async function scene(
-  opts: { manifest?: boolean; skillsExit?: number; corruptManifest?: boolean } = {},
+  opts: {
+    manifest?: boolean
+    skillsExit?: number
+    corruptManifest?: boolean
+    files?: Record<string, string>
+  } = {},
 ) {
   const withManifest = opts.manifest !== false
   const repo = await makeGitRepo({
     files: {
       'sk/SKILL.md': SKILL_MD_FULL('sk'),
+      ...opts.files,
       ...(opts.corruptManifest
         ? { 'versions.json': '{ not valid json' }
         : withManifest
@@ -141,7 +147,24 @@ async function run(s: Awaited<ReturnType<typeof scene>>, over: Partial<StageCont
           ...(base.allowDirty === undefined ? {} : { allowDirty: base.allowDirty }),
         })
       : undefined
-  const ctx: StageContext = { ...base, ...(sandbox ? { sandbox } : {}) }
+  const ctx: StageContext = {
+    ...base,
+    // What `run.ts:342-350` does, and what this harness used to skip: with the
+    // live `skill` left in place, `candidateManifest` and
+    // `readVersionsManifest` were exercised against the live tree while
+    // production ran them against the sandbox. That blind spot hid the
+    // untracked-candidate-file digest mismatch entirely.
+    ...(sandbox
+      ? {
+          skill: {
+            ...base.skill,
+            dir: sandbox.resolve(base.skill.relPath),
+            repo: { ...base.skill.repo, path: sandbox.workRoot },
+          },
+          sandbox,
+        }
+      : {}),
+  }
   const result = await executor.execute(ctx, plan)
   return { executor, ctx, plan, sandbox, result }
 }
@@ -238,6 +261,43 @@ describe('ReleaseStageExecutor', () => {
     // evidence — the bug this guard exists to close.
     const pending = await executor.prepareMutation(ctx, await executor.plan(ctx), result)
     expect(pending).toBeNull()
+    await sandbox?.dispose()
+  })
+
+  it('applies the archive into a repo whose .gitignore excludes it', async () => {
+    // `*.zip` is a common convention. `git add -A` honours `.gitignore`, so the
+    // archive was silently absent from the change set, absent from the journal
+    // and never written — while `evidence/release.json` recorded its SHA-256
+    // and the stage still reported `passed`. R9.4 silently unmet.
+    const s = await scene({ files: { '.gitignore': '*.zip\n' } })
+    const { result, ctx, executor, sandbox } = await run(s)
+    expect(result.outcome).toBe('passed')
+    const pending = await executor.prepareMutation(ctx, await executor.plan(ctx), result)
+    expect(pending?.scope).toContain('sk_1.1.0.zip')
+    await executor.applyMutation(ctx, pending!)
+    expect((await stat(join(s.repo, 'sk_1.1.0.zip'))).size).toBeGreaterThan(0)
+    await sandbox?.dispose()
+  })
+
+  it('refuses to open a sandbox over an uncommitted candidate file outside the scope', async () => {
+    // The sandbox is HEAD plus the seeded paths, and the digest is taken over
+    // it, so an untracked candidate file used to surface as `digest-mismatch`
+    // telling the user to re-run gates that would reproduce the same digest.
+    // R10.3 now names the uncommitted work instead.
+    const s = await scene()
+    await writeFile(join(s.repo, 'sk/reference.md'), 'notes\n')
+    await expect(run(s)).rejects.toThrow(/uncommitted changes[\s\S]*sk\/reference\.md/)
+  })
+
+  it('seeds an uncommitted candidate file under the override so the digest agrees', async () => {
+    const s = await scene()
+    await writeFile(join(s.repo, 'sk/reference.md'), 'notes\n')
+    // Gates re-seeded for the bytes as they now stand: the live digest and the
+    // sandbox digest have to agree once the override seeds the file.
+    const digest = await skillDigest(await candidateManifest(s.skill))
+    passGates(s.ledger, s.skill, digest, '019000000000-b')
+    const { result, sandbox } = await run(s, { allowDirty: true })
+    expect(result.outcome).toBe('passed')
     await sandbox?.dispose()
   })
 

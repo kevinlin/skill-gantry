@@ -686,6 +686,35 @@ for await (const event of handle.events) {
     expect(evidence.manifestMode).toBe('none')
   })
 
+  it('still lands the archive in a repo whose .gitignore excludes zips', async () => {
+    // R9.4 end to end against the common `*.zip` convention. The archive rides
+    // the change set by sitting in the sandbox at its eventual path, and
+    // `git add -A` honours `.gitignore`, so without a forced stage the archive
+    // was dropped from the diff and the journal while the evidence bundle still
+    // recorded its SHA-256 and the stage still reported `passed`.
+    const h = await cliHome()
+    const repo = await makeGitRepo({
+      files: { 'sk/SKILL.md': SKILL_MD_FULL('sk'), '.gitignore': '*.zip\n' },
+    })
+    await registerRepo(h.home, repo)
+    await saveToolLock(h.home, {
+      version: 1,
+      tools: { skills: skillsLockEntry(await fakeSkillsBin(0)) },
+    })
+
+    const config = await loadConfig(h.home)
+    const [skill] = await discoverSkills(config.repos[0] as (typeof config.repos)[number])
+    await seedGatesForCurrentBytes(h.dbPath, skill as SkillRef)
+
+    h.out.length = 0
+    const code = await h.exec(['release', 'sk', '--version', 'minor', '--yes'])
+    expect(code).toBe(0)
+    expect((await stat(join(repo, 'sk_1.1.0.zip'))).size).toBeGreaterThan(0)
+    // The diff the user approved named it, rather than promising a file the
+    // apply would never write.
+    expect(h.out.join('\n')).toContain('sk_1.1.0.zip')
+  }, 30_000)
+
   it('leaves no repo-root archive and no live change when packaging fails', async () => {
     const h = await cliHome()
     const repo = await makeGitRepo({

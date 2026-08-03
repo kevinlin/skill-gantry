@@ -1,9 +1,15 @@
 import { createHash } from 'node:crypto'
-import { copyFile, lstat, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { copyFile, cp, lstat, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, normalize, sep } from 'node:path'
 import type { SkillRef } from '../types.js'
 import { type Exec, defaultExec } from '../tools/exec.js'
+import {
+  type CandidatePolicy,
+  candidatePolicyFor,
+  containsAllowed,
+  underCandidateRoot,
+} from './candidate-policy.js'
 import { applyJournalled } from './journal.js'
 import { markSandboxRecord, writeSandboxRecord } from './record.js'
 import type { ChangeEntry, ChangeSet, MutationSandbox, Preimage } from './types.js'
@@ -101,26 +107,97 @@ export function parseRawDiff(raw: string, binary: ReadonlySet<string>): ChangeEn
   return entries
 }
 
-/** The scope paths git reports as dirty in the user's working tree. */
-async function dirtyScopePaths(
+/**
+ * The paths git reports as dirty in the user's working tree, across the
+ * declared scope **and the whole candidate**.
+ *
+ * Scope alone was too narrow. `ReleaseStageExecutor` digests the candidate as
+ * the sandbox sees it — HEAD plus whatever was seeded — and compares that to
+ * the digest the gates passed against, which was taken from the live tree. Any
+ * uncommitted candidate file outside the scope (`sk/reference.md`, say) made
+ * those two disagree, so release refused with `digest-mismatch` and told the
+ * user to re-run the gates, which reproduced the same live digest and refused
+ * again. Naming the uncommitted work is actionable; `--allow-dirty` is still
+ * the way past it, and seeding then makes the two digests agree.
+ */
+async function dirtyPaths(
   repoPath: string,
   scope: readonly string[],
+  policy: CandidatePolicy,
   exec: Exec,
 ): Promise<string[]> {
-  const { stdout } = await exec('git', ['status', '--porcelain=v1', '-z', '--', ...scope], {
+  const pathspec = [...new Set([...scope, policy.root === '' ? '.' : policy.root])]
+  const { stdout } = await exec('git', ['status', '--porcelain=v1', '-z', '--', ...pathspec], {
     cwd: repoPath,
     timeoutMs: 60_000,
   })
   const fields = nulFields(stdout)
+  const inScope = new Set(scope)
   const paths: string[] = []
   for (let i = 0; i < fields.length; i += 1) {
     const field = fields[i] as string
     // `status -z` puts the NEW path first for a rename and the old one after,
     // which is the opposite of `diff --raw -z`.
-    paths.push(field.slice(3))
+    const raw = field.slice(3)
     if (field.startsWith('R') || field.startsWith('C')) i += 1
+    const relPath = raw.endsWith('/') ? raw.slice(0, -1) : raw
+    if (inScope.has(relPath) || inScope.has(raw)) {
+      paths.push(relPath)
+      continue
+    }
+    // Outside the scope: dirty only counts when the path is part of the
+    // candidate. Membership is asked of the manifest rather than re-derived
+    // from an exclusion list here — that duplication was R6.8's bug. A path
+    // the manifest excludes but that exists on disk (the sidecar workspace,
+    // `.gitignore` on a repo-root skill, a previous release archive) is not
+    // candidate bytes; a path that no longer exists is a deletion the manifest
+    // walk could not have seen, and deletions inside the candidate do count.
+    if (!underCandidateRoot(relPath, policy.root)) continue
+    if (policy.allowed.has(relPath) || containsAllowed(policy, relPath)) {
+      paths.push(relPath)
+      continue
+    }
+    if (!(await pathExists(join(repoPath, relPath)))) paths.push(relPath)
   }
   return paths
+}
+
+const pathExists = async (abs: string): Promise<boolean> => {
+  try {
+    await lstat(abs)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Stages everything in the worktree, then force-stages the declared scope.
+ *
+ * The second command is what makes a gitignored scope path reach the change
+ * set. `*.zip` is a common `.gitignore` convention, and without `-f` the
+ * release archive — placed in the sandbox at its eventual repo-relative path
+ * precisely so it rides the change set (R9.4) — was silently dropped from the
+ * diff, from the journal and from the user's tree while `evidence/release.json`
+ * still recorded its SHA-256 and the stage still reported `passed`.
+ *
+ * Two commands rather than one `git add -A -f -- <scope>`: `git add` fails
+ * fatally on a pathspec that matches nothing at all, and a scope entry may
+ * legitimately not exist yet (an unreleased `CHANGELOG.md`), so the forced pass
+ * is restricted to the entries actually present.
+ */
+async function stageForDiff(
+  exec: Exec,
+  workRoot: string,
+  scope: readonly string[],
+): Promise<void> {
+  await exec('git', ['add', '-A'], { cwd: workRoot, timeoutMs: 120_000 })
+  const present: string[] = []
+  for (const relPath of scope) {
+    if (await pathExists(join(workRoot, relPath))) present.push(relPath)
+  }
+  if (present.length === 0) return
+  await exec('git', ['add', '-f', '--', ...present], { cwd: workRoot, timeoutMs: 120_000 })
 }
 
 export async function openGitWorktreeSandbox(input: SandboxInput): Promise<MutationSandbox> {
@@ -128,7 +205,8 @@ export async function openGitWorktreeSandbox(input: SandboxInput): Promise<Mutat
   const repoPath = input.skill.repo.path
   const scope = [...input.scope]
 
-  const dirty = await dirtyScopePaths(repoPath, scope, exec)
+  const policy = await candidatePolicyFor(input.skill)
+  const dirty = await dirtyPaths(repoPath, scope, policy, exec)
   if (dirty.length > 0 && input.allowDirty !== true) {
     throw new Error(
       `refusing to mutate a skill with uncommitted changes:\n  ${dirty.join('\n  ')}\n` +
@@ -145,18 +223,26 @@ export async function openGitWorktreeSandbox(input: SandboxInput): Promise<Mutat
   })
 
   const preimages: Preimage[] = []
-  for (const relPath of scope) {
-    const preimage = await preimageOf(repoPath, relPath)
-    preimages.push(preimage)
-    if (!dirty.includes(relPath)) continue
-    // R10.3's second half: seed the worktree with the user's actual bytes.
+  for (const relPath of scope) preimages.push(await preimageOf(repoPath, relPath))
+
+  // R10.3's second half: seed the worktree with the user's actual bytes. Every
+  // dirty path, not just the dirty *scope* paths: the rest of the candidate is
+  // what the digest is taken over, so leaving it at HEAD is what made release
+  // refuse with an unactionable `digest-mismatch`.
+  for (const relPath of dirty) {
     const target = join(workRoot, relPath)
-    if (preimage.sha256 === null) {
-      await rm(target, { force: true })
+    const source = join(repoPath, relPath)
+    const info = await lstat(source).catch(() => null)
+    if (info === null) {
+      await rm(target, { recursive: true, force: true })
       continue
     }
     await mkdir(dirname(target), { recursive: true })
-    await copyFile(join(repoPath, relPath), target)
+    if (info.isDirectory()) {
+      await cp(source, target, { recursive: true, verbatimSymlinks: true })
+      continue
+    }
+    await copyFile(source, target)
   }
 
   if (dirty.length > 0) {
@@ -168,8 +254,12 @@ export async function openGitWorktreeSandbox(input: SandboxInput): Promise<Mutat
     // worktree shares the object database with its parent repo — harmless,
     // as the commit is unreachable from any real ref once the worktree is
     // removed and is ordinary GC-eligible garbage, not a leak.
-    await exec('git', ['add', '-A'], { cwd: workRoot, timeoutMs: 120_000 })
-    await exec('git', ['commit', '-q', '-m', 'seed dirty scope'], {
+    await stageForDiff(exec, workRoot, scope)
+    // `--no-verify`: a worktree shares `.git/hooks` with its parent repo, so a
+    // repo with a husky or pre-commit hook would either fail to open a sandbox
+    // at all or have its seeded bytes rewritten by a formatter before the tool
+    // ever saw them. This commit is throwaway bookkeeping, not the user's.
+    await exec('git', ['commit', '-q', '--no-verify', '-m', 'seed dirty scope'], {
       cwd: workRoot,
       timeoutMs: 120_000,
     })
@@ -200,11 +290,9 @@ export async function openGitWorktreeSandbox(input: SandboxInput): Promise<Mutat
   const changeSet = async (): Promise<ChangeSet> => {
     // Staging inside a throwaway worktree costs nothing, and it is what makes
     // git report a rename as R rather than as an unrelated delete plus an
-    // untracked add — the case R10.8 names. No `-- scope` pathspec here: `git
-    // add -A` errors fatally on a pathspec that matches nothing at all (a
-    // scope entry never created, e.g. an unreleased CHANGELOG.md), and the
-    // diff commands below already restrict their output to scope.
-    await exec('git', ['add', '-A'], { cwd: workRoot, timeoutMs: 120_000 })
+    // untracked add — the case R10.8 names. The diff commands below restrict
+    // their output to scope, so the unforced pass may stage more than that.
+    await stageForDiff(exec, workRoot, scope)
     const args = ['diff', '--cached']
     const [raw, numstat, diff] = await Promise.all([
       exec('git', [...args, '--raw', '-M', '-z', '--', ...scope], { cwd: workRoot }),

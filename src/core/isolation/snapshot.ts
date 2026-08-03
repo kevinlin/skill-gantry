@@ -1,8 +1,13 @@
 import { chmod, copyFile, lstat, mkdir, readFile, readdir, rm, stat, symlink, readlink } from 'node:fs/promises'
 import { dirname, isAbsolute, join, normalize, relative, resolve, sep } from 'node:path'
 import type { SkillRef } from '../types.js'
-import { type CandidateEntry, candidateManifest } from '../discovery/candidate.js'
+import type { CandidateEntry } from '../discovery/candidate.js'
 import { defaultExec } from '../tools/exec.js'
+import {
+  type CandidatePolicy,
+  candidatePolicyFor,
+  underCandidateRoot,
+} from './candidate-policy.js'
 import { unifiedDiffFor } from './diff.js'
 import { type SandboxInput, preimageOf } from './git-worktree.js'
 import { applyJournalled } from './journal.js'
@@ -18,33 +23,6 @@ export interface SnapshotInput extends SandboxInput {
 const looksBinary = (bytes: Buffer): boolean => bytes.subarray(0, 8192).includes(0)
 
 const posix = (p: string): string => p.split(sep).join('/')
-
-/**
- * What `candidateManifest` allows for one skill, reshaped for scope handling:
- * repo-root-relative paths (scope's own coordinate system) mapped to the
- * entry the manifest walk found there. Building this calls the manifest's
- * own walk, so a symlink inside the candidate root that escapes it throws
- * `candidate-escapes-root` here too — R2.10 is enforced once, in the one
- * place that already enforces it for every other consumer, not re-derived.
- */
-interface CandidatePolicy {
-  /** Repo-root-relative candidate root; '' for a repo-root skill. */
-  root: string
-  allowed: Map<string, CandidateEntry>
-}
-
-async function candidatePolicyFor(skill: SkillRef): Promise<CandidatePolicy> {
-  const manifest = await candidateManifest(skill)
-  const root = skill.relPath === '.' ? '' : skill.relPath
-  const allowed = new Map<string, CandidateEntry>()
-  for (const entry of manifest.entries) {
-    allowed.set(root === '' ? entry.relPath : `${root}/${entry.relPath}`, entry)
-  }
-  return { root, allowed }
-}
-
-const underCandidateRoot = (relPath: string, root: string): boolean =>
-  root === '' || relPath === root || relPath.startsWith(`${root}/`)
 
 /** A symlink whose target resolves outside `root` is rejected, never followed. */
 function assertNoEscape(root: string, source: string, target: string, relPath: string): void {
