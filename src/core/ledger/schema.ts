@@ -1,5 +1,9 @@
-export const MIGRATIONS: readonly string[] = [
-  `
+import type { Migration } from './db.js'
+import { type ProvenanceLike, provenanceFingerprint } from './fingerprint.js'
+
+export const MIGRATIONS: readonly Migration[] = [
+  {
+    sql: `
   create table if not exists repos (
     id            text primary key,
     path          text not null unique,
@@ -103,7 +107,9 @@ export const MIGRATIONS: readonly string[] = [
   create index if not exists idx_detections_issue on issue_detections(issue_fp);
   create index if not exists idx_detectors_issue on issue_detectors(issue_fp);
   `,
-  `
+  },
+  {
+    sql: `
   -- R8.14: extending the rule-class map is an explicit, versioned migration.
   -- This table is what makes "explicit" checkable and "once" enforceable.
   create table if not exists rule_map_migrations (
@@ -112,11 +118,41 @@ export const MIGRATIONS: readonly string[] = [
     note       text
   );
   `,
-  `
+  },
+  {
+    sql: `
   -- Every stage row written before this migration carried the *run's* span in
   -- these two columns, so a wall-clock query would report each stage of a run
   -- as taking the whole run. A gap the query can report is better than an
   -- average of two different measurements, so the wrong values go.
   update stages set started_at = null, ended_at = null;
   `,
+  },
+  {
+    sql: `
+    -- R7.6. Indexed rather than derived at read time: a filter that parses
+    -- every row's provenance_json cannot be pushed into the joins the stats
+    -- queries do against stages and issues.
+    alter table runs add column provenance_fp text;
+    create index if not exists idx_runs_provenance on runs(provenance_fp);
+    `,
+    backfill: (db) => {
+      const rows = db.prepare('select id, provenance_json from runs').all() as Array<{
+        id: string
+        provenance_json: string | null
+      }>
+      const update = db.prepare('update runs set provenance_fp = ? where id = ?')
+      for (const row of rows) {
+        let parsed: ProvenanceLike = {}
+        try {
+          parsed = (JSON.parse(row.provenance_json ?? '{}') ?? {}) as ProvenanceLike
+        } catch {
+          // A row whose provenance never parsed is fingerprinted as empty
+          // rather than skipped: a null column would silently drop the run
+          // from every grouped view, which reads as "this run never happened".
+        }
+        update.run(provenanceFingerprint(parsed), row.id)
+      }
+    },
+  },
 ]

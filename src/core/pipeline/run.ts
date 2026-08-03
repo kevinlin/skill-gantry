@@ -201,12 +201,17 @@ export function runPipeline(input: RunPipelineInput): RunHandle {
       }
     }
 
+    // One object for both sinks. run.json got the resolved provenance and the
+    // ledger got the bare one, so a fingerprint over the ledger's copy could
+    // not see the analysis-mode boundary R4.2b exists to make visible.
+    const provenance = withAnalysisModes(input.provenance, analysisModes)
+
     await writeRunJson(runDir, {
       runId: id,
       skillId: input.skill.id,
       skillDigest: digest,
       git,
-      provenance: withAnalysisModes(input.provenance, analysisModes),
+      provenance,
       toolLock: toolLockVersions,
     })
 
@@ -466,7 +471,7 @@ export function runPipeline(input: RunPipelineInput): RunHandle {
       outcome,
       skillDigest: digest,
       git,
-      provenanceJson: JSON.stringify(input.provenance),
+      provenanceJson: JSON.stringify(provenance),
       toolLockJson: JSON.stringify(toolLockVersions),
       sidecarPath: runDir,
       stages: results,

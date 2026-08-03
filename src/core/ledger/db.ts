@@ -8,6 +8,17 @@ export interface Ledger {
   close(): void
 }
 
+export interface Migration {
+  sql: string
+  /**
+   * Runs in the same version step, after the DDL. For data no query can
+   * compute: the provenance fingerprint is a sha256, and SQLite ships no hash
+   * function, so the alternative was leaving every pre-existing run outside
+   * R7.6's grouping forever.
+   */
+  backfill?: (db: DatabaseSync) => void
+}
+
 export function openLedger(path: string): Ledger {
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true })
 
@@ -22,7 +33,9 @@ export function openLedger(path: string): Ledger {
   const applied = row?.v ?? 0
 
   for (let i = applied; i < MIGRATIONS.length; i += 1) {
-    db.exec(MIGRATIONS[i] as string)
+    const migration = MIGRATIONS[i] as Migration
+    db.exec(migration.sql)
+    migration.backfill?.(db)
     db.prepare('insert into schema_version (version) values (?)').run(i + 1)
   }
 

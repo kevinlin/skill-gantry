@@ -1,7 +1,7 @@
 import type { StageResult } from '../stages/types.js'
 import type { SkillRef } from '../types.js'
 import type { Ledger } from './db.js'
-import { fingerprint } from './fingerprint.js'
+import { fingerprint, type ProvenanceLike, provenanceFingerprint } from './fingerprint.js'
 import { type IssueState, maxSeverity, stateOnDetection } from './issues.js'
 import { type ReconcileToolRun, reconcile } from './reconcile.js'
 
@@ -66,11 +66,15 @@ export function recordRun(ledger: Ledger, input: RunRecordInput): RunDelta {
       skill.supersededBy,
     )
 
+    // Derived here rather than taken as a parameter, so the stored JSON and the
+    // key runs are grouped by can never describe different provenances.
+    const provenanceFp = provenanceFingerprint(JSON.parse(input.provenanceJson) as ProvenanceLike)
+
     db.prepare(
       `insert into runs (id, skill_id, trigger, started_at, ended_at, outcome,
                          skill_digest, git_commit, git_dirty,
-                         provenance_json, tool_lock_json, sidecar_path)
-       values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                         provenance_json, provenance_fp, tool_lock_json, sidecar_path)
+       values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       input.runId,
       skill.id,
@@ -82,6 +86,7 @@ export function recordRun(ledger: Ledger, input: RunRecordInput): RunDelta {
       input.git.commit,
       input.git.dirty ? 1 : 0,
       input.provenanceJson,
+      provenanceFp,
       input.toolLockJson,
       input.sidecarPath,
     )
