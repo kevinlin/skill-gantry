@@ -1,4 +1,9 @@
-/** Single-producer, single-consumer async queue backing the event stream. */
+/**
+ * Single-producer async queue backing the event stream. Built for one
+ * consumer at a time, but a second can briefly overlap — the TUI remounting
+ * its Work screen against a still-live queue, for instance — which is exactly
+ * the case `[Symbol.asyncIterator]`'s `return()` defends against below.
+ */
 export class AsyncEventQueue<T> {
   #buffer: T[] = []
   #resolvers: Array<(value: IteratorResult<T>) => void> = []
@@ -33,15 +38,27 @@ export class AsyncEventQueue<T> {
         if (buffered !== undefined) return { value: buffered, done: false }
         if (this.#closed) return { value: undefined as never, done: true }
         return new Promise((resolve) => {
-          awaiting = resolve
-          this.#resolvers.push(resolve)
+          // Cleared on its own resolution, not just in `return()`: otherwise
+          // a `return()` called between two `next()` calls — no read in
+          // flight — would find a stale reference to an already-settled
+          // resolver left over from the previous read.
+          const settle = (result: IteratorResult<T>): void => {
+            awaiting = undefined
+            resolve(result)
+          }
+          awaiting = settle
+          this.#resolvers.push(settle)
         })
       },
       return: async (): Promise<IteratorResult<T>> => {
+        // Settles the parked `next()` too, not just retracts it from the
+        // shared queue: otherwise the caller's `await iterator.next()` never
+        // resolves, and the code after it — the very cleanup this exists to
+        // let run — is unreachable.
         if (awaiting) {
           const index = this.#resolvers.indexOf(awaiting)
           if (index !== -1) this.#resolvers.splice(index, 1)
-          awaiting = undefined
+          awaiting({ value: undefined as never, done: true })
         }
         return { value: undefined as never, done: true }
       },

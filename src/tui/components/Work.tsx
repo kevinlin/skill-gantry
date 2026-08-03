@@ -19,6 +19,20 @@ export function Work({ state }: { state: AppState }): React.ReactElement {
   const { columns, rows } = useWindowSize()
   const layout = layoutFor(columns, rows)
 
+  // Checked before both the too-small screen and help: app.tsx's keymap
+  // answers `a`/`d` to whichever mutation is pending regardless of what else
+  // is on screen, so the screen showing the diff has to be the one thing that
+  // can be in front of it — otherwise `a` authorises a write whose diff the
+  // user was never actually shown, R5.2's exact failure mode.
+  if (state.pending) {
+    return (
+      <Box flexDirection="column" width={columns}>
+        <ReviewPane pending={state.pending} layout={layout} displacedReviews={state.displacedReviews} />
+        <Text dimColor>{truncate(REVIEW_HINTS, columns)}</Text>
+      </Box>
+    )
+  }
+
   if (layout.mode === 'too-small') {
     return (
       <Box flexDirection="column">
@@ -35,18 +49,6 @@ export function Work({ state }: { state: AppState }): React.ReactElement {
       <Box flexDirection="column" width={columns}>
         <Help layout={layout} />
         <Text dimColor>{truncate('esc or ? closes · q quits', columns)}</Text>
-      </Box>
-    )
-  }
-
-  // Modal like help: a pending mutation replaces the whole screen, because
-  // R5.2 requires the diff to have been shown before an answer is possible —
-  // a pane the user could route around while looking elsewhere would not do.
-  if (state.pending) {
-    return (
-      <Box flexDirection="column" width={columns}>
-        <ReviewPane pending={state.pending} layout={layout} />
-        <Text dimColor>{truncate(REVIEW_HINTS, columns)}</Text>
       </Box>
     )
   }

@@ -85,18 +85,20 @@ export function App({
       exit()
       return
     }
-    if (input === '?') {
-      dispatch({ type: 'toggle-help' })
-      return
-    }
-    // Modal like help: swallowing movement keeps the selection where the user
-    // left it rather than scrolling a screen they cannot see.
+    // Modal like help, and checked first: the review pane is the one screen
+    // that wins over every other modal (Work.tsx renders it first for the
+    // same reason), so `?` must not sneak help on top of a diff still
+    // awaiting an answer.
     if (state.pending) {
       const { jobId, requestId } = state.pending
       if (input === 'a') queue.resolveMutation(jobId, requestId, 'apply')
       else if (input === 'd' || key.escape) queue.resolveMutation(jobId, requestId, 'discard')
       else if (input === 'j' || key.downArrow) dispatch({ type: 'scroll-review', delta: 1 })
       else if (input === 'k' || key.upArrow) dispatch({ type: 'scroll-review', delta: -1 })
+      return
+    }
+    if (input === '?') {
+      dispatch({ type: 'toggle-help' })
       return
     }
     // Help is modal: swallowing movement while it is open keeps the selection

@@ -7,7 +7,7 @@ import { Panel } from './Panel.js'
  * new binding does not have to earn a place on the footer to be discoverable.
  */
 const KEYS: readonly (readonly [string, string])[] = [
-  ['j / k, ↓ / ↑', 'move within the focused panel'],
+  ['j / k, ↓ / ↑', 'move within the focused panel, or scroll a pending mutation'],
   ['h / l', 'move along the lifecycle rail'],
   ['tab, shift-tab', 'cycle focus: skills → stages → queue'],
   ['space', 'mark the selected skill or stage'],
@@ -16,7 +16,6 @@ const KEYS: readonly (readonly [string, string])[] = [
   ['1 – 4', 'Log, Findings, Artefacts, SKILL.md'],
   ['a', 'apply a pending mutation, once its diff is reviewed'],
   ['d, esc', 'discard a pending mutation'],
-  ['j / k', "scroll a pending mutation's diff"],
   ['?', 'this help'],
   ['esc', 'close help'],
   ['q', 'quit'],

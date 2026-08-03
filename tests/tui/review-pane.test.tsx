@@ -69,6 +69,39 @@ describe('the review store', () => {
     state = reducer(state, { type: 'scroll-review', delta: -99 })
     expect(state.pending?.offset).toBe(0)
   })
+
+  it('clamps the offset to the diff\'s own last line rather than an arbitrary large one', () => {
+    let state = initialState([skill('sk')], 2)
+    state = reducer(state, { type: 'queue-event', event: pendingEvent('j1') }) // 6-line DIFF
+    state = reducer(state, { type: 'scroll-review', delta: 9999 })
+    expect(state.pending?.offset).toBe(5)
+  })
+
+  it('counts a second mutation:pending as displacing the first, rather than silently dropping it', () => {
+    let state = initialState([skill('sk')], 2)
+    state = reducer(state, { type: 'queue-event', event: pendingEvent('j1') })
+    expect(state.displacedReviews).toBe(0)
+    state = reducer(state, {
+      type: 'queue-event',
+      event: {
+        type: 'run:event',
+        jobId: 'j2',
+        event: { type: 'mutation:pending', runId: 'run-2', stage: 'release', requestId: 'req-2', diff: 'x', scope: ['other'] },
+      },
+    })
+    expect(state.displacedReviews).toBe(1)
+    expect(state.pending).toMatchObject({ jobId: 'j2', requestId: 'req-2' })
+  })
+
+  it('clears a pending review whose run ended, even without having seen run:start', () => {
+    let state = initialState([skill('sk')], 2)
+    state = reducer(state, { type: 'queue-event', event: pendingEvent('j1') })
+    state = reducer(state, {
+      type: 'queue-event',
+      event: { type: 'run:event', jobId: 'j1', event: { type: 'run:error', runId: 'run-1', message: 'boom' } },
+    })
+    expect(state.pending).toBeNull()
+  })
 })
 
 describe('the review pane', () => {
@@ -91,7 +124,7 @@ describe('the review pane', () => {
     const { stdin, unmount } = renderInk(<App skills={[skill('sk')]} queue={queue} stages={['release']} concurrency={2} intervalMs={5} />)
     queue.emit(pendingEvent('j1'))
     await new Promise((r) => setTimeout(r, 30))
-    stdin.write('a')
+    stdin.send('a')
     await new Promise((r) => setTimeout(r, 30))
     expect(resolve).toHaveBeenCalledWith('j1', 'req-1', 'apply')
     unmount()
@@ -102,10 +135,78 @@ describe('the review pane', () => {
     const { stdin, frames, unmount } = renderInk(<App skills={[skill('sk'), skill('other')]} queue={queue} stages={['release']} concurrency={2} intervalMs={5} />)
     queue.emit(pendingEvent('j1'))
     await new Promise((r) => setTimeout(r, 30))
-    stdin.write('j')
+    stdin.send('j')
     await new Promise((r) => setTimeout(r, 30))
     // The selection must not move under a screen the user cannot see.
     expect(frames.at(-1)).toContain('sk/SKILL.md')
+    unmount()
+  })
+
+  it('moves the window on the first j press, rather than centring on the offset', async () => {
+    const queue = fakeQueue()
+    const { stdin, frames, unmount } = renderInk(
+      <App skills={[skill('sk')]} queue={queue} stages={['release']} concurrency={2} intervalMs={5} />,
+      { columns: 80, rows: 24 },
+    )
+    const longDiff = Array.from({ length: 200 }, (_, i) => `+line ${i}`).join('\n')
+    queue.emit({ ...pendingEvent('j1'), event: { ...(pendingEvent('j1') as { event: object }).event, diff: longDiff } } as QueueEvent)
+    await new Promise((r) => setTimeout(r, 30))
+    expect(frames.at(-1)).toContain('+line 0')
+
+    stdin.send('j')
+    await new Promise((r) => setTimeout(r, 30))
+    // A centred window over a 200-line diff would still show `+line 0` for
+    // several presses; a plain offset-as-start moves on the very first one.
+    expect(frames.at(-1)).not.toContain('+line 0')
+    expect(frames.at(-1)).toContain('+line 1')
+    unmount()
+  })
+
+  it('shows the review pane over help, so a cannot authorise a diff the user cannot see', async () => {
+    const queue = fakeQueue()
+    const { stdin, frames, unmount } = renderInk(
+      <App skills={[skill('sk')]} queue={queue} stages={['release']} concurrency={2} intervalMs={5} />,
+    )
+    stdin.send('?')
+    await new Promise((r) => setTimeout(r, 30))
+    expect(frames.at(-1)).toContain('SkillGantry — keys')
+
+    queue.emit(pendingEvent('j1'))
+    await new Promise((r) => setTimeout(r, 30))
+    const frame = frames.at(-1) as string
+    expect(frame).toContain('sk/SKILL.md')
+    expect(frame).not.toContain('SkillGantry — keys')
+    unmount()
+  })
+
+  it('shows the review pane even on a too-small terminal, rather than the size warning', async () => {
+    const queue = fakeQueue()
+    const { frames, unmount } = renderInk(
+      <App skills={[skill('sk')]} queue={queue} stages={['release']} concurrency={2} intervalMs={5} />,
+      { columns: 40, rows: 10 },
+    )
+    queue.emit(pendingEvent('j1'))
+    await new Promise((r) => setTimeout(r, 30))
+    const frame = frames.at(-1) as string
+    expect(frame).toContain('sk/SKILL.md')
+    expect(frame).not.toContain('Terminal too small')
+    unmount()
+  })
+
+  it('shows a displaced review as a visible count rather than silently dropping it', async () => {
+    const queue = fakeQueue()
+    const { frames, unmount } = renderInk(
+      <App skills={[skill('sk')]} queue={queue} stages={['release']} concurrency={2} intervalMs={5} />,
+    )
+    queue.emit(pendingEvent('j1'))
+    await new Promise((r) => setTimeout(r, 30))
+    queue.emit({
+      type: 'run:event',
+      jobId: 'j2',
+      event: { type: 'mutation:pending', runId: 'run-2', stage: 'release', requestId: 'req-2', diff: 'y', scope: ['other'] },
+    })
+    await new Promise((r) => setTimeout(r, 30))
+    expect(frames.at(-1)).toContain('+1 waiting')
     unmount()
   })
 
@@ -120,7 +221,7 @@ describe('the review pane', () => {
       await new Promise((r) => setTimeout(r, 30))
       const frame = frames.at(-1) as string
       expect(frame.split('\n').length).toBeLessThanOrEqual(rows)
-      expect(frame).toContain('more')
+      expect(frame).toContain('hidden')
       unmount()
     }
   })

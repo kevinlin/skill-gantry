@@ -69,6 +69,14 @@ export interface AppState {
    * set is one bounded document, and R11.4 is about a stream that never stops.
    */
   pending: PendingReview | null
+  /**
+   * Count of `mutation:pending` events that arrived while another was already
+   * displayed and silently overwrote it. `pending` is a single slot per the
+   * plan (R5.12's two-skills-pending case is a known gap here, not solved),
+   * so this is the one visible trace that a second run is blocked behind the
+   * one on screen rather than one more press away from being unblocked.
+   */
+  displacedReviews: number
 }
 
 export type Action =
@@ -125,6 +133,7 @@ export function initialState(skills: readonly SkillRef[], concurrency: number): 
     artefacts: [],
     help: false,
     pending: null,
+    displacedReviews: 0,
   }
 }
 
@@ -170,11 +179,18 @@ function onRunEvent(state: AppState, jobId: string, event: RunEvent): AppState {
   }
 
   // Handled before the skillId guard below: a review pane is keyed by job and
-  // run id, not by the skill row, so it must not depend on run:start having
-  // already been seen.
+  // run id, not by the skill row, so none of these four can depend on
+  // run:start having already been seen — a run:done racing ahead of its own
+  // start being observed must still be able to clear a pending it created.
   if (event.type === 'mutation:pending') {
+    // R5.12 needs two skills to be able to have a mutation pending at once;
+    // `pending` is a single slot per the plan, so a second request silently
+    // displaces the first here. The count is the only trace of that until a
+    // queue of pendings replaces the slot — a known gap, not a fix.
+    const displaced = state.pending !== null && state.pending.requestId !== event.requestId
     return {
       ...state,
+      displacedReviews: displaced ? state.displacedReviews + 1 : state.displacedReviews,
       pending: {
         jobId,
         runId: event.runId,
@@ -188,6 +204,18 @@ function onRunEvent(state: AppState, jobId: string, event: RunEvent): AppState {
   }
   if (event.type === 'mutation:resolved') {
     return state.pending?.requestId === event.requestId ? { ...state, pending: null } : state
+  }
+  // A prompt whose run has ended can never be answered.
+  if (event.type === 'run:done' || event.type === 'run:cancelled' || event.type === 'run:error') {
+    const skillId = state.runIndex[event.runId]
+    const next = skillId
+      ? withSkill(state, skillId, (row) => ({
+          ...row,
+          status: event.type === 'run:done' ? statusOf(event.outcome) : 'errored',
+          activeRunId: null,
+        }))
+      : state
+    return { ...next, pending: state.pending?.runId === event.runId ? null : state.pending }
   }
 
   // tool:output is deliberately absent: it belongs to the pump, and taking it
@@ -210,26 +238,6 @@ function onRunEvent(state: AppState, jobId: string, event: RunEvent): AppState {
       return withSkill(state, skillId, (row) =>
         withStage(row, event.stage, { running: false, outcome: event.outcome }),
       )
-    // A prompt whose run has ended can never be answered.
-    case 'run:done':
-      return {
-        ...withSkill(state, skillId, (row) => ({
-          ...row,
-          status: statusOf(event.outcome),
-          activeRunId: null,
-        })),
-        pending: state.pending?.runId === event.runId ? null : state.pending,
-      }
-    case 'run:cancelled':
-    case 'run:error':
-      return {
-        ...withSkill(state, skillId, (row) => ({
-          ...row,
-          status: 'errored',
-          activeRunId: null,
-        })),
-        pending: state.pending?.runId === event.runId ? null : state.pending,
-      }
     default:
       return state
   }
@@ -285,10 +293,16 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, artefacts: action.paths }
     case 'toggle-help':
       return { ...state, help: action.open ?? !state.help }
-    case 'scroll-review':
-      return state.pending
-        ? { ...state, pending: { ...state.pending, offset: Math.max(0, state.pending.offset + action.delta) } }
-        : state
+    case 'scroll-review': {
+      if (!state.pending) return state
+      // Clamped to the diff's own last line, not an arbitrary large number:
+      // without this, holding `j` past the end drove offset into the
+      // thousands and the same number of `k` presses were needed before the
+      // view moved again.
+      const maxOffset = Math.max(0, state.pending.diff.split('\n').length - 1)
+      const offset = Math.min(maxOffset, Math.max(0, state.pending.offset + action.delta))
+      return { ...state, pending: { ...state.pending, offset } }
+    }
     case 'set-statuses':
       return {
         ...state,
