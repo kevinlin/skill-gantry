@@ -7,7 +7,7 @@ import { Palette } from './components/Palette.js'
 import { Settings } from './components/Settings.js'
 import { Tools } from './components/Tools.js'
 import { Work } from './components/Work.js'
-import { layoutFor, reviewDiffRows, truncate } from './layout.js'
+import { layoutFor, reviewDiffRows, screenBodyRows, truncate } from './layout.js'
 import { LogPump } from './log-buffer.js'
 import { PANELS, initialState, paletteMatches, reducer, selectedSkill } from './store.js'
 import type { AppState } from './store.js'
@@ -49,7 +49,8 @@ export function App({
   // The scroll clamp needs the same row count the review pane renders, and
   // `layout.ts` is the one place that decides it (§14.1's third rule).
   const { columns, rows } = useWindowSize()
-  const reviewRows = reviewDiffRows(layoutFor(columns, rows))
+  const layout = layoutFor(columns, rows)
+  const reviewRows = reviewDiffRows(layout)
   const { exit } = useApp()
   const byId = useRef(new Map(skills.map((skill) => [skill.id, skill])))
   /**
@@ -209,6 +210,29 @@ export function App({
       dispatch({ type: 'set-screen', screen: 'work' })
       return
     }
+    if (state.screen === 'dashboard') {
+      if (plain && input === 'p') {
+        // Cycles through the options and past the end to unfiltered, so the key
+        // that applies a filter is also the key that removes it.
+        const ids: Array<string | undefined> = [
+          undefined,
+          ...state.provenances.map((option) => option.fingerprint),
+        ]
+        const next = ids[(ids.indexOf(state.statsFilter.provenanceFp) + 1) % ids.length]
+        dispatch({
+          type: 'set-stats-filter',
+          filter: next === undefined ? {} : { provenanceFp: next },
+        })
+      } else if (plain && input === 's') {
+        const skillId = state.statsFilter.skillId === undefined ? current?.skillId : undefined
+        dispatch({ type: 'set-stats-filter', filter: skillId === undefined ? {} : { skillId } })
+      } else if ((plain && input === 'j') || key.downArrow) {
+        dispatch({ type: 'scroll-screen', delta: 1, viewport: screenBodyRows(layout) })
+      } else if ((plain && input === 'k') || key.upArrow) {
+        dispatch({ type: 'scroll-screen', delta: -1, viewport: screenBodyRows(layout) })
+      }
+      return
+    }
     if (plain && input === '?') {
       dispatch({ type: 'toggle-help' })
       return
@@ -284,7 +308,7 @@ export function App({
   if (state.palette.open) return <PaletteScreen state={state} />
   switch (state.screen) {
     case 'dashboard':
-      return <Dashboard state={state} />
+      return <Dashboard state={state} dispatch={dispatch} />
     case 'issues':
       return <Issues state={state} />
     case 'tools':
