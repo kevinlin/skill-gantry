@@ -10,6 +10,7 @@ import { runPipeline } from '../core/pipeline/run.js'
 import type { SkillRef, Stage } from '../core/types.js'
 import { runDoctor } from './doctor-command.js'
 import { detectInterrupted, formatInterrupted, runRecover } from './recover-command.js'
+import { runRelease, type ReleaseOptions } from './release-command.js'
 import { needsSetup, startSetup, type SetupOptions } from './setup-command.js'
 import { startTui, type TuiOptions } from './tui-command.js'
 
@@ -87,7 +88,10 @@ async function noticeInterrupted(deps: CliDeps): Promise<void> {
 export function buildProgram(deps: CliDeps): GantryProgram {
   const program = new Command() as GantryProgram
   program.name('skillgantry').description('SkillOps orchestrator for skill maintainers')
-  program.version('0.1.0')
+  // `-V` only: the default alias also registers `--version`, which the
+  // `release` subcommand needs for its own required option (R9.10) and
+  // commander resolves a root-level flag before a subcommand's.
+  program.version('0.1.0', '-V')
 
   program
     .command('run')
@@ -168,6 +172,24 @@ export function buildProgram(deps: CliDeps): GantryProgram {
     .description('probe runtimes, install tools, write credentials and register a repo')
     .action(async () => {
       await (deps.startSetup ?? startSetup)({ home: deps.home })
+    })
+
+  program
+    .command('release')
+    // R9.10: `--version` is required rather than defaulted, and missing it
+    // has to surface as a rejected promise here (not a bare process.exit),
+    // so a headless caller driving the program in-process gets a catchable
+    // error instead of its test runner's process going down with it.
+    .exitOverride()
+    .argument('<skill>', 'skill id or bare name')
+    .requiredOption('--version <target>', 'a semver, or major / minor / patch')
+    .option('--yes', 'prior authorisation for the write')
+    .option('--json', 'emit newline-delimited JSON events')
+    .option('--allow-dirty', 'proceed against a skill with uncommitted changes')
+    .option('--notes <text>', 'changelog body for the new entry')
+    .action(async (selector: string, opts: ReleaseOptions) => {
+      await noticeInterrupted(deps)
+      program.exitCode = await runRelease(deps, selector, opts)
     })
 
   program
