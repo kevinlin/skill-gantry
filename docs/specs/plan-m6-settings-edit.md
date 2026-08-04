@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** planned, not implemented. Written against [design.md](design.md) §14.2, [requirements.md](requirements.md) revision 8 (R11.7, R11.8) and shipped M1–M6. Owned by M6; the summary of these tasks lives in [plan-m6.md § Extension: editable Settings](plan-m6.md#extension-editable-settings), which this document is the executable form of.
+**Status:** implemented and shipped 2026-08-04, on branch `feat/m6-settings-edit`. Written against [design.md](design.md) §14.2, [requirements.md](requirements.md) revision 8 (R11.7, R11.8) and shipped M1–M6. Owned by M6; the summary of these tasks lives in [plan-m6.md § Extension: editable Settings](plan-m6.md#extension-editable-settings), which this document is the executable form of.
 
 **Goal:** The Settings screen names every setting, its value and the file that holds it, and lets a user change any configurable field from the TUI — through the setup states that already own tool selection and repo registration, and through one staged document that reaches disk only as a confirmed change set.
 
@@ -1529,4 +1529,11 @@ git commit -m "feat: gate settings edits behind a confirmed change set (R11.7, R
 
 ## Deviations found while implementing
 
-*(none yet — this section is filled in as the plan is executed, per the repo convention)*
+- **No `+ add a repo` row.** Task 14 Step 7 put an `open-setup` row at the end of the Repos group. Design §14.2's own mock has no such row, and it made the first actionable row depend on how many repos are registered — so `e` on a freshly-loaded screen edited `concurrency` on one machine and did nothing on another. Adding a repo is `:setup`, which the empty-state line now says. Repos with no entries render a dim hint instead.
+- **The editor's buffer starts empty.** The plan's `begin-edit` seeded it with the current value, which makes the first keystroke append: `e4` over a `2` staged `24`. `editing` carries `current` for the prompt (`concurrency [2] → 4`) and `buffer` starts empty, which is what makes the plan's own `e4\r` keystrokes mean what they say.
+- **`hasAdapter` is exported from `src/core/index.ts`.** `stage-selection` applies `withStageTools`, which needs R3.5b's runnable predicate, and `src/tui/**` may not import `core/adapters/registry.js` directly. `setup-command.ts` had been spelling the same rule as `getAdapter(id) !== undefined`.
+- **`useSetupSession` inspects before handing the entry to its caller, and `onRepo` may reject.** The hook cannot call `driver.registerRepo` itself — the screen stages instead of writing — but it still owns the error path R3.6 needs, so it inspects for the resolved path and `isGit`, awaits `onRepo`, and turns a rejection into the message the wizard already displayed. `SetupDriver.registerRepo` keeps its `(path)` signature for `skillgantry setup`.
+- **`ScreenList` gained a `reserve` prop.** The editor line is a row below the panel, and §14.1 forbids appending it: the panel now gives that row up rather than the frame growing past the terminal.
+- **The confirm branch closes the editor ref on `enter`.** Keys arriving in the same tick as the enter — the `c` in `e4\rc` — belong to the screen, not to a field already submitted. The sync effect reopens it in the one case where staging refused the value.
+- **Two test fixtures had to be re-stated, not adapted.** `SettingsView` now carries the document the rows render, so a fixture setting `concurrency: 3` on the view alone described a config that no `createGantryViews` result could produce. The affected cases in `tests/tui/rows.test.ts` and `tests/tui/tools-settings.test.tsx` set both.
+- **The acceptance apply needs its own settle.** `a` writes through the port, so the assertion is one filesystem round trip away rather than one render; the two keystrokes are sent separately.
