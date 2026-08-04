@@ -1131,7 +1131,68 @@ Four rules keep a frame inside its budget, each learned from a row that overflow
 
 Every full-screen view obeys the budget, including the help screen: it renders through `Panel`, windows its binding list against `layout.rows`, and reports what it cut. Drawing its own fixed-size frame scrolled its own title away on a 50×14 terminal. The wizard is the one view sized independently — it is inline rather than full-screen — but its width is still a `layout.ts` decision (`setupWidth`), never a constant in the component.
 
-Discoverability is layered rather than crammed into the header: a five-key footer hint bar, `?` for the full binding list. The old header spent 118 characters on keys and wrapped to three lines in a 60-column split. The Work screen renders on the alternate screen so a session does not bury the user's scrollback; the setup wizard stays inline, because it is summon-choose-exit and its result should remain in scrollback.
+Discoverability is layered rather than crammed into the header: a five-key footer hint bar, `?` for the full binding list. The old header spent 118 characters on keys and wrapped to three lines in a 60-column split. The Work screen renders on the alternate screen so a session does not bury the user's scrollback; `skillgantry setup` stays inline, because it is summon-choose-exit and its result should remain in scrollback. §14.2 renders the same wizard a second time as a full screen inside the session, where the alternate screen and the row budget both apply — the states and the component are shared, the framing is the caller's.
+
+#### 14.2 Settings: viewing and editing the configuration
+
+*Satisfies R11.7, R11.8.*
+
+M6 shipped Settings read-only and recorded why: an editable screen would be a second write path to `config.json` with no requirement asking for one. R11.8 is that requirement, and the "second write path" is what this section is arranged to prevent — there is one staged document, one validation, one write.
+
+**The view names the file, not just the value.** Rows are grouped by the file that holds them, and every editable value carries its origin: the file, a built-in default, or a session override.
+
+```
+Repos                            ~/.skillgantry/config.json
+  zapac        20 skills  git    /Users/…/zapac-agent-skills
+Execution                        ~/.skillgantry/config.json
+  concurrency        4           config.json  (session 2, via --concurrency)
+  artefact cap       32 MiB      default
+  mutation timeout   5m 00s      config.json
+  validate           skill-lint  config.json
+Credentials                      ~/.skillgantry/.env          read-only
+  skillspector       ok  via anthropic
+Ledger and tools                 ~/.skillgantry/gantry.db, tools/lock.json
+```
+
+Origin costs a second read of the raw file, because `loadConfig` parses through the schema and the schema substitutes a default for every absent key — by the time the config reaches a screen, a value the user wrote and a value nobody wrote are the same number. `settings()` therefore reports which top-level keys were literally present. Without it the screen invites a user to edit a file that does not contain the setting they are looking at.
+
+**Three edit paths, one staged document.** Every path writes into a staged `GantryConfig` held in the app store, seeded from the loaded one. Nothing touches disk until the change set is confirmed.
+
+| Path | Key | Covers |
+|---|---|---|
+| The setup states, as a screen | `:setup`, or from a Settings row | `stageTools`, `repos` additions |
+| Inline value editor | `e` on a selected row | `concurrency`, `artefactSizeCapBytes`, `mutationTimeoutMs`, `timeoutOverridesMs` |
+| Repo removal | `d` on a repo row | `repos` removals |
+
+`version` is not editable: it is the schema's own literal, and a user who could change it could only make the file unloadable. `timeoutOverridesMs` is a record rather than a scalar, so the screen renders one row per selected tool carrying its effective timeout — the adapter's default or the override — and editing that row stages an override while clearing it removes the key. A record with no row per key would let a user see an override and have no way to take it back off.
+
+The setup states are the same `setupReducer` and the same `Setup` component `skillgantry setup` renders; `Screen` gains `setup`, so the palette entry follows from the screen list rather than being a second registration. Two things follow from re-entering a wizard that was written to run once on a clean machine. Its initial state is seeded from the current selection, because an empty `selected` renders as "no tool chosen" and makes an unchanged pass through the screen look like a request to clear every stage. And its install step marks a tool already locked at its pinned version and already verified as `ok` without reinstalling it, because changing one tool otherwise reinstalls the whole selection. Both apply to the inline wizard too: the second is a fix there, not a divergence.
+
+Removal takes the repo out of the configuration and nothing else. Workspaces, sidecar evidence and ledger rows survive, so re-registering the same path finds its history — and the confirmation says so, because "remove" over a path is otherwise read as a delete.
+
+**The change set is semantic, not textual.** `unifiedDiffFor` spawns, and `src/tui/**` may not; more to the point a line diff of a JSON document reports an array edit as a block move, which is not what the user did. `configChanges(current, staged)` is pure, lives in core, and emits one row per changed field:
+
+```ts
+interface ConfigChange {
+  kind: 'add' | 'remove' | 'change'
+  /** Dotted field path, e.g. `stageTools.validate`, `repos[zapac]`. */
+  path: string
+  before: string | null
+  after: string | null
+}
+```
+
+There is no per-row "needs a restart" flag, because today it would be `true` on every row: `startTui` closes over the tool selection, the lock, the environment and the caps, `createQueue` captures the pool size, and the skill list is resolved once — so no field is rebindable mid-session. The pane states it once, over the whole change set, which is what R11.8 asks for while the answer is uniform. A field that later becomes live-rebindable is what would reintroduce the flag, and it would then carry information instead of restating a constant on every line.
+
+The confirm pane is a sibling of `ReviewPane`, not a generalisation of it: both are `Panel` bodies under §14.1's budget, but one renders diff text and the other renders change rows, so a shared component would be a switch with two disjoint halves. `a` applies, `d` discards, `j`/`k` scroll — the same three keys the mutation review already trains.
+
+**What the gate does not cover.** Installing a tool spawns an installer and writes `tools/lock.json` before any configuration changes, and no confirmation can undo that. The change set covers `config.json` alone, and says which file it covers in its title. `.env` is neither staged nor rendered into a change row (R7.3), which is why credentials are a view-only group rather than an editable one that refuses.
+
+**Applying rebinds nothing that is already running.** `startTui` resolves `stageTools`, the lock, the environment, the caps and the pool size once and closes over them, and a queued job carries the plan it was admitted under. A run whose provenance and tool lock were recorded under one configuration and executed under another would make the ledger's own record untrue, which is a worse failure than waiting for a restart. So apply writes the file, re-reads it into the view, and marks each change that the session will not honour until relaunch.
+
+**Where the decisions live.** The transforms are decisions over a document, so they stay out of the module that owns the file: `withRepo`, `withoutRepo`, `withStageTools` and `withScalar` are pure functions in core, `registerRepo` becomes its filesystem half plus a call to `withRepo`, and the staged path and the live path can no longer disagree about id uniqueness or duplicate rejection. The terminal interface reaches the write through one new port method, `applyConfig(next)`, which validates and saves; the transforms and `configChanges` are pure and need no port.
+
+Modal precedence is fixed and ordered by what a keystroke can destroy: the mutation review first, because its `a` writes the user's repo; then the config confirmation; then the setup screen; then the palette; then help.
 
 ## 15. Headless interface
 
@@ -1190,6 +1251,8 @@ Every launch, headless or not, first scans for an unresolved mutation record and
 | Issue queries and user transitions | `listIssues` across two repos with each filter; every row of §10.5's user-action rows; `blockedBy` against a two-detector issue where one has reported absence | Triage cannot invent a transition the state machine forbids; the blocking detector is the one `reconcile` would close on |
 | Traceability | `tests/specs/traceability.test.ts` parses both documents | R13.7: a requirement owned twice, owned never, claimed by no section, or claimed and absent fails the build |
 | Screen row budget | Every screen rendered at 80×24 and 50×14 | §14.1's first rule on four new full-screen views |
+| Config transforms | `withRepo`, `withoutRepo`, `withStageTools`, `withScalar` and `configChanges` as pure functions; id uniqueness and duplicate rejection asserted against `registerRepo`'s own result | The staged path and the live path cannot disagree about what a valid config is — §14.2 |
+| Settings edit | Origin labels over a config with absent keys and a `--concurrency` override; a staged edit with no write; a schema-invalid value refused; discard leaving the file byte-identical; apply writing once and re-reading; the credential rows offering no edit | R11.7 and R11.8, without a terminal |
 
 Fixture capture is a scripted, repeatable step tied to the pinned tool versions, so fixtures and pins cannot drift apart.
 
@@ -1227,7 +1290,7 @@ The mapping is checkable rather than asserted: every `*Satisfies …*` label in 
 | M3 | `tools` completed: catalogue, `npm-prefix`, `gh-release`, presets, setup wizard, doctor |
 | M4 | The three remaining selectable adapters and their parsers, the shared `v1alpha1` parser, the rule-class map and its versioned migration, fan-out policy, cross-tool merge |
 | M5 | `isolation`, `release`, `stages/mutation.ts` + `stages/release-stage.ts`, `ledger/gates.ts` + `ledger/lifecycle.ts`, retirement, the mutating-stage gate, the TUI review pane |
-| M6 | `ledger/stats.ts`, `ledger/issue-queries.ts`, Dashboard, Issues, Tools and Settings screens, the command palette, `tui/rows.ts`, the `GantryViews` port |
+| M6 | `ledger/stats.ts`, `ledger/issue-queries.ts`, Dashboard, Issues, Tools and Settings screens, the command palette, `tui/rows.ts`, the `GantryViews` port; then `config/edit.ts` (the pure transforms and `configChanges`), the setup screen, the inline value editor and the config confirmation pane |
 
 ## 18. What changed in revision 2
 

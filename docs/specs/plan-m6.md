@@ -1,6 +1,6 @@
 # SkillGantry M6 Implementation Plan
 
-**Status:** shipped, compacted. Written against [design.md](design.md) revision 3, [requirements.md](requirements.md) revision 6 and shipped M1–M5.
+**Status:** Tasks 1–12 shipped and compacted. Extended in place by [Extension: editable Settings](#extension-editable-settings) (Tasks 13–17, R11.7 and R11.8), not yet implemented. Written against [design.md](design.md) revision 3, [requirements.md](requirements.md) revision 8 and shipped M1–M5.
 
 **Goal:** Turned five milestones of recorded evidence into answers. Cross-repo statistics out of the ledger, an Issues table a maintainer can triage from, and the four top-level screens design §14 named and M2 shipped one of.
 
@@ -152,7 +152,7 @@ Every requirement M6 owns, and the task that satisfies it. A requirement with no
 **Deferred within M6, with reasons.**
 
 - **No headless statistics command.** R8.9 states what the statistics must cover and no requirement gives them a CLI surface; R12.5a and R12.5b name `doctor` and `release` and nothing else. `stats.ts` is a plain module, so a `skillgantry stats --json` is a thin wrapper whenever one is wanted.
-- **Settings is read-only.** Design §14 lists "repos, concurrency, credentials status", and registering a repo is `skillgantry setup`'s job (R3.6), which is already a re-enterable state machine. An editable Settings screen would be a second write path to `config.json` with no requirement asking for one.
+- **Settings is read-only.** Design §14 lists "repos, concurrency, credentials status", and registering a repo is `skillgantry setup`'s job (R3.6), which is already a re-enterable state machine. An editable Settings screen would be a second write path to `config.json` with no requirement asking for one. **Reversed 2026-08-04:** R11.8 is that requirement, and it resolves the objection rather than overruling it — the wizard states stay the only tool-selection and repo-registration implementation, and staging plus one confirmed write means there is still exactly one write path. See [Extension: editable Settings](#extension-editable-settings).
 - **The Dashboard has no time filter.** R8.9 asks for run history, not a date range. `StatsFilter` takes three fields and a `since` would be a fourth with nothing to justify it yet.
 - **Issue notes are not editable.** `setIssueState` accepts a note and `issues.note` stores it; typing one needs a text input on the Issues screen, and R8.7 requires the state, not the note.
 - **No `optimise → validate` loop, no git commit or tag.** R5.4 and R9.7, deferred by D6 and D9 respectively. Unchanged by M6.
@@ -181,7 +181,85 @@ Every requirement M6 owns, and the task that satisfies it. A requirement with no
 7. **The acceptance suite waits 3 s on the Tools screen** (Task 12). It is the one screen whose port call spawns: `doctor` invokes each runtime's version argv, which the plan's shared 60 ms settle catches mid-probe.
 8. **The layout regression asserts the frame is the screen it navigated to** (Task 11). A Work frame fits every size, so a budget assertion alone would have passed on a palette navigation that silently failed. No screen overflowed, so the plan's Step 3 was a no-op.
 
+## Extension: editable Settings
+
+**Status:** planned, not implemented. Adds R11.7 and R11.8 to M6, reversing the "Settings is read-only" deferral above.
+
+**Goal:** the Settings screen tells the user what every setting is *and where it lives*, and lets them change any of it without leaving the TUI — through the setup states that already own tool selection and repo registration, and through one staged document that reaches disk only as a confirmed change set.
+
+### Constraints beyond M6's
+
+- **One write path to `config.json`.** Every edit path mutates a staged `GantryConfig` in the store; `applyConfig` is the only thing that writes, and it validates the whole document through `configSchema` first. This is what keeps the M6 objection answered rather than overruled.
+- **The setup states are not reimplemented.** `setupReducer`, `SETUP_ORDER`, `entryBlockedReason` and `Setup.tsx` are shared with `skillgantry setup`. A change to them has to keep both callers working.
+- **No credential ever enters a change set.** R7.3. `.env` is a view-only group; it is not staged, not diffed, not written.
+- **`src/tui/**` still may not spawn and may not open the ledger.** Installs and the config write reach it through injected ports (`SetupDriver`, `GantryViews.applyConfig`); the transforms and the change list are pure and come through `src/core/index.ts`.
+- **§14.1's row budget holds on the setup screen and the confirmation pane**, both of which are full-screen views under `Panel`.
+
+### Facts established by reading the shipped code
+
+1. **Origin cannot be recovered from a loaded config.** `loadConfig` returns `DEFAULT_CONFIG` on ENOENT, and `configSchema` fills a default for every absent key, so by the time a value reaches `settings()` a written 2 and a defaulted 2 are the same number. `gantry-views.ts` has to read the raw file a second time to report which top-level keys were present.
+2. **`initialSetupState()` starts with `selected: []`.** Re-entering the wizard against a configured machine would render every stage as having no tool, and walking through unchanged would clear `stageTools`. The screen has to seed the selection from `config.stageTools` plus `tools/lock.json`.
+3. **The wizard has no staging seam.** `buildSetupDriver`'s `saveSelection` and `registerRepo` call `saveConfig` and `registerRepo` directly, so a confirmation gate cannot wrap the wizard as it stands.
+4. **`registerRepo` mixes the decision with the I/O.** Unique-id derivation and duplicate rejection sit between a `loadConfig` and a `saveConfig`. Extracting `withRepo` is what stops the staged path from growing a second copy of those rules.
+5. **Nothing in a running session re-reads config.** `startTui` closes over `stageTools`, the lock, the environment and the caps; `createQueue` captures `concurrency` in a `const`. "Takes effect next launch" is therefore the shipped behaviour being stated, not a limitation introduced here.
+6. **`settingsRows` is already pure and flat but has no row identity.** Selection and `e` need a `field` discriminator on the rows the user may edit; the heading and path rows stay unselectable.
+7. **`unifiedDiffFor` spawns.** It takes an `Exec` and shells out, so the confirmation pane cannot use it. `configChanges` is a pure function instead, which is also what makes an array edit read as an array edit.
+8. **`PALETTE_COMMANDS` is derived from `SCREENS` by `map`.** Adding `setup` to `SCREENS` gives `:setup` its palette entry with no second registration — the same property that made the four M6 screens cheap.
+9. **`app.tsx` routes `state.pending` before every other modal.** The config confirmation slots in behind it, not in front: the mutation review's `a` writes the user's repo, the config pane's writes `~/.skillgantry/config.json`.
+
+### Spec amendments this extension carries
+
+Landed before the code, per the repo rule.
+
+1. **requirements.md gains R11.7 and R11.8**, revision 8, owned by M6, with the exit criteria extended in the ownership table.
+2. **design.md gains §14.2**, "Settings: viewing and editing the configuration" — the view's origin rule, the three edit paths, the staged document, `ConfigChange`, what falls outside the gate, and why apply rebinds nothing already running.
+3. **§14.1's closing sentence is corrected.** It said the wizard stays inline; it now renders in two framings, and the sentence says which parts are shared and which belong to the caller.
+4. **§16 gains two test rows** (config transforms, Settings edit) and §17's M6 module row gains `config/edit.ts`, the setup screen, the value editor and the confirmation pane.
+
+### Critical files
+
+| Path | Role |
+|---|---|
+| `src/core/config/edit.ts` | `withRepo`, `withoutRepo`, `withStageTools`, `withScalar`, `configChanges` — the decisions, pure |
+| `src/core/config/config.ts` | `registerRepo` reduced to its I/O plus a `withRepo` call |
+| `src/core/tools/setup.ts` | `initialSetupState(seed?)`; the install step's already-locked skip |
+| `src/tui/views.ts` | `SettingsView` gains per-value origin; `GantryViews` gains `applyConfig` |
+| `src/cli/gantry-views.ts` | the raw second read that makes origin reportable, and the write |
+| `src/tui/rows.ts` | `settingsRows` gains the `field` discriminator |
+| `src/tui/store.ts` | staged config, the value editor's buffer, `SCREENS` gains `setup` |
+| `src/tui/components/ConfirmPane.tsx` | the change list under §14.1's budget |
+| `src/cli/tui-command.ts` | passes `buildSetupDriver(home)` into `renderApp` |
+
+### Tasks
+
+**The executable form of these five tasks is [plan-m6-settings-edit.md](plan-m6-settings-edit.md)** — TDD steps, the code each step writes, the command that verifies it and the commit that closes it. What follows is the summary and the verification each task owes; that document is what an implementer works from.
+
+**Task 13 — the pure transforms and the change list.** `src/core/config/edit.ts` with `withRepo`, `withoutRepo`, `withStageTools`, `withScalar` and `configChanges`; `registerRepo` rewritten onto `withRepo`. *Verify:* unit tests over each transform, `configChanges` asserted for add, remove and change including `needsRestart`, and a parity test that `withRepo` derives the same id and rejects the same duplicate `registerRepo` does.
+
+**Task 14 — the view tells the truth about origin.** `SettingsView` carries the holding file and origin per value; `gantry-views.ts` reads the raw config to learn which keys were present; `settingsRows` renders the groups of §14.2 and marks editable rows with a `field`. *Verify:* row tests over a config with absent keys, a fully written one, and a session `--concurrency` override.
+
+**Task 15 — staging, the value editor and removal.** Staged config in the store; `e` opens the inline editor and stages on `enter` with a `configSchema` rejection shown on failure; `d` stages a repo removal; `applyConfig` added to the port and implemented. *Verify:* a test asserting no write happens until apply, that an invalid value never stages, and that discard leaves the file byte-identical.
+
+**Task 16 — the setup states as a screen.** `SCREENS` gains `setup`; `renderApp` takes a `SetupDriver`; `initialSetupState` accepts a seed; the install step skips a tool already locked at its pin and verified. *Verify:* re-entering with a configured machine shows the current selection, an unchanged pass stages nothing, one changed tool installs one tool, and `skillgantry setup` on a clean machine still walks all four states.
+
+**Task 17 — the confirmation pane, precedence and the budget.** `ConfirmPane`; modal order mutation review → config confirm → setup → palette → help; help and footer gain the new keys; the layout regression walks the two new views; `tests/acceptance/m6.test.tsx` gains an edit-and-apply case against a real config file. *Verify:* the layout regression at every size down to 50×14, and the acceptance case asserting one write and a re-read.
+
+### Requirement coverage
+
+| Requirement | Task |
+|---|---|
+| R11.7 every setting, its value, its file, its origin | 14 (origin through the port and the rows), 17 (acceptance) |
+| R11.8 staged edits, confirmed change set, one validated write, wizard reuse, no credential editing | 13 (transforms, change list), 15 (staging, editor, `applyConfig`), 16 (the setup states reused rather than reimplemented), 17 (the pane, precedence, acceptance) |
+
+### Known gaps accepted up front
+
+- **Installs are outside the gate.** Selecting a tool in the setup screen installs it and writes `tools/lock.json` before any change set exists. The pane names the file it covers; it does not claim to cover the toolchain.
+- **An applied change needs a relaunch to affect runs.** Stated per row rather than worked around, for the provenance reason in §14.2.
+- **A staged edit is lost on quit.** The header carries a staged count so it is never invisible, and `q` still quits without prompting.
+- **A `--concurrency` override still wins for the session.** The row shows both values; editing the stored one does not displace the flag.
+
 ## Changelog
 
+- 2026-08-04 — **Extension: editable Settings planned.** R11.7 and R11.8 added to requirements.md (revision 8) and owned by M6; design.md gains §14.2 and two §16 test rows; §14.1's "the wizard stays inline" sentence corrected. Reverses this plan's "Settings is read-only" deferral — the objection behind it (a second write path to `config.json`) is answered by staging plus one confirmed, schema-validated write, and by reusing the setup states rather than reimplementing selection. Tasks 13–17 are unimplemented.
 - 2026-08-04 — **Compacted post-implementation.** Removed step-by-step tasks, file-by-file diffs, code snippets, file structure tree, and verification commands now that the feature has shipped. Preserved Goal, Global Constraints, Facts, Spec Amendments, Design Decisions, Critical Files summary, Requirement Coverage, Known Gaps, Deviations, and follow-ups. Original plan recoverable via git history.
 - 2026-08-03 — revision 1, written against design.md revision 3, requirements.md revision 6 and shipped M1–M5. Three ledger defects found by reading the shipped recorder (empty stage metrics, run times in the stage columns, provenance recorded without its analysis modes) are fixed in Tasks 2 and 3 before anything queries them. The design-coverage gap Task 1 closes was measured, not estimated: nineteen requirements carry no `*Satisfies*` label, and the milestone ownership table is already clean at 133 requirements.

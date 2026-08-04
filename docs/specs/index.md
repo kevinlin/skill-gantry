@@ -27,7 +27,8 @@ Which milestone owns which requirement is a separate question, answered only by 
 | [plan-m3.md](plan-m3.md) | M3 | Shipped | Tools module: catalogue, three drivers, setup wizard, doctor |
 | [plan-m4.md](plan-m4.md) | M4 | Shipped, compacted | Three remaining adapters, shared parsers, rule-class map, cross-tool merge |
 | [plan-m5.md](plan-m5.md) | M5 | Shipped, compacted | Mutation isolation, journalled apply, release stage, retirement |
-| [plan-m6.md](plan-m6.md) | M6 | Shipped, compacted | Statistics queries, Dashboard, Issues, Tools and Settings screens, the command palette |
+| [plan-m6.md](plan-m6.md) | M6 | Shipped, compacted; extension planned | Statistics queries, Dashboard, Issues, Tools and Settings screens, the command palette. Extended in place with editable Settings (R11.7, R11.8) — planned, not implemented |
+| [plan-m6-settings-edit.md](plan-m6-settings-edit.md) | M6 (extension) | Planned | Editable Settings (R11.7, R11.8) — the executable form of plan-m6's Tasks 13–17: pure config transforms, origin reporting, staging, the setup states as a screen, the confirmation pane |
 | [plan_m3-promptfoo-removal.md](plan_m3-promptfoo-removal.md) | M3 (M4 prereq) | Shipped | Drop promptfoo from the catalogue — it evaluates prompts declared in a config, has no notion of a skill, so it is removed rather than deferred |
 
 ## Reviews (historical)
