@@ -10,6 +10,7 @@ import {
   registerRepo,
   saveConfig,
 } from '../../src/core/config/config.js'
+import { withRepo } from '../../src/core/config/edit.js'
 import { SKILL_MD, makeRepo } from '../helpers/tmp-repo.js'
 
 const home = async (): Promise<string> => mkdtemp(join(tmpdir(), 'sg-home-'))
@@ -120,5 +121,17 @@ describe('registerRepo', () => {
     await registerRepo(h, join(one, 'skills'))
     const cfg = await registerRepo(h, join(two, 'skills'))
     expect(cfg.repos.map((r) => r.id)).toEqual(['skills', 'skills-2'])
+  })
+})
+
+describe('registerRepo parity with the staged edit path', () => {
+  it('registers through the same rules the staged path uses', async () => {
+    const h = await home()
+    const repo = await makeRepo({ files: { 'alpha/SKILL.md': SKILL_MD('alpha') } })
+    const written = await registerRepo(h, repo)
+    const entry = written.repos[0]!
+    const staged = withRepo(DEFAULT_CONFIG, { path: entry.path, isGit: entry.isGit })
+
+    expect(written.repos).toEqual(staged.repos)
   })
 })

@@ -1,7 +1,8 @@
 import { mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { basename, join, resolve, sep } from 'node:path'
+import { join, resolve, sep } from 'node:path'
 import { countSkills, isGitRepo } from '../discovery/discover.js'
+import { withRepo } from './edit.js'
 import { type GantryConfig, type ToolLock, configSchema, toolLockSchema } from './schema.js'
 
 export type { GantryConfig, ToolLock, ToolLockEntry } from './schema.js'
@@ -59,14 +60,6 @@ export async function saveConfig(home: string, config: GantryConfig): Promise<vo
   await writeFile(configFile(home), `${JSON.stringify(validated, null, 2)}\n`)
 }
 
-function uniqueId(desired: string, taken: ReadonlySet<string>): string {
-  if (!taken.has(desired)) return desired
-  for (let n = 2; ; n += 1) {
-    const candidate = `${desired}-${n}`
-    if (!taken.has(candidate)) return candidate
-  }
-}
-
 /** What the caller needs to decide whether a typed path is worth registering. */
 export interface RepoInspection {
   /** Where the input actually points once `~` and symlinks are resolved. */
@@ -102,19 +95,9 @@ export async function registerRepo(home: string, repoPath: string): Promise<Gant
   if (!isDirectory) throw new Error(`no such directory: ${path}`)
 
   const config = await loadConfig(home)
-  const name = basename(path)
-  const next: GantryConfig = {
-    ...config,
-    repos: [
-      ...config.repos,
-      {
-        id: uniqueId(name, new Set(config.repos.map((r) => r.id))),
-        path,
-        name,
-        isGit: await isGitRepo(path),
-      },
-    ],
-  }
+  // The id and duplicate rules live in `withRepo` so the staged edit path and
+  // this one cannot disagree about what registering means.
+  const next = withRepo(config, { path, isGit: await isGitRepo(path) })
   await saveConfig(home, next)
   return next
 }

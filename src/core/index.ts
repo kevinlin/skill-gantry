@@ -19,6 +19,15 @@ export {
   type GantryConfig,
   type RepoInspection,
 } from './config/config.js'
+export {
+  configChanges,
+  withRepo,
+  withScalar,
+  withStageTools,
+  withoutRepo,
+  type ConfigChange,
+  type ScalarField,
+} from './config/edit.js'
 export { loadEnvFile, provenanceOf } from './config/env.js'
 export { createQueue, type QueueOptions } from './queue/pool.js'
 export {
