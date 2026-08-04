@@ -18,6 +18,15 @@ export function getAdapter(id: string): Adapter | undefined {
   return BY_ID.get(id)
 }
 
+/**
+ * R3.5b's rule as a predicate: a tool with no `parse` is not selectable for a
+ * run. Exported through `src/core/index.ts` so the staged edit path can apply
+ * the same rule the wizard does without reaching into the registry itself.
+ */
+export function hasAdapter(id: string): boolean {
+  return BY_ID.has(id)
+}
+
 export function listAdapters(): readonly Adapter[] {
   return ADAPTERS
 }

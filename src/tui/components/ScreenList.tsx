@@ -15,14 +15,17 @@ export function ScreenList({
   rows,
   offset,
   layout,
+  reserve = 0,
 }: {
   title: string
   hint?: string
   rows: readonly ScreenRow[]
   offset: number
   layout: Layout
+  /** Rows the caller renders below this panel, taken out of its allocation. */
+  reserve?: number
 }): React.ReactElement {
-  const budget = screenBodyRows(layout)
+  const budget = Math.max(1, screenBodyRows(layout) - reserve)
   const overflow = rows.length > budget
   const height = overflow ? Math.max(1, budget - 1) : budget
   const { start, end } = windowFor(rows.length, offset, height)

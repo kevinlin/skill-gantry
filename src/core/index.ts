@@ -5,6 +5,7 @@ export { openLedger, type Ledger } from './ledger/db.js'
 export { readLifecycleCache, syncLifecycle, type LifecycleState } from './ledger/lifecycle.js'
 export { GATE_STAGES, latestGateOutcomes, type GateOutcome } from './ledger/gates.js'
 export { RULE_CLASS_MAP_VERSION } from './adapters/rule-classes.js'
+export { hasAdapter } from './adapters/registry.js'
 export {
   appliedRuleMapVersion,
   migrateRuleMap,

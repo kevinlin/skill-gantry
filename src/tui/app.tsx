@@ -13,8 +13,9 @@ import { Palette } from './components/Palette.js'
 import { Settings } from './components/Settings.js'
 import { Tools } from './components/Tools.js'
 import { Work } from './components/Work.js'
-import { layoutFor, reviewDiffRows, screenBodyRows, truncate } from './layout.js'
+import { innerWidth, layoutFor, reviewDiffRows, screenBodyRows, truncate } from './layout.js'
 import { LogPump } from './log-buffer.js'
+import { settingsRows } from './rows.js'
 import { PANELS, initialState, paletteMatches, reducer, selectedSkill } from './store.js'
 import type { AppState } from './store.js'
 import { type GantryViews, listArtefacts, loadSkillMd, loadSkillStatuses } from './views.js'
@@ -68,6 +69,13 @@ export function App({
    * selected whatever `s` matched. State stays what the frame renders.
    */
   const palette = useRef({ open: false, query: '' })
+  /** The value editor's buffer, mirrored outside React for the same reason. */
+  const editor = useRef({ open: false, buffer: '' })
+  useEffect(() => {
+    // The reducer owns whether the editor is open — a refused value keeps it up
+    // — so the ref follows state rather than the key handler guessing.
+    editor.current = { open: state.editing !== null, buffer: state.editing?.buffer ?? '' }
+  }, [state.editing])
 
   const pump = useRef<LogPump | null>(null)
   if (pump.current === null) {
@@ -155,10 +163,6 @@ export function App({
     // binding writes to the user's repo. Escape and the arrows are unaffected:
     // they arrive as named keys with `input` empty.
     const plain = !key.ctrl && !key.meta && !key.super && !key.hyper
-    if (plain && input === 'q') {
-      exit()
-      return
-    }
     // Modal like help, and checked first: the review pane is the one screen
     // that wins over every other modal (Work.tsx renders it first for the
     // same reason), so `?` must not sneak help on top of a diff still
@@ -171,6 +175,34 @@ export function App({
         dispatch({ type: 'scroll-review', delta: 1, viewport: reviewRows })
       else if ((plain && input === 'k') || key.upArrow)
         dispatch({ type: 'scroll-review', delta: -1, viewport: reviewRows })
+      return
+    }
+    // Text entry wins over every single-letter command, for the reason the
+    // wizard's own handler documents: a value is digits and a path is letters,
+    // and either would otherwise steer the screen instead of filling the field.
+    // `:` included — a colon is a character a user can legitimately type.
+    if (editor.current.open) {
+      // The buffer comes off the ref for the reason the palette's does: React
+      // batches the keypresses that arrive in one tick, so reading it from state
+      // loses every character but the last.
+      const write = (buffer: string): void => {
+        editor.current = { open: true, buffer }
+        dispatch({ type: 'edit-input', buffer })
+      }
+      if (key.escape) {
+        editor.current = { open: false, buffer: '' }
+        dispatch({ type: 'cancel-edit' })
+      } else if (key.return) {
+        // Left open: `stage-edit` is what decides whether the value was
+        // acceptable, and a refused value keeps the editor up. The effect below
+        // closes the ref once the reducer has cleared `editing`.
+        dispatch({ type: 'stage-edit' })
+      } else if (key.backspace || key.delete) write(editor.current.buffer.slice(0, -1))
+      else if (plain && input.length > 0) write(editor.current.buffer + input)
+      return
+    }
+    if (plain && input === 'q') {
+      exit()
       return
     }
     if (palette.current.open) {
@@ -216,8 +248,26 @@ export function App({
       dispatch({ type: 'set-screen', screen: 'work' })
       return
     }
-    if (state.screen === 'tools' || state.screen === 'settings') {
-      if (plain && input === 'r' && state.screen === 'tools') {
+    if (state.screen === 'settings') {
+      const rows = settingsRows(state, innerWidth(columns, layout.chrome))
+      const actionable = rows.flatMap((row) => (row.action ? [row.action] : []))
+      const selected = actionable[state.settingsCursor]
+      if ((plain && input === 'j') || key.downArrow) {
+        dispatch({ type: 'settings-cursor', delta: 1, count: actionable.length })
+      } else if ((plain && input === 'k') || key.upArrow) {
+        dispatch({ type: 'settings-cursor', delta: -1, count: actionable.length })
+      } else if (plain && input === 'e' && selected?.kind === 'edit-scalar') {
+        editor.current = { open: true, buffer: '' }
+        dispatch({ type: 'begin-edit', field: selected.field, current: selected.current })
+      } else if (plain && input === 'd' && selected?.kind === 'remove-repo') {
+        dispatch({ type: 'stage-remove-repo', repoId: selected.repoId })
+      } else if (plain && input === 'c') {
+        dispatch({ type: 'open-confirm' })
+      }
+      return
+    }
+    if (state.screen === 'tools') {
+      if (plain && input === 'r') {
         // A re-probe, not a migration: `tools()` invokes each binary's version
         // argv, which is what R3.9 means by re-verify.
         dispatch({ type: 'refresh-views' })

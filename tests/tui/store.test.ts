@@ -6,7 +6,14 @@ import type {
   StageResult,
   ToolRunRecord,
 } from '../../src/core/index.js'
-import { initialState, paletteMatches, reducer, selectedSkill } from '../../src/tui/store.js'
+import {
+  initialState,
+  paletteMatches,
+  reducer,
+  selectedSkill,
+  type AppState,
+} from '../../src/tui/store.js'
+import { emptySettings } from '../helpers/fake-views.js'
 
 const skill = (id: string): SkillRef => ({
   id,
@@ -288,5 +295,57 @@ describe('screens and the palette — R11.3', () => {
     let state = reducer(initialState([], 2), { type: 'set-screen-row-count', count: 10 })
     state = reducer(state, { type: 'scroll-screen', delta: 99, viewport: 4 })
     expect(state.screenOffset).toBe(6)
+  })
+})
+
+describe('config staging', () => {
+  const loaded = { ...emptySettings }
+  const withSettings = (): AppState =>
+    reducer(initialState([], 2), { type: 'set-settings', view: loaded })
+
+  it('stages a scalar edit without touching the loaded view', () => {
+    let state = reducer(withSettings(), {
+      type: 'begin-edit',
+      field: 'concurrency',
+      current: '2',
+    })
+    state = reducer(state, { type: 'edit-input', buffer: '4' })
+    state = reducer(state, { type: 'stage-edit' })
+
+    expect(state.staged?.concurrency).toBe(4)
+    expect(state.settings?.config.concurrency).toBe(2)
+    expect(state.editing).toBeNull()
+  })
+
+  it('keeps the editor open and names the error when the value is invalid', () => {
+    let state = reducer(withSettings(), { type: 'begin-edit', field: 'concurrency', current: '2' })
+    state = reducer(state, { type: 'edit-input', buffer: '99' })
+    state = reducer(state, { type: 'stage-edit' })
+
+    expect(state.staged).toBeNull()
+    expect(state.editing?.error).toMatch(/concurrency/)
+  })
+
+  it('stages a second edit on top of the first', () => {
+    let state = reducer(withSettings(), { type: 'begin-edit', field: 'concurrency', current: '2' })
+    state = reducer(state, { type: 'edit-input', buffer: '4' })
+    state = reducer(state, { type: 'stage-edit' })
+    state = reducer(state, {
+      type: 'begin-edit',
+      field: 'mutationTimeoutMs',
+      current: '300000',
+    })
+    state = reducer(state, { type: 'edit-input', buffer: '60000' })
+    state = reducer(state, { type: 'stage-edit' })
+
+    expect(state.staged?.concurrency).toBe(4)
+    expect(state.staged?.mutationTimeoutMs).toBe(60000)
+  })
+
+  it('drops every staged edit on discard', () => {
+    let state = reducer(withSettings(), { type: 'begin-edit', field: 'concurrency', current: '2' })
+    state = reducer(state, { type: 'edit-input', buffer: '4' })
+    state = reducer(state, { type: 'stage-edit' })
+    expect(reducer(state, { type: 'discard-staged' }).staged).toBeNull()
   })
 })

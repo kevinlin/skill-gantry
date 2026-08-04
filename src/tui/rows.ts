@@ -207,7 +207,7 @@ export function settingsRows(state: AppState, width: number): ScreenRow[] {
 
   line(`Repos — ${view.configPath}`, { heading: true })
   if (config.repos.length === 0) {
-    line('  none registered — press enter here to add one', { dim: true })
+    line('  none registered — :setup registers one', { dim: true })
   }
   for (const repo of config.repos) {
     const skills = view.repos.find((known) => known.id === repo.id)?.skills ?? 0
@@ -216,7 +216,6 @@ export function settingsRows(state: AppState, width: number): ScreenRow[] {
       { kind: 'remove-repo', repoId: repo.id },
     )
   }
-  action(' + add a repo', { kind: 'open-setup' }, { dim: true })
 
   line(`Execution — ${view.configPath}`, { heading: true })
   const session =
