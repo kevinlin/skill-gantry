@@ -68,6 +68,9 @@ export interface RepoInspection {
   alreadyRegistered: boolean
   /** Direct children holding a `SKILL.md`, or 1 for a repo-root skill. */
   skillCount: number
+  /** Which isolation strategy a mutating stage would use (R2.6), and what the
+      staged edit path records without re-running the probe itself. */
+  isGit: boolean
 }
 
 /**
@@ -81,14 +84,17 @@ export async function inspectRepo(home: string, repoPath: string): Promise<RepoI
   const alreadyRegistered = config.repos.some((r) => r.path === resolved)
 
   const isDirectory = info?.isDirectory() === true
-  if (!isDirectory) return { resolved, isDirectory, alreadyRegistered, skillCount: 0 }
-  return { resolved, isDirectory, alreadyRegistered, skillCount: await countSkills(resolved) }
+  if (!isDirectory) {
+    return { resolved, isDirectory, alreadyRegistered, skillCount: 0, isGit: false }
+  }
+  const [skillCount, isGit] = await Promise.all([countSkills(resolved), isGitRepo(resolved)])
+  return { resolved, isDirectory, alreadyRegistered, skillCount, isGit }
 }
 
 export async function registerRepo(home: string, repoPath: string): Promise<GantryConfig> {
   // The same read the wizard's preview uses, so the verdict it showed and the
   // rule that accepts the path cannot drift apart.
-  const { resolved: path, isDirectory, alreadyRegistered } = await inspectRepo(home, repoPath)
+  const { resolved: path, isDirectory, alreadyRegistered, isGit } = await inspectRepo(home, repoPath)
   if (alreadyRegistered) throw new Error(`already registered: ${path}`)
   // Discovery over a missing path throws deep in readdir; refusing here names
   // the path the user actually typed instead.
@@ -97,7 +103,7 @@ export async function registerRepo(home: string, repoPath: string): Promise<Gant
   const config = await loadConfig(home)
   // The id and duplicate rules live in `withRepo` so the staged edit path and
   // this one cannot disagree about what registering means.
-  const next = withRepo(config, { path, isGit: await isGitRepo(path) })
+  const next = withRepo(config, { path, isGit })
   await saveConfig(home, next)
   return next
 }

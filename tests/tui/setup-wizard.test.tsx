@@ -20,8 +20,10 @@ function fakeDriver(over: Partial<SetupDriver> = {}): { driver: SetupDriver; ins
       isDirectory: true,
       alreadyRegistered: false,
       skillCount: 20,
+      isGit: true,
     }),
     registerRepo: async () => {},
+    installedTools: async () => [],
     ...over,
   }
   return { driver, installed }

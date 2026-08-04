@@ -33,12 +33,20 @@ export interface SetupState {
   credentials: { present: boolean; warnings: readonly string[] } | null
 }
 
-export function initialSetupState(): SetupState {
+/**
+ * `seed` is what a re-entered wizard starts from. Without it the screen renders
+ * a configured machine as having no tool selected, and an unchanged walk
+ * through it would clear every stage.
+ */
+export function initialSetupState(seed?: {
+  selected?: readonly string[]
+  installed?: Readonly<Record<string, InstallState>>
+}): SetupState {
   return {
     state: 'probe-runtimes',
     runtimes: [],
-    selected: [],
-    installed: {},
+    selected: seed?.selected ?? [],
+    installed: seed?.installed ?? {},
     errors: {},
     repoPath: null,
     repoSkipped: false,
@@ -185,4 +193,6 @@ export interface SetupDriver {
   /** Read-only: what a typed path resolves to, before the user commits it. */
   inspectRepo(path: string): Promise<RepoInspection>
   registerRepo(path: string): Promise<void>
+  /** Locked and verified per the lockfile; a re-entered wizard skips these. */
+  installedTools(): Promise<readonly string[]>
 }

@@ -4,6 +4,7 @@ import type {
   IssueAction,
   IssueState,
   QueueHandle,
+  SetupDriver,
   SkillRef,
   Stage,
 } from '../core/index.js'
@@ -11,13 +12,15 @@ import { Dashboard } from './components/Dashboard.js'
 import { Issues } from './components/Issues.js'
 import { Palette } from './components/Palette.js'
 import { Settings } from './components/Settings.js'
+import { Setup } from './components/Setup.js'
 import { Tools } from './components/Tools.js'
 import { Work } from './components/Work.js'
 import { innerWidth, layoutFor, reviewDiffRows, screenBodyRows, truncate } from './layout.js'
 import { LogPump } from './log-buffer.js'
 import { settingsRows } from './rows.js'
+import { useSetupSession } from './use-setup-session.js'
 import { PANELS, initialState, paletteMatches, reducer, selectedSkill } from './store.js'
-import type { AppState } from './store.js'
+import type { Action, AppState } from './store.js'
 import { type GantryViews, listArtefacts, loadSkillMd, loadSkillStatuses } from './views.js'
 
 export interface AppProps {
@@ -28,8 +31,47 @@ export interface AppProps {
   concurrency: number
   /** R11.3's screens read the ledger through this; the TUI may not open it. */
   views: GantryViews
+  /** The wizard's effects, for the setup screen; the TUI may not spawn. */
+  setup: SetupDriver
   /** Flush interval, lowered in tests. */
   intervalMs?: number
+}
+
+/**
+ * The wizard inside the session. Same states, same component; what differs is
+ * where its results go — staged rather than written — and that leaving it
+ * returns to Settings instead of ending the process.
+ */
+function SetupScreen({
+  state,
+  dispatch,
+  driver,
+}: {
+  state: AppState
+  dispatch: (action: Action) => void
+  driver: SetupDriver
+}): React.ReactElement {
+  const config = state.staged ?? state.settings?.config
+  const locked = state.settings?.lockedTools ?? []
+  const session = useSetupSession({
+    driver,
+    seed: {
+      selected: [...new Set([...Object.values(config?.stageTools ?? {}).flat(), ...locked])],
+      installed: Object.fromEntries(locked.map((id) => [id, 'ok' as const])),
+    },
+    onSelection: (selected) => dispatch({ type: 'stage-selection', selected }),
+    onRepo: (entry) => dispatch({ type: 'stage-repo', entry }),
+    onExit: () => dispatch({ type: 'set-screen', screen: 'settings' }),
+  })
+  return (
+    <Setup
+      state={session.state}
+      cursor={session.cursor}
+      draftPath={session.path}
+      inspection={session.inspection}
+      error={session.error}
+    />
+  )
 }
 
 /** The palette above the same footer hint every screen prints. */
@@ -50,6 +92,7 @@ export function App({
   stages,
   concurrency,
   views,
+  setup,
   intervalMs,
 }: AppProps): React.ReactElement {
   const [state, dispatch] = useReducer(reducer, skills, (list) => initialState(list, concurrency))
@@ -248,6 +291,9 @@ export function App({
       dispatch({ type: 'set-screen', screen: 'work' })
       return
     }
+    // The wizard's own handler is the only one acting while it is up: `1` is a
+    // preset there and a panel switch here.
+    if (state.screen === 'setup') return
     if (state.screen === 'settings') {
       const rows = settingsRows(state, innerWidth(columns, layout.chrome))
       const actionable = rows.flatMap((row) => (row.action ? [row.action] : []))
@@ -415,6 +461,8 @@ export function App({
       return <Tools state={state} dispatch={dispatch} />
     case 'settings':
       return <Settings state={state} dispatch={dispatch} />
+    case 'setup':
+      return <SetupScreen state={state} dispatch={dispatch} driver={setup} />
     default:
       return <Work state={state} />
   }

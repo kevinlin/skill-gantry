@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { createQueue, type SkillRef } from '../../src/core/index.js'
 import { App } from '../../src/tui/app.js'
 import { fakeRun } from '../helpers/fake-run.js'
-import { emptySettings, fakeViews } from '../helpers/fake-views.js'
+import { emptySettings, fakeSetupDriver, fakeViews } from '../helpers/fake-views.js'
 import { renderInk } from '../helpers/render-ink.js'
 
 const VIEW = { ...emptySettings, configPath: '/h/config.json' }
@@ -17,7 +17,10 @@ async function type(
 }
 
 /** Mounts the app, drives the palette to Settings, and returns the harness. */
-async function settingsScreen(views = fakeViews({ settings: async () => VIEW })) {
+async function settingsScreen(
+  views = fakeViews({ settings: async () => VIEW }),
+  setup = fakeSetupDriver(),
+) {
   const queue = createQueue({ concurrency: 1, startRun: () => fakeRun('r1').handle })
   const ui = renderInk(
     <App
@@ -26,6 +29,7 @@ async function settingsScreen(views = fakeViews({ settings: async () => VIEW }))
       stages={['security']}
       concurrency={2}
       views={views}
+      setup={setup}
       intervalMs={20}
     />,
   )
@@ -65,6 +69,50 @@ describe('Settings editing', () => {
 
     expect(ui.lastFrame()).toMatch(/concurrency/)
     expect(ui.lastFrame()).not.toContain('1 staged')
+    ui.unmount()
+  })
+})
+
+describe('the setup states as a screen', () => {
+  it('opens the setup screen seeded with the current selection', async () => {
+    const view = {
+      ...VIEW,
+      config: {
+        ...VIEW.config,
+        stageTools: { validate: ['skill-lint'], evaluate: [], security: [], optimise: [] },
+      },
+      lockedTools: ['skill-lint'],
+    }
+    const ui = await settingsScreen(fakeViews({ settings: async () => view }))
+
+    // enter leaves the runtime probe for the tool list, which is where a
+    // seeded selection is visible at all.
+    await type(ui, ':setup\r')
+    await type(ui, '\r')
+
+    // Seeded, so the tool the config already names arrives marked rather than
+    // rendering a configured machine as having nothing selected.
+    expect(ui.lastFrame()).toMatch(/\*\s*skill-lint/)
+    ui.unmount()
+  })
+
+  it('stages the selection the wizard produced without writing it', async () => {
+    const applied: unknown[] = []
+    const driver = fakeSetupDriver()
+    const ui = await settingsScreen(
+      fakeViews({
+        settings: async () => VIEW,
+        applyConfig: async (next) => void applied.push(next),
+      }),
+      driver,
+    )
+
+    await type(ui, ':setup\r')
+    // 1 selects the minimal preset, enter advances through install to the repo step.
+    await type(ui, '1\r\r')
+
+    expect(applied).toEqual([])
+    expect(driver.saved).toEqual([])
     ui.unmount()
   })
 })

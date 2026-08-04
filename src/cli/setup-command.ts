@@ -59,6 +59,15 @@ export function buildSetupDriver(home: string): SetupDriver {
     registerRepo: async (path) => {
       await registerRepo(home, path)
     },
+
+    installedTools: async () => {
+      const lock = await loadToolLock(home)
+      // Verified, not merely present: an entry that will not run is exactly what
+      // doctor calls `unverifiable`, and reinstalling it is the right answer.
+      return Object.entries(lock.tools)
+        .filter(([, entry]) => entry.verifiedAt !== null)
+        .map(([id]) => id)
+    },
   }
 }
 

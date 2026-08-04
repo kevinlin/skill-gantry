@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   SETUP_ORDER,
   canEnter,
+  entryBlockedReason,
   initialSetupState,
   missingRuntimesFor,
   setupReducer,
@@ -95,5 +96,24 @@ describe('stageToolsFor', () => {
   it('never writes the release installer, which no stage selects', () => {
     const tools = stageToolsFor(['skills'], () => true)
     expect(Object.values(tools).flat()).not.toContain('skills')
+  })
+})
+
+describe('initialSetupState seeding', () => {
+  it('seeds the selection so a re-entered wizard shows the current toolchain', () => {
+    const state = initialSetupState({ selected: ['skill-lint', 'skillspector'] })
+    expect(state.selected).toEqual(['skill-lint', 'skillspector'])
+    expect(state.state).toBe('probe-runtimes')
+  })
+
+  it('marks a seeded install as ok so re-entry does not reinstall it', () => {
+    const state = initialSetupState({ selected: ['skill-lint'], installed: { 'skill-lint': 'ok' } })
+    // R3.6's gate is "every selected tool has to install before this step"; a tool
+    // already locked and verified satisfies it without a second install.
+    expect(entryBlockedReason(state, 'credentials-and-repo')).toBeNull()
+  })
+
+  it('still starts empty when nothing is seeded', () => {
+    expect(initialSetupState().selected).toEqual([])
   })
 })

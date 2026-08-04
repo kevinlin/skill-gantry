@@ -26,7 +26,9 @@ import type { SettingsView } from './views.js'
 export const PANELS = ['log', 'findings', 'artefacts', 'skill'] as const
 export type Panel = (typeof PANELS)[number]
 
-export const SCREENS = ['work', 'dashboard', 'issues', 'tools', 'settings'] as const
+// `setup` is a screen so `PALETTE_COMMANDS` picks it up from this list rather
+// than needing a second registration — §14.2.
+export const SCREENS = ['work', 'dashboard', 'issues', 'tools', 'settings', 'setup'] as const
 export type Screen = (typeof SCREENS)[number]
 
 export interface PaletteCommand {
