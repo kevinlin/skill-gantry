@@ -1,7 +1,14 @@
 import {
   STAGE_ORDER,
+  hasAdapter,
+  withRepo,
+  withScalar,
+  withStageTools,
+  withoutRepo,
   type DashboardStats,
   type DoctorReport,
+  type GantryConfig,
+  type ScalarField,
   type IssueFilter,
   type IssueRow,
   type JobRecord,
@@ -19,7 +26,9 @@ import type { SettingsView } from './views.js'
 export const PANELS = ['log', 'findings', 'artefacts', 'skill'] as const
 export type Panel = (typeof PANELS)[number]
 
-export const SCREENS = ['work', 'dashboard', 'issues', 'tools', 'settings'] as const
+// `setup` is a screen so `PALETTE_COMMANDS` picks it up from this list rather
+// than needing a second registration — §14.2.
+export const SCREENS = ['work', 'dashboard', 'issues', 'tools', 'settings', 'setup'] as const
 export type Screen = (typeof SCREENS)[number]
 
 export interface PaletteCommand {
@@ -129,6 +138,23 @@ export interface AppState {
   selectedIssue: number
   tools: DoctorReport | null
   settings: SettingsView | null
+  /**
+   * The edited document, or null when nothing is staged. R11.8: an edit reaches
+   * disk only through a confirmed change set, so the screen renders this and the
+   * loaded `settings.config` stays the thing the change list is computed against.
+   */
+  staged: GantryConfig | null
+  /** Index into the settings screen's actionable rows, which alone take it. */
+  settingsCursor: number
+  /**
+   * The open value editor: what is being typed, the value it replaces, and why
+   * the last attempt was refused. The buffer starts empty rather than seeded
+   * with the current value — a seeded buffer makes the first keystroke append,
+   * so typing `4` over a `2` stages 24.
+   */
+  editing: { field: ScalarField; current: string; buffer: string; error: string | null } | null
+  /** The change set is on screen, awaiting the keystroke that writes it. */
+  confirm: boolean
   /** First visible body row on a row-list screen, moved by `scroll-screen`. */
   screenOffset: number
   /**
@@ -177,6 +203,17 @@ export type Action =
   | { type: 'set-issue-filter'; filter: IssueFilter }
   | { type: 'set-tools'; report: DoctorReport }
   | { type: 'set-settings'; view: SettingsView }
+  | { type: 'settings-cursor'; delta: number; count: number }
+  | { type: 'begin-edit'; field: ScalarField; current: string }
+  | { type: 'edit-input'; buffer: string }
+  | { type: 'stage-edit' }
+  | { type: 'cancel-edit' }
+  | { type: 'stage-remove-repo'; repoId: string }
+  | { type: 'stage-selection'; selected: readonly string[] }
+  | { type: 'stage-repo'; entry: { path: string; isGit: boolean } }
+  | { type: 'open-confirm' }
+  | { type: 'close-confirm' }
+  | { type: 'discard-staged' }
   | { type: 'set-screen-row-count'; count: number }
   | { type: 'scroll-screen'; delta: number; viewport: number }
   | { type: 'refresh-views' }
@@ -228,6 +265,10 @@ export function initialState(skills: readonly SkillRef[], concurrency: number): 
     selectedIssue: 0,
     tools: null,
     settings: null,
+    staged: null,
+    settingsCursor: 0,
+    editing: null,
+    confirm: false,
     screenOffset: 0,
     screenRowCount: 0,
     viewError: null,
@@ -467,6 +508,58 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, tools: action.report, viewError: null }
     case 'set-settings':
       return { ...state, settings: action.view, viewError: null }
+    case 'settings-cursor':
+      return { ...state, settingsCursor: clamp(state.settingsCursor + action.delta, action.count) }
+    case 'begin-edit':
+      return {
+        ...state,
+        editing: { field: action.field, current: action.current, buffer: '', error: null },
+      }
+    case 'edit-input':
+      return state.editing === null
+        ? state
+        : { ...state, editing: { ...state.editing, buffer: action.buffer, error: null } }
+    case 'cancel-edit':
+      return { ...state, editing: null }
+    case 'stage-edit': {
+      const editing = state.editing
+      const base = state.staged ?? state.settings?.config
+      if (!editing || !base) return state
+      try {
+        return { ...state, staged: withScalar(base, editing.field, editing.buffer), editing: null }
+      } catch (err) {
+        // The editor stays open holding what the user typed: closing it on a
+        // rejection throws away the value they were half way through fixing.
+        return { ...state, editing: { ...editing, error: (err as Error).message } }
+      }
+    }
+    case 'stage-remove-repo': {
+      const base = state.staged ?? state.settings?.config
+      return base ? { ...state, staged: withoutRepo(base, action.repoId) } : state
+    }
+    case 'stage-selection': {
+      const base = state.staged ?? state.settings?.config
+      return base
+        ? { ...state, staged: withStageTools(base, action.selected, hasAdapter) }
+        : state
+    }
+    case 'stage-repo': {
+      const base = state.staged ?? state.settings?.config
+      if (!base) return state
+      try {
+        return { ...state, staged: withRepo(base, action.entry) }
+      } catch (err) {
+        // Registering a path twice is the user's mistake, not a crash: the
+        // screen says so and the staging is left as it was.
+        return { ...state, viewError: (err as Error).message }
+      }
+    }
+    case 'open-confirm':
+      return state.staged === null ? state : { ...state, confirm: true, screenOffset: 0 }
+    case 'close-confirm':
+      return { ...state, confirm: false, screenOffset: 0 }
+    case 'discard-staged':
+      return { ...state, staged: null, editing: null, confirm: false, settingsCursor: 0 }
     case 'set-screen-row-count':
       return { ...state, screenRowCount: action.count }
     case 'scroll-screen': {

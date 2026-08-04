@@ -1,6 +1,6 @@
 # SkillGantry M6 Implementation Plan
 
-**Status:** Tasks 1–12 shipped and compacted. Extended in place by [Extension: editable Settings](#extension-editable-settings) (Tasks 13–17, R11.7 and R11.8), not yet implemented. Written against [design.md](design.md) revision 3, [requirements.md](requirements.md) revision 8 and shipped M1–M5.
+**Status:** Tasks 1–12 shipped and compacted. Extended in place by [Extension: editable Settings](#extension-editable-settings) (Tasks 13–17, R11.7 and R11.8), shipped 2026-08-04. Written against [design.md](design.md) revision 3, [requirements.md](requirements.md) revision 8 and shipped M1–M5.
 
 **Goal:** Turned five milestones of recorded evidence into answers. Cross-repo statistics out of the ledger, an Issues table a maintainer can triage from, and the four top-level screens design §14 named and M2 shipped one of.
 

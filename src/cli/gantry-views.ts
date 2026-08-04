@@ -1,6 +1,8 @@
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { getAdapter } from '../core/adapters/registry.js'
 import { RULE_CLASS_MAP_VERSION } from '../core/adapters/rule-classes.js'
-import { loadConfig } from '../core/config/config.js'
+import { loadConfig, loadToolLock, saveConfig } from '../core/config/config.js'
 import { loadEnvFile } from '../core/config/env.js'
 import { discoverSkills } from '../core/discovery/discover.js'
 import { type Ledger, openLedger } from '../core/ledger/db.js'
@@ -93,12 +95,34 @@ export function createGantryViews(deps: CliDeps): GantryViews {
         })
       }
       const selected = [...new Set(Object.values(config.stageTools).flat())]
+      // A second, raw read: `loadConfig` parses through the schema and the schema
+      // substitutes a default for every absent key, so the parsed document cannot
+      // answer "did the user write this?".
+      const presentKeys = await readFile(join(deps.home, 'config.json'), 'utf8').then(
+        (text) => Object.keys(JSON.parse(text) as Record<string, unknown>),
+        () => [] as string[],
+      )
+      const lock = await loadToolLock(deps.home)
+      const lockedTools = Object.entries(lock.tools)
+        .filter(([, entry]) => entry.verifiedAt !== null)
+        .map(([id]) => id)
+      const toolTimeouts = selected.flatMap((toolId) => {
+        const manifest = getAdapter(toolId)?.manifest
+        return manifest ? [{ toolId, defaultMs: manifest.timeoutMs }] : []
+      })
       return {
         home: deps.home,
         dbPath: deps.dbPath,
+        configPath: join(deps.home, 'config.json'),
+        envPath: join(deps.home, '.env'),
+        lockPath: join(deps.home, 'tools', 'lock.json'),
+        config,
+        presentKeys,
         concurrency: config.concurrency,
         repos,
         stageTools: config.stageTools,
+        lockedTools,
+        toolTimeouts,
         credentials: credentialsOf(selected, env.vars),
         envWarnings: env.present ? env.warnings : [`${deps.home}/.env is absent`],
         ruleMap: withLedger(deps.dbPath, (ledger) => ({
@@ -106,6 +130,11 @@ export function createGantryViews(deps: CliDeps): GantryViews {
           current: RULE_CLASS_MAP_VERSION,
         })),
       }
+    },
+    applyConfig: async (next) => {
+      // `saveConfig` runs `configSchema.parse` before it writes, so an invalid
+      // document never reaches disk even if a caller skipped staging validation.
+      await saveConfig(deps.home, next)
     },
   }
 }

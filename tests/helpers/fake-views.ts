@@ -1,5 +1,7 @@
+import { DEFAULT_CONFIG } from '../../src/core/config/config.js'
 import type {
   DashboardStats,
+  SetupDriver,
   DoctorReport,
   IssueRow,
   ProvenanceOption,
@@ -36,9 +38,16 @@ export const toolFinding = (
 export const emptySettings: SettingsView = {
   home: '/home/.skillgantry',
   dbPath: '/home/.skillgantry/gantry.db',
+  configPath: '/home/.skillgantry/config.json',
+  envPath: '/home/.skillgantry/.env',
+  lockPath: '/home/.skillgantry/tools/lock.json',
+  config: { ...DEFAULT_CONFIG, stageTools: { ...DEFAULT_CONFIG.stageTools, security: [] } },
+  presentKeys: [],
   concurrency: 2,
   repos: [],
   stageTools: { validate: [], evaluate: [], security: [], optimise: [] },
+  lockedTools: [],
+  toolTimeouts: [],
   credentials: [],
   envWarnings: [],
   ruleMap: { applied: 1, current: 1 },
@@ -63,6 +72,43 @@ export function fakeViews(overrides: Partial<GantryViews> = {}): FakeViews {
     },
     tools: async () => emptyDoctor,
     settings: async () => emptySettings,
+    applyConfig: async () => undefined,
     ...overrides,
+  }
+}
+
+export interface FakeSetupDriver extends SetupDriver {
+  /** Selections and repos the wizard tried to write, so a test can assert it did not. */
+  readonly saved: string[][]
+  readonly registered: string[]
+}
+
+/** No spawn, no filesystem: the wizard's effects as resolved promises. */
+export function fakeSetupDriver(over: Partial<SetupDriver> = {}): FakeSetupDriver {
+  const saved: string[][] = []
+  const registered: string[] = []
+  return {
+    saved,
+    registered,
+    probe: async () => [
+      { runtime: 'uv' as const, present: true, version: '0.7.12', installCommand: 'curl uv | sh' },
+    ],
+    install: async () => undefined,
+    installedTools: async () => [],
+    saveSelection: async (selected) => {
+      saved.push([...selected])
+    },
+    credentialStatus: async () => ({ present: false, warnings: [] }),
+    inspectRepo: async (path) => ({
+      resolved: path,
+      isDirectory: true,
+      alreadyRegistered: false,
+      skillCount: 3,
+      isGit: true,
+    }),
+    registerRepo: async (path) => {
+      registered.push(path)
+    },
+    ...over,
   }
 }

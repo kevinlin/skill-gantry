@@ -1,4 +1,4 @@
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -7,6 +7,7 @@ import { createQueue } from '../../src/core/index.js'
 import { openLedger } from '../../src/core/ledger/db.js'
 import { App } from '../../src/tui/app.js'
 import { fakeRun } from '../helpers/fake-run.js'
+import { fakeSetupDriver } from '../helpers/fake-views.js'
 import { recordFixtureRun, skillFixture } from '../helpers/ledger-fixture.js'
 import { renderInk } from '../helpers/render-ink.js'
 
@@ -97,6 +98,7 @@ async function gantry() {
       stages={['security']}
       concurrency={2}
       views={views}
+      setup={fakeSetupDriver()}
       intervalMs={20}
     />,
     { columns: 100, rows: 30 },
@@ -181,5 +183,45 @@ describe('M6 exit criteria', () => {
     )
     expect(source).not.toContain('node:sqlite')
     expect(source).not.toContain('openLedger')
+  })
+
+  it('edits a setting from the TUI and writes it once', async () => {
+    const { home, ui, go } = await gantry()
+    await ui.settle()
+    const configPath = join(home, 'config.json')
+    const before = await readFile(configPath, 'utf8')
+
+    await go('settings')
+    for (const key of 'e4\r') ui.stdin.send(key)
+    await ui.settle(60)
+
+    // Staged only: R11.8's "not written per keystroke", asserted against bytes.
+    expect(await readFile(configPath, 'utf8')).toBe(before)
+
+    ui.stdin.send('c')
+    await ui.settle(60)
+    // `a` writes through the port, so the frame the assertion reads is one
+    // filesystem round trip away, not one render.
+    ui.stdin.send('a')
+    await ui.settle(200)
+
+    const after = JSON.parse(await readFile(configPath, 'utf8')) as { concurrency: number }
+    expect(after.concurrency).toBe(4)
+    expect(ui.lastFrame()).not.toContain('staged')
+    ui.unmount()
+  })
+
+  it('leaves the file byte-identical when the edit is discarded', async () => {
+    const { home, ui, go } = await gantry()
+    await ui.settle()
+    const configPath = join(home, 'config.json')
+    const before = await readFile(configPath, 'utf8')
+
+    await go('settings')
+    for (const key of 'e4\rcd') ui.stdin.send(key)
+    await ui.settle(60)
+
+    expect(await readFile(configPath, 'utf8')).toBe(before)
+    ui.unmount()
   })
 })

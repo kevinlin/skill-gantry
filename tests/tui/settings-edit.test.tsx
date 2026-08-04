@@ -1,0 +1,217 @@
+import { describe, expect, it } from 'vitest'
+import type { QueueEvent, SkillRef } from '../../src/core/index.js'
+import { App } from '../../src/tui/app.js'
+import { fakeQueue } from '../helpers/fake-run.js'
+import { emptySettings, fakeSetupDriver, fakeViews } from '../helpers/fake-views.js'
+import { renderInk } from '../helpers/render-ink.js'
+
+const VIEW = { ...emptySettings, configPath: '/h/config.json' }
+
+/** One character at a time, the way a terminal delivers them. */
+async function type(
+  ui: { stdin: { send: (s: string) => void }; settle: () => Promise<void> },
+  keys: string,
+): Promise<void> {
+  for (const key of keys) ui.stdin.send(key)
+  await ui.settle()
+}
+
+/** Mounts the app, drives the palette to Settings, and returns the harness. */
+async function settingsScreen(
+  views = fakeViews({ settings: async () => VIEW }),
+  setup = fakeSetupDriver(),
+) {
+  const queue = fakeQueue()
+  const ui = renderInk(
+    <App
+      skills={[] as SkillRef[]}
+      queue={queue}
+      stages={['security']}
+      concurrency={2}
+      views={views}
+      setup={setup}
+      intervalMs={20}
+    />,
+  )
+  await ui.settle()
+  await type(ui, ':settings\r')
+  // The queue comes back so a test can push a mutation review in front of the
+  // confirmation and assert which one wins.
+  return Object.assign(ui, { queue })
+}
+
+describe('Settings editing', () => {
+  it('stages an edit and writes nothing until apply', async () => {
+    const applied: unknown[] = []
+    const ui = await settingsScreen(
+      fakeViews({
+        settings: async () => VIEW,
+        applyConfig: async (next) => {
+          applied.push(next)
+        },
+      }),
+    )
+
+    await type(ui, 'e4\r')
+    expect(ui.lastFrame()).toContain('1 staged')
+    expect(applied).toEqual([])
+    ui.unmount()
+  })
+
+  it('renders the staged value rather than the loaded one', async () => {
+    const ui = await settingsScreen()
+    await type(ui, 'e8\r')
+    expect(ui.lastFrame()).toContain('concurrency 8')
+    ui.unmount()
+  })
+
+  it('shows the schema rejection and stages nothing', async () => {
+    const ui = await settingsScreen()
+    await type(ui, 'e99\r')
+
+    expect(ui.lastFrame()).toMatch(/concurrency/)
+    expect(ui.lastFrame()).not.toContain('1 staged')
+    ui.unmount()
+  })
+})
+
+describe('the setup states as a screen', () => {
+  it('opens the setup screen seeded with the current selection', async () => {
+    const view = {
+      ...VIEW,
+      config: {
+        ...VIEW.config,
+        stageTools: { validate: ['skill-lint'], evaluate: [], security: [], optimise: [] },
+      },
+      lockedTools: ['skill-lint'],
+    }
+    const ui = await settingsScreen(fakeViews({ settings: async () => view }))
+
+    // enter leaves the runtime probe for the tool list, which is where a
+    // seeded selection is visible at all.
+    await type(ui, ':setup\r')
+    await type(ui, '\r')
+
+    // Seeded, so the tool the config already names arrives marked rather than
+    // rendering a configured machine as having nothing selected.
+    expect(ui.lastFrame()).toMatch(/\*\s*skill-lint/)
+    ui.unmount()
+  })
+
+  it('stages the selection the wizard produced without writing it', async () => {
+    const applied: unknown[] = []
+    const driver = fakeSetupDriver()
+    const ui = await settingsScreen(
+      fakeViews({
+        settings: async () => VIEW,
+        applyConfig: async (next) => void applied.push(next),
+      }),
+      driver,
+    )
+
+    await type(ui, ':setup\r')
+    // 1 selects the minimal preset, enter advances through install to the repo step.
+    await type(ui, '1\r\r')
+
+    expect(applied).toEqual([])
+    expect(driver.saved).toEqual([])
+    ui.unmount()
+  })
+})
+
+describe('the confirmation pane', () => {
+  it('renders one row per change, names the file and states the restart', async () => {
+    const ui = await settingsScreen()
+    await type(ui, 'e4\rc')
+
+    const frame = ui.lastFrame()
+    expect(frame).toContain('config.json')
+    expect(frame).toContain('concurrency')
+    expect(frame).toContain('2 → 4')
+    expect(frame).toContain('next launch')
+    expect(frame).toContain('a apply · d discard')
+    ui.unmount()
+  })
+
+  it('applies once and leaves nothing staged', async () => {
+    const applied: unknown[] = []
+    const ui = await settingsScreen(
+      fakeViews({
+        settings: async () => VIEW,
+        applyConfig: async (next) => void applied.push(next),
+      }),
+    )
+
+    await type(ui, 'e4\rc')
+    expect(applied).toEqual([])
+    await type(ui, 'a')
+
+    expect(applied).toHaveLength(1)
+    expect(ui.lastFrame()).not.toContain('staged')
+    ui.unmount()
+  })
+
+  it('discards a staged edit and applies nothing', async () => {
+    const applied: unknown[] = []
+    const ui = await settingsScreen(
+      fakeViews({
+        settings: async () => VIEW,
+        applyConfig: async (next) => void applied.push(next),
+      }),
+    )
+
+    await type(ui, 'e4\rcd')
+
+    expect(applied).toEqual([])
+    expect(ui.lastFrame()).not.toContain('staged')
+    ui.unmount()
+  })
+
+  it('says what a repo removal does and does not delete', async () => {
+    const view = {
+      ...VIEW,
+      repos: [{ id: 'alpha', name: 'alpha', path: '/alpha', isGit: true, skills: 20 }],
+      config: {
+        ...VIEW.config,
+        repos: [{ id: 'alpha', name: 'alpha', path: '/alpha', isGit: true }],
+      },
+    }
+    const ui = await settingsScreen(fakeViews({ settings: async () => view }))
+    // The repo row is the first actionable row, so d stages its removal and c
+    // confirms.
+    await type(ui, 'dc')
+
+    expect(ui.lastFrame()).toContain('repos[alpha]')
+    // "Remove" over a path reads as a delete unless the pane says otherwise.
+    expect(ui.lastFrame()).toContain('workspaces and recorded runs are kept')
+    ui.unmount()
+  })
+
+  it('keeps the mutation review in front of the confirmation', async () => {
+    // The review's `a` writes the user's repo; the config pane's writes
+    // ~/.skillgantry/config.json. Precedence is ordered by what a keystroke costs.
+    const ui = await settingsScreen()
+    await type(ui, 'e4\rc')
+    const pending: QueueEvent = {
+      type: 'run:event',
+      jobId: 'j1',
+      event: {
+        type: 'mutation:pending',
+        runId: 'run-1',
+        stage: 'release',
+        requestId: 'req-1',
+        diff: '--- a\n+++ b\n',
+        scope: ['SKILL.md'],
+      },
+    }
+    ui.queue.emit(pending)
+    await ui.settle()
+
+    expect(ui.lastFrame()).toContain('Review —')
+    // Both panes footer the same three keys, so the discriminator is the title:
+    // the config change set is not what those keys are acting on.
+    expect(ui.lastFrame()).not.toContain('Confirm —')
+    expect(ui.lastFrame()).not.toContain('concurrency')
+    ui.unmount()
+  })
+})

@@ -83,3 +83,39 @@ describe('createGantryViews', () => {
     await views.dashboard({})
   })
 })
+
+describe('config origin reporting', () => {
+  it('reports which config keys the file actually holds', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'sg-views-'))
+    await writeFile(
+      join(dir, 'config.json'),
+      JSON.stringify({
+        version: 1,
+        stageTools: { validate: [], evaluate: [], security: [], optimise: [] },
+        concurrency: 4,
+        artefactSizeCapBytes: 1024,
+      }),
+    )
+    const view = await createGantryViews({
+      home: dir,
+      dbPath: join(dir, 'gantry.db'),
+      write: () => undefined,
+    }).settings()
+
+    expect(view.presentKeys).toContain('concurrency')
+    // Absent from the file, filled by the schema: the screen must be able to say
+    // "default" rather than showing a number nobody wrote.
+    expect(view.presentKeys).not.toContain('mutationTimeoutMs')
+    expect(view.configPath).toBe(join(dir, 'config.json'))
+  })
+
+  it('reports no present keys when the file does not exist', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'sg-views-'))
+    const view = await createGantryViews({
+      home: dir,
+      dbPath: join(dir, 'gantry.db'),
+      write: () => undefined,
+    }).settings()
+    expect(view.presentKeys).toEqual([])
+  })
+})

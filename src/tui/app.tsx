@@ -1,22 +1,31 @@
 import { useEffect, useReducer, useRef } from 'react'
 import { Box, Text, useApp, useInput, useWindowSize } from 'ink'
+import {
+  DEFAULT_CONFIG,
+  configChanges,
+} from '../core/index.js'
 import type {
   IssueAction,
   IssueState,
   QueueHandle,
+  SetupDriver,
   SkillRef,
   Stage,
 } from '../core/index.js'
+import { ConfirmPane } from './components/ConfirmPane.js'
 import { Dashboard } from './components/Dashboard.js'
 import { Issues } from './components/Issues.js'
 import { Palette } from './components/Palette.js'
 import { Settings } from './components/Settings.js'
+import { Setup } from './components/Setup.js'
 import { Tools } from './components/Tools.js'
 import { Work } from './components/Work.js'
-import { layoutFor, reviewDiffRows, screenBodyRows, truncate } from './layout.js'
+import { innerWidth, layoutFor, reviewDiffRows, screenBodyRows, truncate } from './layout.js'
 import { LogPump } from './log-buffer.js'
+import { settingsRows } from './rows.js'
+import { useSetupSession } from './use-setup-session.js'
 import { PANELS, initialState, paletteMatches, reducer, selectedSkill } from './store.js'
-import type { AppState } from './store.js'
+import type { Action, AppState } from './store.js'
 import { type GantryViews, listArtefacts, loadSkillMd, loadSkillStatuses } from './views.js'
 
 export interface AppProps {
@@ -27,8 +36,47 @@ export interface AppProps {
   concurrency: number
   /** R11.3's screens read the ledger through this; the TUI may not open it. */
   views: GantryViews
+  /** The wizard's effects, for the setup screen; the TUI may not spawn. */
+  setup: SetupDriver
   /** Flush interval, lowered in tests. */
   intervalMs?: number
+}
+
+/**
+ * The wizard inside the session. Same states, same component; what differs is
+ * where its results go — staged rather than written — and that leaving it
+ * returns to Settings instead of ending the process.
+ */
+function SetupScreen({
+  state,
+  dispatch,
+  driver,
+}: {
+  state: AppState
+  dispatch: (action: Action) => void
+  driver: SetupDriver
+}): React.ReactElement {
+  const config = state.staged ?? state.settings?.config
+  const locked = state.settings?.lockedTools ?? []
+  const session = useSetupSession({
+    driver,
+    seed: {
+      selected: [...new Set([...Object.values(config?.stageTools ?? {}).flat(), ...locked])],
+      installed: Object.fromEntries(locked.map((id) => [id, 'ok' as const])),
+    },
+    onSelection: (selected) => dispatch({ type: 'stage-selection', selected }),
+    onRepo: (entry) => dispatch({ type: 'stage-repo', entry }),
+    onExit: () => dispatch({ type: 'set-screen', screen: 'settings' }),
+  })
+  return (
+    <Setup
+      state={session.state}
+      cursor={session.cursor}
+      draftPath={session.path}
+      inspection={session.inspection}
+      error={session.error}
+    />
+  )
 }
 
 /** The palette above the same footer hint every screen prints. */
@@ -49,6 +97,7 @@ export function App({
   stages,
   concurrency,
   views,
+  setup,
   intervalMs,
 }: AppProps): React.ReactElement {
   const [state, dispatch] = useReducer(reducer, skills, (list) => initialState(list, concurrency))
@@ -57,6 +106,9 @@ export function App({
   const { columns, rows } = useWindowSize()
   const layout = layoutFor(columns, rows)
   const reviewRows = reviewDiffRows(layout)
+  // What the change set is computed against: the document on disk, never the
+  // staged one, or every change would compare against itself.
+  const settingsConfig = state.settings?.config ?? DEFAULT_CONFIG
   const { exit } = useApp()
   const byId = useRef(new Map(skills.map((skill) => [skill.id, skill])))
   /**
@@ -68,6 +120,13 @@ export function App({
    * selected whatever `s` matched. State stays what the frame renders.
    */
   const palette = useRef({ open: false, query: '' })
+  /** The value editor's buffer, mirrored outside React for the same reason. */
+  const editor = useRef({ open: false, buffer: '' })
+  useEffect(() => {
+    // The reducer owns whether the editor is open — a refused value keeps it up
+    // — so the ref follows state rather than the key handler guessing.
+    editor.current = { open: state.editing !== null, buffer: state.editing?.buffer ?? '' }
+  }, [state.editing])
 
   const pump = useRef<LogPump | null>(null)
   if (pump.current === null) {
@@ -155,10 +214,6 @@ export function App({
     // binding writes to the user's repo. Escape and the arrows are unaffected:
     // they arrive as named keys with `input` empty.
     const plain = !key.ctrl && !key.meta && !key.super && !key.hyper
-    if (plain && input === 'q') {
-      exit()
-      return
-    }
     // Modal like help, and checked first: the review pane is the one screen
     // that wins over every other modal (Work.tsx renders it first for the
     // same reason), so `?` must not sneak help on top of a diff still
@@ -171,6 +226,65 @@ export function App({
         dispatch({ type: 'scroll-review', delta: 1, viewport: reviewRows })
       else if ((plain && input === 'k') || key.upArrow)
         dispatch({ type: 'scroll-review', delta: -1, viewport: reviewRows })
+      return
+    }
+    // Second in precedence, ordered by what a keystroke costs: the review's `a`
+    // writes the user's repo, this one writes ~/.skillgantry/config.json.
+    if (state.confirm && state.staged !== null) {
+      const staged = state.staged
+      if (plain && input === 'a') {
+        void views
+          .applyConfig(staged)
+          .then(() => {
+            dispatch({ type: 'discard-staged' })
+            dispatch({ type: 'close-confirm' })
+            // Re-read rather than patch: the file is the authority for what the
+            // write actually produced, origins included.
+            dispatch({ type: 'refresh-views' })
+          })
+          // The staging survives a failed write, so the user can retry it.
+          .catch((err: unknown) =>
+            dispatch({ type: 'view-error', message: (err as Error).message }),
+          )
+      } else if (plain && input === 'd') {
+        dispatch({ type: 'discard-staged' })
+      } else if (key.escape) {
+        dispatch({ type: 'close-confirm' })
+      } else if ((plain && input === 'j') || key.downArrow) {
+        dispatch({ type: 'scroll-screen', delta: 1, viewport: screenBodyRows(layout) })
+      } else if ((plain && input === 'k') || key.upArrow) {
+        dispatch({ type: 'scroll-screen', delta: -1, viewport: screenBodyRows(layout) })
+      }
+      return
+    }
+    // Text entry wins over every single-letter command, for the reason the
+    // wizard's own handler documents: a value is digits and a path is letters,
+    // and either would otherwise steer the screen instead of filling the field.
+    // `:` included — a colon is a character a user can legitimately type.
+    if (editor.current.open) {
+      // The buffer comes off the ref for the reason the palette's does: React
+      // batches the keypresses that arrive in one tick, so reading it from state
+      // loses every character but the last.
+      const write = (buffer: string): void => {
+        editor.current = { open: true, buffer }
+        dispatch({ type: 'edit-input', buffer })
+      }
+      if (key.escape) {
+        editor.current = { open: false, buffer: '' }
+        dispatch({ type: 'cancel-edit' })
+      } else if (key.return) {
+        // Closed here rather than after the render: keys arriving in the same
+        // tick as the enter — `c` in `e4\rc` — belong to the screen, not to a
+        // field the user has already submitted. The effect reopens it when
+        // `stage-edit` refused the value, which is the only case it stays up.
+        editor.current = { open: false, buffer: '' }
+        dispatch({ type: 'stage-edit' })
+      } else if (key.backspace || key.delete) write(editor.current.buffer.slice(0, -1))
+      else if (plain && input.length > 0) write(editor.current.buffer + input)
+      return
+    }
+    if (plain && input === 'q') {
+      exit()
       return
     }
     if (palette.current.open) {
@@ -216,8 +330,29 @@ export function App({
       dispatch({ type: 'set-screen', screen: 'work' })
       return
     }
-    if (state.screen === 'tools' || state.screen === 'settings') {
-      if (plain && input === 'r' && state.screen === 'tools') {
+    // The wizard's own handler is the only one acting while it is up: `1` is a
+    // preset there and a panel switch here.
+    if (state.screen === 'setup') return
+    if (state.screen === 'settings') {
+      const rows = settingsRows(state, innerWidth(columns, layout.chrome))
+      const actionable = rows.flatMap((row) => (row.action ? [row.action] : []))
+      const selected = actionable[state.settingsCursor]
+      if ((plain && input === 'j') || key.downArrow) {
+        dispatch({ type: 'settings-cursor', delta: 1, count: actionable.length })
+      } else if ((plain && input === 'k') || key.upArrow) {
+        dispatch({ type: 'settings-cursor', delta: -1, count: actionable.length })
+      } else if (plain && input === 'e' && selected?.kind === 'edit-scalar') {
+        editor.current = { open: true, buffer: '' }
+        dispatch({ type: 'begin-edit', field: selected.field, current: selected.current })
+      } else if (plain && input === 'd' && selected?.kind === 'remove-repo') {
+        dispatch({ type: 'stage-remove-repo', repoId: selected.repoId })
+      } else if (plain && input === 'c') {
+        dispatch({ type: 'open-confirm' })
+      }
+      return
+    }
+    if (state.screen === 'tools') {
+      if (plain && input === 'r') {
         // A re-probe, not a migration: `tools()` invokes each binary's version
         // argv, which is what R3.9 means by re-verify.
         dispatch({ type: 'refresh-views' })
@@ -355,6 +490,16 @@ export function App({
   // The review pane stays the first branch: it is the one screen that wins over
   // every modal, because `a` on it writes to the user's repo.
   if (state.pending) return <Work state={state} />
+  if (state.confirm && state.staged !== null) {
+    return (
+      <ConfirmPane
+        changes={configChanges(settingsConfig, state.staged)}
+        configPath={state.settings?.configPath ?? ''}
+        offset={state.screenOffset}
+        layout={layout}
+      />
+    )
+  }
   if (state.palette.open) return <PaletteScreen state={state} />
   switch (state.screen) {
     case 'dashboard':
@@ -365,6 +510,8 @@ export function App({
       return <Tools state={state} dispatch={dispatch} />
     case 'settings':
       return <Settings state={state} dispatch={dispatch} />
+    case 'setup':
+      return <SetupScreen state={state} dispatch={dispatch} driver={setup} />
     default:
       return <Work state={state} />
   }
