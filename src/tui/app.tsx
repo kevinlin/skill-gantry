@@ -65,7 +65,15 @@ function SetupScreen({
       installed: Object.fromEntries(locked.map((id) => [id, 'ok' as const])),
     },
     onSelection: (selected) => dispatch({ type: 'stage-selection', selected }),
-    onRepo: (entry) => dispatch({ type: 'stage-repo', entry }),
+    // Resolved here rather than in the hook: staging needs the canonical path
+    // and the git flag, and this is the caller that needs them — the CLI's
+    // `registerRepo` does its own inspection and must not pay for a second.
+    onRepo: async (path) => {
+      const result = await driver.inspectRepo(path)
+      if (!result.isDirectory) throw new Error(`no such directory: ${result.resolved}`)
+      if (result.alreadyRegistered) throw new Error(`already registered: ${result.resolved}`)
+      dispatch({ type: 'stage-repo', entry: { path: result.resolved, isGit: result.isGit } })
+    },
     onExit: () => dispatch({ type: 'set-screen', screen: 'settings' }),
   })
   return (

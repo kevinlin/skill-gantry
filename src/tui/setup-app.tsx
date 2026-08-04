@@ -17,7 +17,7 @@ export function SetupApp({ driver }: SetupAppProps): React.ReactElement {
   const session = useSetupSession({
     driver,
     onSelection: (ids) => driver.saveSelection(ids),
-    onRepo: (entry) => driver.registerRepo(entry.path),
+    onRepo: (path) => driver.registerRepo(path),
     onExit: exit,
   })
   return (

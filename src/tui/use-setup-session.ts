@@ -29,7 +29,10 @@ export interface SetupSessionOptions {
   seed?: { selected?: readonly string[]; installed?: Readonly<Record<string, InstallState>> }
   /** Where the chosen tools go. `skillgantry setup` writes; the screen stages. */
   onSelection: (selected: readonly string[]) => void
-  onRepo: (entry: { path: string; isGit: boolean }) => Promise<void> | void
+  /** The typed path, resolved by whoever consumes it. Deliberately not the
+      inspection: adding a second round trip here doubled the wizard's submit
+      latency, which is the whole of what `enter` on the repo step costs. */
+  onRepo: (path: string) => Promise<void> | void
   /** Leaving: the CLI exits the process, the screen returns to Settings. */
   onExit: () => void
 }
@@ -127,14 +130,8 @@ export function useSetupSession({
       return
     }
     setError(null)
-    // Inspected first because `onRepo` decides whether the entry is written or
-    // staged, and either way it needs the resolved path and the git-ness only
-    // the inspection knows. The rejection is still handled here, for the reason
-    // above: it is the one failure the user can fix by typing something else.
-    void driver
-      .inspectRepo(path)
-      .then(async (result) => {
-        await onRepo({ path: result.resolved, isGit: result.isGit })
+    void Promise.resolve(onRepo(path))
+      .then(() => {
         dispatch({ type: 'repo', path })
         dispatch({ type: 'enter', state: 'done' })
       })
