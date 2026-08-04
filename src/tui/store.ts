@@ -2,6 +2,7 @@ import {
   STAGE_ORDER,
   type DashboardStats,
   type DoctorReport,
+  type GantryConfig,
   type IssueFilter,
   type IssueRow,
   type JobRecord,
@@ -129,6 +130,14 @@ export interface AppState {
   selectedIssue: number
   tools: DoctorReport | null
   settings: SettingsView | null
+  /**
+   * The edited document, or null when nothing is staged. R11.8: an edit reaches
+   * disk only through a confirmed change set, so the screen renders this and the
+   * loaded `settings.config` stays the thing the change list is computed against.
+   */
+  staged: GantryConfig | null
+  /** Index into the settings screen's actionable rows, which alone take it. */
+  settingsCursor: number
   /** First visible body row on a row-list screen, moved by `scroll-screen`. */
   screenOffset: number
   /**
@@ -228,6 +237,8 @@ export function initialState(skills: readonly SkillRef[], concurrency: number): 
     selectedIssue: 0,
     tools: null,
     settings: null,
+    staged: null,
+    settingsCursor: 0,
     screenOffset: 0,
     screenRowCount: 0,
     viewError: null,

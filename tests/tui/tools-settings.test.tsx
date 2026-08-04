@@ -16,6 +16,12 @@ const REPORT = {
 const VIEW = {
   ...emptySettings,
   concurrency: 3,
+  // The screen renders the document; the summary fields describe the same one.
+  config: {
+    ...emptySettings.config,
+    concurrency: 3,
+    repos: [{ id: 'alpha', name: 'alpha', path: '/alpha', isGit: true }],
+  },
   repos: [{ id: 'alpha', name: 'alpha', path: '/alpha', isGit: true, skills: 20 }],
   credentials: [{ label: 'skillspector', satisfied: true, detail: 'no credential required' }],
 }

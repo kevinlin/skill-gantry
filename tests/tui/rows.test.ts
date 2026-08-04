@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { dashboardRows, humanMs, settingsRows, toolsRows } from '../../src/tui/rows.js'
+import {
+  dashboardRows,
+  humanMs,
+  settingsRows,
+  toolsRows,
+  type ScreenRow,
+} from '../../src/tui/rows.js'
 import { initialState, reducer } from '../../src/tui/store.js'
 import { emptyDashboard, emptySettings, toolFinding } from '../helpers/fake-views.js'
 
@@ -154,7 +160,14 @@ describe('settingsRows', () => {
       type: 'set-settings',
       view: {
         ...emptySettings,
+        // The rows render the document, so the view's summary fields and the
+        // config it carries have to agree — as they do off `createGantryViews`.
         concurrency: 3,
+        config: {
+          ...emptySettings.config,
+          concurrency: 3,
+          repos: [{ id: 'alpha', name: 'alpha', path: '/alpha', isGit: true }],
+        },
         repos: [{ id: 'alpha', name: 'alpha', path: '/alpha', isGit: true, skills: 20 }],
         credentials: [{ label: 'skillspector', satisfied: true, detail: 'no credential required' }],
         envWarnings: ['/home/.skillgantry/.env is more permissive than 600 (mode 644)'],
@@ -183,5 +196,55 @@ describe('settingsRows', () => {
       .join('\n')
     expect(text).toContain('needs one of OpenAI')
     expect(text).not.toContain('sk-')
+  })
+
+  const VIEW = { ...emptySettings, configPath: '/h/config.json', envPath: '/h/.env' }
+  const withView = (view = VIEW, concurrency = 2) =>
+    reducer(initialState([], concurrency), { type: 'set-settings', view })
+  const find = (rows: ScreenRow[], needle: string) => rows.find((row) => row.text.includes(needle))
+
+  it('names the holding file on every group heading', () => {
+    const headings = settingsRows(withView(), 80)
+      .filter((row) => row.heading === true)
+      .map((row) => row.text)
+    expect(headings.some((text) => text.includes('/h/config.json'))).toBe(true)
+    expect(headings.some((text) => text.includes('/h/.env'))).toBe(true)
+  })
+
+  it('marks a value the file does not hold as a default', () => {
+    const rows = settingsRows(withView({ ...VIEW, presentKeys: [] }), 80)
+    expect(find(rows, 'concurrency')?.text).toContain('default')
+  })
+
+  it('marks a value the file holds with the file name', () => {
+    const rows = settingsRows(withView({ ...VIEW, presentKeys: ['concurrency'] }), 80)
+    expect(find(rows, 'concurrency')?.text).toContain('config.json')
+  })
+
+  it('shows a session override beside the stored value', () => {
+    // The view carries the stored 4; the app was launched with --concurrency 2.
+    const rows = settingsRows(
+      withView({ ...VIEW, concurrency: 4, config: { ...VIEW.config, concurrency: 4 } }, 2),
+      80,
+    )
+    expect(find(rows, 'concurrency')?.text).toContain('session 2')
+  })
+
+  it('gives an editable row an action and a credential row none', () => {
+    const rows = settingsRows(
+      withView({
+        ...VIEW,
+        credentials: [{ label: 'skillspector', satisfied: true, detail: 'via anthropic' }],
+      }),
+      80,
+    )
+    expect(find(rows, 'concurrency')?.action).toEqual({
+      kind: 'edit-scalar',
+      field: 'concurrency',
+      current: '2',
+    })
+    // R7.3: a credential is never editable, so its row carries no action at all
+    // rather than an action that refuses.
+    expect(find(rows, 'skillspector')?.action).toBeUndefined()
   })
 })

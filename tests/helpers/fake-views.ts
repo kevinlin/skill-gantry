@@ -1,3 +1,4 @@
+import { DEFAULT_CONFIG } from '../../src/core/config/config.js'
 import type {
   DashboardStats,
   DoctorReport,
@@ -36,9 +37,16 @@ export const toolFinding = (
 export const emptySettings: SettingsView = {
   home: '/home/.skillgantry',
   dbPath: '/home/.skillgantry/gantry.db',
+  configPath: '/home/.skillgantry/config.json',
+  envPath: '/home/.skillgantry/.env',
+  lockPath: '/home/.skillgantry/tools/lock.json',
+  config: { ...DEFAULT_CONFIG, stageTools: { ...DEFAULT_CONFIG.stageTools, security: [] } },
+  presentKeys: [],
   concurrency: 2,
   repos: [],
   stageTools: { validate: [], evaluate: [], security: [], optimise: [] },
+  lockedTools: [],
+  toolTimeouts: [],
   credentials: [],
   envWarnings: [],
   ruleMap: { applied: 1, current: 1 },
@@ -63,6 +71,7 @@ export function fakeViews(overrides: Partial<GantryViews> = {}): FakeViews {
     },
     tools: async () => emptyDoctor,
     settings: async () => emptySettings,
+    applyConfig: async () => undefined,
     ...overrides,
   }
 }

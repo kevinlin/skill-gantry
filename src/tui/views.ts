@@ -4,6 +4,7 @@ import {
   readIndex,
   type DashboardStats,
   type DoctorReport,
+  type GantryConfig,
   type IssueAction,
   type IssueFilter,
   type IssueRow,
@@ -78,9 +79,25 @@ export interface SettingsCredential {
 export interface SettingsView {
   home: string
   dbPath: string
+  /** Named so a row can say which file holds it — R11.7. */
+  configPath: string
+  envPath: string
+  lockPath: string
+  /** The loaded document, so the screen can stage edits against it. */
+  config: GantryConfig
+  /**
+   * Top-level keys the file literally held. `loadConfig` fills a default for
+   * every absent key, so without this a written 2 and a defaulted 2 are the
+   * same number and the screen cannot tell a user which file to edit.
+   */
+  presentKeys: readonly string[]
   concurrency: number
   repos: SettingsRepo[]
   stageTools: Record<string, readonly string[]>
+  /** Installed and verified per the lockfile; seeds the setup screen. */
+  lockedTools: readonly string[]
+  /** The adapter's declared timeout per selected tool, before any override. */
+  toolTimeouts: Array<{ toolId: string; defaultMs: number }>
   credentials: SettingsCredential[]
   /** `.env` mode and presence warnings, verbatim from `loadEnvFile`. */
   envWarnings: string[]
@@ -101,4 +118,6 @@ export interface GantryViews {
   actOnIssue(fingerprint: string, action: IssueAction): Promise<string | null>
   tools(): Promise<DoctorReport>
   settings(): Promise<SettingsView>
+  /** Validates the whole document and writes it once — the only write path. */
+  applyConfig(next: GantryConfig): Promise<void>
 }

@@ -1,11 +1,20 @@
+import { basename } from 'node:path'
+import type { ScalarField } from '../core/index.js'
 import { truncate } from './layout.js'
 import type { AppState } from './store.js'
+
+export type SettingsAction =
+  | { kind: 'edit-scalar'; field: ScalarField; current: string }
+  | { kind: 'remove-repo'; repoId: string }
+  | { kind: 'open-setup' }
 
 export interface ScreenRow {
   text: string
   heading?: boolean
   dim?: boolean
   colour?: string
+  /** Present only on rows the user can act on; the cursor visits these alone. */
+  action?: SettingsAction
 }
 
 const pct = (rate: number): string => `${Math.round(rate * 100)}%`
@@ -181,25 +190,78 @@ export function settingsRows(state: AppState, width: number): ScreenRow[] {
     return rows
   }
 
-  line('Repos', { heading: true })
-  if (view.repos.length === 0) {
-    line('  none registered — skillgantry setup registers one', { dim: true })
+  // The staged document, so every edit is visible before it is written and the
+  // screen never shows a value the user has already changed (R11.8).
+  const config = state.staged ?? view.config
+  const configFile = basename(view.configPath)
+  /** R11.7: which file holds this value, or that nobody wrote it at all. */
+  const origin = (key: string): string =>
+    view.presentKeys.includes(key) ? configFile : 'default'
+  // Actionable rows alone take the cursor, so `j` never stops on a heading.
+  let actionable = 0
+  const action = (text: string, act: SettingsAction, extra: Omit<ScreenRow, 'text'> = {}): void => {
+    const marker = actionable === state.settingsCursor ? '›' : ' '
+    actionable += 1
+    rows.push({ text: truncate(`${marker} ${text}`, width), action: act, ...extra })
   }
-  for (const repo of view.repos) {
-    line(
-      `  ${repo.id.padEnd(14)} ${repo.skills} skills  ${repo.isGit ? 'git' : 'no git'}  ${repo.path}`,
+
+  line(`Repos — ${view.configPath}`, { heading: true })
+  if (config.repos.length === 0) {
+    line('  none registered — press enter here to add one', { dim: true })
+  }
+  for (const repo of config.repos) {
+    const skills = view.repos.find((known) => known.id === repo.id)?.skills ?? 0
+    action(
+      ` ${repo.id.padEnd(14)} ${skills} skills  ${repo.isGit ? 'git' : 'no git'}  ${repo.path}`,
+      { kind: 'remove-repo', repoId: repo.id },
+    )
+  }
+  action(' + add a repo', { kind: 'open-setup' }, { dim: true })
+
+  line(`Execution — ${view.configPath}`, { heading: true })
+  const session =
+    state.concurrency === config.concurrency ? '' : ` · session ${state.concurrency}`
+  action(` concurrency ${config.concurrency}  (${origin('concurrency')})${session}`, {
+    kind: 'edit-scalar',
+    field: 'concurrency',
+    current: String(config.concurrency),
+  })
+  action(
+    ` artefact cap ${config.artefactSizeCapBytes} bytes  (${origin('artefactSizeCapBytes')})`,
+    {
+      kind: 'edit-scalar',
+      field: 'artefactSizeCapBytes',
+      current: String(config.artefactSizeCapBytes),
+    },
+  )
+  action(` mutation timeout ${config.mutationTimeoutMs}ms  (${origin('mutationTimeoutMs')})`, {
+    kind: 'edit-scalar',
+    field: 'mutationTimeoutMs',
+    current: String(config.mutationTimeoutMs),
+  })
+  for (const [stage, tools] of Object.entries(config.stageTools)) {
+    // R11.8: tool selection is the setup states, not a second selection path.
+    action(
+      ` ${stage.padEnd(10)} ${tools.length === 0 ? 'no tool selected' : tools.join(', ')}`,
+      { kind: 'open-setup' },
+      { dim: tools.length === 0 },
+    )
+  }
+  for (const tool of view.toolTimeouts) {
+    const override = config.timeoutOverridesMs[tool.toolId]
+    action(
+      ` timeout ${tool.toolId.padEnd(14)} ${override ?? tool.defaultMs}ms  (${
+        override === undefined ? 'adapter default' : configFile
+      })`,
+      {
+        kind: 'edit-scalar',
+        field: `timeoutOverridesMs.${tool.toolId}`,
+        current: override === undefined ? '' : String(override),
+      },
     )
   }
 
-  line('Execution', { heading: true })
-  line(`  concurrency ${view.concurrency}`)
-  for (const [stage, tools] of Object.entries(view.stageTools)) {
-    line(`  ${stage.padEnd(10)} ${tools.length === 0 ? 'no tool selected' : tools.join(', ')}`, {
-      dim: tools.length === 0,
-    })
-  }
-
-  line('Credentials', { heading: true })
+  line(`Credentials — ${view.envPath}`, { heading: true })
   if (view.credentials.length === 0) line('  no selected tool declares one', { dim: true })
   for (const credential of view.credentials) {
     // Presence and provider label only. R7.3 keeps credential values out of
