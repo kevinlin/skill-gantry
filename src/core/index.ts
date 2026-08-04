@@ -13,6 +13,7 @@ export {
 } from './ledger/rule-map-migration.js'
 export { discoverSkills, workspacePath } from './discovery/discover.js'
 export {
+  DEFAULT_CONFIG,
   inspectRepo,
   loadConfig,
   loadToolLock,

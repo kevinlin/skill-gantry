@@ -8,7 +8,13 @@ import { renderInk } from '../helpers/render-ink.js'
 import { App } from '../../src/tui/app.js'
 import { createQueue } from '../../src/core/index.js'
 import { fakeRun } from '../helpers/fake-run.js'
-import { emptyDashboard, emptySettings, fakeViews, toolFinding } from '../helpers/fake-views.js'
+import {
+  emptyDashboard,
+  emptySettings,
+  fakeSetupDriver,
+  fakeViews,
+  toolFinding,
+} from '../helpers/fake-views.js'
 
 function frameAt(node: ReactElement, columns: number, rows: number): string {
   const harness = renderInk(node, { columns, rows })
@@ -229,6 +235,16 @@ const BUSY_VIEWS = () =>
     settings: async () => ({
       ...emptySettings,
       concurrency: 4,
+      config: {
+        ...emptySettings.config,
+        concurrency: 4,
+        repos: Array.from({ length: 6 }, (_, i) => ({
+          id: `repo-${i}`,
+          name: `repo-${i}`,
+          path: `/Users/someone/dev/a-rather-long-repository-path-${i}`,
+          isGit: true,
+        })),
+      },
       repos: Array.from({ length: 6 }, (_, i) => ({
         id: `repo-${i}`,
         name: `repo-${i}`,
@@ -283,6 +299,63 @@ describe('every M6 screen fits its terminal — §14.1', () => {
         expect(size.columns).toBeLessThanOrEqual(columns)
       })
     }
+
+    it(`fits the setup screen at ${columns}x${rows}`, async () => {
+      const queue = createQueue({ concurrency: 1, startRun: () => fakeRun('r1').handle })
+      const ui = renderInk(
+        <App
+          skills={NAMES.map(skill)}
+          queue={queue}
+          stages={['security']}
+          concurrency={2}
+          views={BUSY_VIEWS()}
+          setup={fakeSetupDriver()}
+          intervalMs={20}
+        />,
+        { columns, rows },
+      )
+      await ui.settle()
+      for (const char of ':setup\r') ui.stdin.send(char)
+      await ui.settle(60)
+      // enter reaches the tool list, 3 selects everything: the longest body the
+      // wizard has.
+      ui.stdin.send('\r')
+      ui.stdin.send('3')
+      await ui.settle(60)
+      const size = measure(ui.lastFrame())
+      ui.unmount()
+      expect(size.rows).toBeLessThanOrEqual(rows)
+      expect(size.columns).toBeLessThanOrEqual(columns)
+    })
+
+    it(`fits the confirmation pane at ${columns}x${rows}`, async () => {
+      const queue = createQueue({ concurrency: 1, startRun: () => fakeRun('r1').handle })
+      const ui = renderInk(
+        <App
+          skills={NAMES.map(skill)}
+          queue={queue}
+          stages={['security']}
+          concurrency={2}
+          views={BUSY_VIEWS()}
+          setup={fakeSetupDriver()}
+          intervalMs={20}
+        />,
+        { columns, rows },
+      )
+      await ui.settle()
+      for (const char of ':settings\r') ui.stdin.send(char)
+      await ui.settle(60)
+      // Six removals plus a scalar edit: more change rows than the shortest
+      // terminal below can show.
+      for (const char of 'dddddde8\rc') ui.stdin.send(char)
+      await ui.settle(60)
+      const frame = ui.lastFrame()
+      const size = measure(frame)
+      ui.unmount()
+      expect(frame).toContain('Confirm')
+      expect(size.rows).toBeLessThanOrEqual(rows)
+      expect(size.columns).toBeLessThanOrEqual(columns)
+    })
 
     it(`fits the palette at ${columns}x${rows}`, async () => {
       const queue = createQueue({ concurrency: 1, startRun: () => fakeRun('r1').handle })

@@ -1,5 +1,9 @@
 import { useEffect, useReducer, useRef } from 'react'
 import { Box, Text, useApp, useInput, useWindowSize } from 'ink'
+import {
+  DEFAULT_CONFIG,
+  configChanges,
+} from '../core/index.js'
 import type {
   IssueAction,
   IssueState,
@@ -8,6 +12,7 @@ import type {
   SkillRef,
   Stage,
 } from '../core/index.js'
+import { ConfirmPane } from './components/ConfirmPane.js'
 import { Dashboard } from './components/Dashboard.js'
 import { Issues } from './components/Issues.js'
 import { Palette } from './components/Palette.js'
@@ -101,6 +106,9 @@ export function App({
   const { columns, rows } = useWindowSize()
   const layout = layoutFor(columns, rows)
   const reviewRows = reviewDiffRows(layout)
+  // What the change set is computed against: the document on disk, never the
+  // staged one, or every change would compare against itself.
+  const settingsConfig = state.settings?.config ?? DEFAULT_CONFIG
   const { exit } = useApp()
   const byId = useRef(new Map(skills.map((skill) => [skill.id, skill])))
   /**
@@ -220,6 +228,35 @@ export function App({
         dispatch({ type: 'scroll-review', delta: -1, viewport: reviewRows })
       return
     }
+    // Second in precedence, ordered by what a keystroke costs: the review's `a`
+    // writes the user's repo, this one writes ~/.skillgantry/config.json.
+    if (state.confirm && state.staged !== null) {
+      const staged = state.staged
+      if (plain && input === 'a') {
+        void views
+          .applyConfig(staged)
+          .then(() => {
+            dispatch({ type: 'discard-staged' })
+            dispatch({ type: 'close-confirm' })
+            // Re-read rather than patch: the file is the authority for what the
+            // write actually produced, origins included.
+            dispatch({ type: 'refresh-views' })
+          })
+          // The staging survives a failed write, so the user can retry it.
+          .catch((err: unknown) =>
+            dispatch({ type: 'view-error', message: (err as Error).message }),
+          )
+      } else if (plain && input === 'd') {
+        dispatch({ type: 'discard-staged' })
+      } else if (key.escape) {
+        dispatch({ type: 'close-confirm' })
+      } else if ((plain && input === 'j') || key.downArrow) {
+        dispatch({ type: 'scroll-screen', delta: 1, viewport: screenBodyRows(layout) })
+      } else if ((plain && input === 'k') || key.upArrow) {
+        dispatch({ type: 'scroll-screen', delta: -1, viewport: screenBodyRows(layout) })
+      }
+      return
+    }
     // Text entry wins over every single-letter command, for the reason the
     // wizard's own handler documents: a value is digits and a path is letters,
     // and either would otherwise steer the screen instead of filling the field.
@@ -236,9 +273,11 @@ export function App({
         editor.current = { open: false, buffer: '' }
         dispatch({ type: 'cancel-edit' })
       } else if (key.return) {
-        // Left open: `stage-edit` is what decides whether the value was
-        // acceptable, and a refused value keeps the editor up. The effect below
-        // closes the ref once the reducer has cleared `editing`.
+        // Closed here rather than after the render: keys arriving in the same
+        // tick as the enter — `c` in `e4\rc` — belong to the screen, not to a
+        // field the user has already submitted. The effect reopens it when
+        // `stage-edit` refused the value, which is the only case it stays up.
+        editor.current = { open: false, buffer: '' }
         dispatch({ type: 'stage-edit' })
       } else if (key.backspace || key.delete) write(editor.current.buffer.slice(0, -1))
       else if (plain && input.length > 0) write(editor.current.buffer + input)
@@ -451,6 +490,16 @@ export function App({
   // The review pane stays the first branch: it is the one screen that wins over
   // every modal, because `a` on it writes to the user's repo.
   if (state.pending) return <Work state={state} />
+  if (state.confirm && state.staged !== null) {
+    return (
+      <ConfirmPane
+        changes={configChanges(settingsConfig, state.staged)}
+        configPath={state.settings?.configPath ?? ''}
+        offset={state.screenOffset}
+        layout={layout}
+      />
+    )
+  }
   if (state.palette.open) return <PaletteScreen state={state} />
   switch (state.screen) {
     case 'dashboard':
