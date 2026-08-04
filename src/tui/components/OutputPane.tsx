@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { Box, Text } from 'ink'
 import { innerWidth, truncate, truncateMiddle } from '../layout.js'
 import { PANELS, type AppState, type SkillRow } from '../store.js'
+import { ACCENT, SEVERITY_COLOUR, overflowNotice } from '../tokens.js'
 import { Panel } from './Panel.js'
 
 const TITLE: Record<(typeof PANELS)[number], string> = {
@@ -9,14 +10,6 @@ const TITLE: Record<(typeof PANELS)[number], string> = {
   findings: 'Findings',
   artefacts: 'Artefacts',
   skill: 'SKILL.md',
-}
-
-const SEVERITY_COLOUR: Record<string, string> = {
-  critical: 'red',
-  high: 'red',
-  medium: 'yellow',
-  low: 'cyan',
-  info: 'gray',
 }
 
 /** Rows the pane body can show; the ring buffer holds far more than this. */
@@ -53,7 +46,7 @@ export function OutputPane({
             <Text wrap="truncate" bold={state.panel === panel} dimColor={state.panel !== panel}>
               {/* Spread rather than an explicit undefined, which
                   exactOptionalPropertyTypes rejects for an optional prop. */}
-              <Text {...(state.panel === panel ? { color: 'cyan' } : {})}>{index + 1}</Text>{' '}
+              <Text {...(state.panel === panel ? { color: ACCENT } : {})}>{index + 1}</Text>{' '}
               {TITLE[panel]}
             </Text>
           </Box>
@@ -119,7 +112,10 @@ function Body({ state, skill, height, width, chrome }: Required<OutputPaneProps>
         ))}
         {overflow && (
           <Text wrap="truncate" dimColor>
-            +{skill.findings.length - shown.length} more
+            {truncate(
+              overflowNotice(0, shown.length, skill.findings.length, 'a taller window shows more'),
+              cols,
+            )}
           </Text>
         )}
       </Box>
@@ -128,26 +124,52 @@ function Body({ state, skill, height, width, chrome }: Required<OutputPaneProps>
 
   if (state.panel === 'artefacts') {
     if (state.artefacts.length === 0) return <Text dimColor>no artefacts yet</Text>
+    // Silent before this: a run writing more artefacts than the pane is tall
+    // showed the first N and nothing to say there were others, so a user looking
+    // for a report the stage did write concluded it had not.
+    const overflow = state.artefacts.length > height
+    const shown = state.artefacts.slice(0, Math.max(1, height - (overflow ? 1 : 0)))
     return (
       <Box flexDirection="column">
-        {state.artefacts.slice(0, height).map((path) => (
+        {shown.map((path) => (
           // Middle truncation: the basename is what identifies an artefact.
           <Text key={path} wrap="truncate">
             {truncateMiddle(path, cols)}
           </Text>
         ))}
+        {overflow && (
+          <Text wrap="truncate" dimColor>
+            {truncate(
+              overflowNotice(0, shown.length, state.artefacts.length, 'a taller window shows more'),
+              cols,
+            )}
+          </Text>
+        )}
       </Box>
     )
   }
 
   if (state.skillMd.length === 0) return <Text dimColor>no SKILL.md loaded</Text>
+  // A SKILL.md runs to hundreds of lines, so this pane is almost always cut. It
+  // said so nowhere, which made a frontmatter-only preview look like the whole
+  // file.
+  const skillMdOverflow = skillMdLines.length > height
+  const skillMdShown = skillMdLines.slice(0, Math.max(1, height - (skillMdOverflow ? 1 : 0)))
   return (
     <Box flexDirection="column">
-      {skillMdLines.slice(0, height).map((line, index) => (
+      {skillMdShown.map((line, index) => (
         <Text key={`${index}-${line}`} wrap="truncate">
           {truncate(line, cols)}
         </Text>
       ))}
+      {skillMdOverflow && (
+        <Text wrap="truncate" dimColor>
+          {truncate(
+            overflowNotice(0, skillMdShown.length, skillMdLines.length, 'a taller window shows more'),
+            cols,
+          )}
+        </Text>
+      )}
     </Box>
   )
 }

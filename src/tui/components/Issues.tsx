@@ -8,17 +8,13 @@ import {
   windowFor,
 } from '../layout.js'
 import type { AppState } from '../store.js'
+import { SEVERITY_COLOUR, overflowNotice } from '../tokens.js'
 import { Panel } from './Panel.js'
 
-const HINTS = 'j/k move · a ack · w wontfix · o reopen · f filter · : commands · esc work'
-
-const SEVERITY_COLOUR: Record<string, string> = {
-  critical: 'red',
-  high: 'red',
-  medium: 'yellow',
-  low: 'gray',
-  info: 'gray',
-}
+// `q quit` included because `q` does quit from here: every other screen's
+// footer said so and this one did not, which made the key look screen-specific.
+const HINTS =
+  'j/k move · a ack · w wontfix · o reopen · f filter · : commands · esc work · q quit'
 
 /** Paired with the word, so the state survives a monochrome terminal. */
 const STATE_MARK: Record<string, string> = {
@@ -88,7 +84,7 @@ export function Issues({ state }: { state: AppState }): React.ReactElement {
         })}
         {overflow && (
           <Text dimColor wrap="truncate">
-            rows {start + 1}–{end} of {state.issues.length}
+            {overflowNotice(start, end, state.issues.length, 'j/k moves')}
           </Text>
         )}
       </Panel>

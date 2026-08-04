@@ -1,4 +1,5 @@
 import { Box, Text } from 'ink'
+import { ACCENT } from '../tokens.js'
 
 export interface PanelProps {
   /** Omitted when the panel's own first row already names it — the rail's
@@ -37,7 +38,7 @@ export function Panel({
   const heading =
     title === undefined ? null : (
       <Text bold={focused} dimColor={!focused} wrap="truncate">
-        <Text {...(focused ? { color: 'cyan' } : {})}>{title}</Text>
+        <Text {...(focused ? { color: ACCENT } : {})}>{title}</Text>
         {hint === undefined || hint.length === 0 ? null : <Text dimColor> {hint}</Text>}
       </Text>
     )
@@ -59,7 +60,7 @@ export function Panel({
     <Box
       flexDirection="column"
       borderStyle="single"
-      borderColor={focused ? 'cyan' : 'gray'}
+      borderColor={focused ? ACCENT : 'gray'}
       borderTop={borderTop}
       paddingX={1}
       {...(width > 0 ? { width, flexShrink: 0 } : {})}

@@ -35,7 +35,7 @@ export function Dashboard({
         title="Dashboard"
         hint={
           provenance === undefined
-            ? `${state.provenances.length} provenance(s)`
+            ? `${state.provenances.length} provenance${state.provenances.length === 1 ? '' : 's'}`
             : `${provenance.baseUrlHost ?? 'no host'} · ${provenance.runs} runs`
         }
         rows={body}

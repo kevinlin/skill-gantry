@@ -1,15 +1,8 @@
 import { Box, Text } from 'ink'
 import type { JobRecord } from '../../core/index.js'
 import { innerWidth, truncate, windowFor } from '../layout.js'
+import { JOB_COLOUR } from '../tokens.js'
 import { Panel } from './Panel.js'
-
-const COLOUR: Record<JobRecord['state'], string> = {
-  queued: 'gray',
-  running: 'cyan',
-  done: 'green',
-  failed: 'red',
-  cancelled: 'yellow',
-}
 
 /** Paired with the word, so the state survives a monochrome terminal. */
 const MARK: Record<JobRecord['state'], string> = {
@@ -66,7 +59,7 @@ export function QueuePanel({
           <Box key={job.jobId}>
             <Text wrap="truncate" bold={index === selected}>
               {index === selected ? '›' : ' '}{' '}
-              <Text color={COLOUR[job.state]}>
+              <Text color={JOB_COLOUR[job.state]}>
                 {MARK[job.state]} {job.state}
               </Text>{' '}
               {truncate(`${job.skillId} ${job.stages.join(',')}`, cols - job.state.length - 5)}

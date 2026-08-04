@@ -38,7 +38,9 @@ export function ReviewPane({
   const shown = lines.slice(start, end)
   const hidden = lines.length - shown.length
 
-  const title = `Review — ${pending.stage} writes ${pending.scope.length} path(s)${
+  const title = `Review — ${pending.stage} writes ${pending.scope.length} path${
+    pending.scope.length === 1 ? '' : 's'
+  }${
     displacedReviews > 0 ? ` (+${displacedReviews} waiting)` : ''
   }`
 

@@ -80,13 +80,18 @@ export function Work({ state }: { state: AppState }): React.ReactElement {
  * Context, not keys. The previous header spent 118 characters on a keybinding
  * wall that wrapped to three lines in a 60-column split.
  */
+const NAME = 'SkillGantry'
+
 function Header({ state, layout }: { state: AppState; layout: Layout }): React.ReactElement {
   const running = state.jobs.filter((job) => job.state === 'running').length
   const summary = `${state.skills.length} skill${state.skills.length === 1 ? '' : 's'} · ${running}/${state.concurrency} running`
+  // Derived from the name rather than a literal 13: the two spaces around it
+  // were counted by hand, so renaming the product would have overflowed the row.
+  const room = Math.max(0, layout.columns - NAME.length - 2)
   return (
     <Box>
-      <Text bold>SkillGantry</Text>
-      <Text dimColor> {truncate(summary, Math.max(0, layout.columns - 13))}</Text>
+      <Text bold>{NAME}</Text>
+      <Text dimColor> {truncate(summary, room)}</Text>
     </Box>
   )
 }

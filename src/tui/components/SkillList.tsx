@@ -1,6 +1,7 @@
 import { Text } from 'ink'
 import { innerWidth, truncate, windowFor } from '../layout.js'
 import type { SkillRow, SkillStatus } from '../store.js'
+import { OUTCOME_COLOUR } from '../tokens.js'
 import { Panel } from './Panel.js'
 
 /** Glyph and colour both carry the status: the screen reads in monochrome. */
@@ -10,14 +11,6 @@ const MARK: Record<SkillStatus, string> = {
   passed: '●',
   failed: '!',
   errored: '×',
-}
-
-const COLOUR: Record<SkillStatus, string> = {
-  idle: 'gray',
-  running: 'cyan',
-  passed: 'green',
-  failed: 'red',
-  errored: 'yellow',
 }
 
 export interface SkillListProps {
@@ -71,7 +64,7 @@ export function SkillList({
           <Text key={skill.skillId} wrap="truncate" bold={index === selected}>
             {index === selected ? '›' : ' '}
             {marked.includes(skill.skillId) ? '*' : ' '}
-            <Text color={COLOUR[skill.status]}>{MARK[skill.status]}</Text>{' '}
+            <Text color={OUTCOME_COLOUR[skill.status] ?? 'gray'}>{MARK[skill.status]}</Text>{' '}
             {truncate(skill.label, labelWidth)}
           </Text>
         )

@@ -1,6 +1,7 @@
 import { basename } from 'node:path'
 import type { ScalarField } from '../core/index.js'
 import { truncate } from './layout.js'
+import { OUTCOME_COLOUR, SEVERITY_COLOUR } from './tokens.js'
 import type { AppState } from './store.js'
 
 export type SettingsAction =
@@ -25,14 +26,6 @@ export function humanMs(ms: number | null): string {
   if (ms < 1_000) return `${ms}ms`
   if (ms < 60_000) return `${(ms / 1_000).toFixed(1)}s`
   return `${Math.floor(ms / 60_000)}m ${String(Math.round((ms % 60_000) / 1_000)).padStart(2, '0')}s`
-}
-
-const SEVERITY_COLOUR: Record<string, string> = {
-  critical: 'red',
-  high: 'red',
-  medium: 'yellow',
-  low: 'gray',
-  info: 'gray',
 }
 
 /**
@@ -99,9 +92,10 @@ export function dashboardRows(state: AppState, width: number): ScreenRow[] {
   for (const row of stats.history) {
     line(
       `  ${row.startedAt.slice(0, 16).replace('T', ' ')}  ${row.outcome.padEnd(8)} ${row.skillId}`,
-      {
-        colour: row.outcome === 'passed' ? 'green' : row.outcome === 'failed' ? 'red' : 'yellow',
-      },
+      // Through the shared map rather than a ternary: the ternary painted
+      // `skipped` the same yellow as `errored`, so a stage nobody ran read as a
+      // stage that broke.
+      { colour: OUTCOME_COLOUR[row.outcome] ?? 'gray' },
     )
   }
   return rows

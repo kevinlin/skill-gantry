@@ -1,5 +1,5 @@
 import { Box, Text, useWindowSize } from 'ink'
-import { setupWidth } from '../layout.js'
+import { setupWidth, truncate } from '../layout.js'
 import {
   CATALOGUE,
   SETUP_ORDER,
@@ -31,6 +31,12 @@ export interface SetupProps {
   draftPath?: string
   inspection?: RepoInspection | null
   error?: string | null
+  /**
+   * What `q` does for this caller. `skillgantry setup` ends the process; the
+   * same wizard inside a session returns to Settings, and a footer that
+   * promised "quit" there described a key that does something else.
+   */
+  exitLabel?: string
 }
 
 /** Never colour alone: every state also differs in glyph and in weight. */
@@ -129,6 +135,7 @@ export function Setup({
   draftPath = '',
   inspection = null,
   error = null,
+  exitLabel = 'quit',
 }: SetupProps): React.ReactElement {
   const missing = missingRuntimesFor(state.selected, state.runtimes)
   const step = SETUP_ORDER.indexOf(state.state) + 1
@@ -207,17 +214,24 @@ export function Setup({
 
       {missing.length > 0 && (
         <Text color="yellow">
-          {missing.length} runtime(s) missing for this selection — install them and press p
+          {missing.length} runtime{missing.length === 1 ? '' : 's'} missing for this selection —
+          install them and press p
         </Text>
       )}
       {error !== null && <Text color="red">{error}</Text>}
       <Box marginTop={1}>
-        <Text dimColor>
-          {state.state === 'done'
-            ? 'q quit'
-            : onRepo
-              ? 'enter register · esc back · ctrl-d finish without a repo'
-              : 'enter advance · b back · p re-probe · q quit'}
+        {/* Truncated, not wrapped, for §14.1's reason: a footer that wraps to
+            two rows makes the frame one row taller than the terminal, which a
+            longer `exitLabel` did at 50×14. */}
+        <Text dimColor wrap="truncate">
+          {truncate(
+            state.state === 'done'
+              ? `q ${exitLabel}`
+              : onRepo
+                ? 'enter register · esc back · ctrl-d finish without a repo'
+                : `enter advance · b back · p re-probe · q ${exitLabel}`,
+            width - 2,
+          )}
         </Text>
       </Box>
     </Box>

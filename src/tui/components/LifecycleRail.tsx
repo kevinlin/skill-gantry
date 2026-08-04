@@ -1,6 +1,7 @@
 import { Box, Text } from 'ink'
 import { STAGE_ORDER, type Stage } from '../../core/index.js'
 import type { SkillRow } from '../store.js'
+import { ACCENT, OUTCOME_COLOUR } from '../tokens.js'
 import { Panel } from './Panel.js'
 
 const LABEL: Record<Stage, string> = {
@@ -18,14 +19,6 @@ const SHORT: Record<Stage, string> = {
   security: 'Sec',
   optimise: 'Opt',
   release: 'Rel',
-}
-
-const OUTCOME_COLOUR: Record<string, string> = {
-  passed: 'green',
-  failed: 'red',
-  errored: 'yellow',
-  degraded: 'yellow',
-  skipped: 'gray',
 }
 
 /**
@@ -96,7 +89,7 @@ export function LifecycleRail({
           const state = skill?.stages[stage]
           // `cell` is sized from the longest status, so the text always fits.
           const colour =
-            state?.running === true ? 'cyan' : OUTCOME_COLOUR[state?.outcome ?? '']
+            state?.running === true ? ACCENT : OUTCOME_COLOUR[state?.outcome ?? '']
           return (
             <Box key={stage} width={cell} flexShrink={0}>
               <Text wrap="truncate" {...(colour ? { color: colour } : { dimColor: true })}>

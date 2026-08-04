@@ -1,6 +1,7 @@
 import { Box, Text } from 'ink'
 import { type Layout, screenBodyRows, windowFor } from '../layout.js'
 import type { ScreenRow } from '../rows.js'
+import { overflowNotice } from '../tokens.js'
 import { Panel } from './Panel.js'
 
 /**
@@ -46,7 +47,7 @@ export function ScreenList({
       ))}
       {overflow && (
         <Text dimColor wrap="truncate">
-          rows {start + 1}–{end} of {rows.length} · j/k scrolls
+          {overflowNotice(start, end, rows.length, 'j/k scrolls')}
         </Text>
       )}
     </Panel>

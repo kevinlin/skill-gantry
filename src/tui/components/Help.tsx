@@ -1,36 +1,39 @@
 import { Box, Text } from 'ink'
 import { innerWidth, truncate, type Layout } from '../layout.js'
+import { ACCENT, overflowNotice } from '../tokens.js'
 import { Panel } from './Panel.js'
 
 /**
  * The footer carries five keys; everything else lives here. Two tiers, so a
  * new binding does not have to earn a place on the footer to be discoverable.
+ *
+ * Ordered by where a key works — everywhere first, then Work, then one group
+ * per screen, then the two modals — and every screen-specific row names its
+ * screen. Six letters are bound on more than one screen (`r`, `a`, `d`, `e`,
+ * `s`, `c`), so a list sorted by anything else asks the reader to hold which
+ * `a` is which. Rows that always travel together were merged onto one line for
+ * the same reason the budget exists: twenty-four rows did not fit an 80×24
+ * terminal, and the five it cut were the global keys at the bottom — a help
+ * screen that hid `q`.
  */
 const KEYS: readonly (readonly [string, string])[] = [
-  ['j / k, ↓ / ↑', 'move within the focused panel, or scroll a pending mutation'],
-  ['h / l', 'move along the lifecycle rail'],
-  ['tab, shift-tab', 'cycle focus: skills → stages → queue'],
-  ['space', 'mark the selected skill or stage'],
+  ['j / k, ↓ / ↑', 'move in the focused panel, or scroll a diff'],
+  [':', 'command palette: any screen, refresh, quit'],
+  ['esc', 'back to Work, or close what is open'],
+  ['? / q', 'this help · quit'],
+  ['tab, shift-tab', 'Work: cycle focus, skills → stages → queue'],
+  ['h / l', 'Work: move along the lifecycle rail'],
+  ['space', 'Work: mark the selected skill or stage'],
   ['r', 'Work: run every marked skill and stage as one batch'],
-  ['x', 'cancel the selected job'],
-  [':', 'command palette: go to a screen, refresh, quit'],
-  ['esc', 'back to Work from any screen'],
-  ['p', 'Dashboard: filter by provenance fingerprint'],
-  ['s', 'Dashboard: narrow to the selected skill'],
-  ['a / w / o', 'Issues: acknowledge, wontfix, reopen'],
-  ['f', 'Issues: cycle the state filter'],
-  ['r', 'Tools: re-probe runtimes and re-verify every locked tool'],
-  ['e', 'Settings: edit the selected setting'],
-  ['d', 'Settings: remove the selected repo from the configuration'],
-  ['c', 'Settings: review the staged configuration changes'],
-  ['a', 'Confirm: write the staged changes to config.json'],
-  [':setup', 'run the setup wizard inside the session'],
-  ['1 – 4', 'Log, Findings, Artefacts, SKILL.md'],
-  ['a', 'apply a pending mutation, once its diff is reviewed'],
-  ['d, esc', 'discard a pending mutation'],
-  ['?', 'this help'],
-  ['esc', 'close help'],
-  ['q', 'quit'],
+  ['x', 'Work: cancel the selected job'],
+  ['1 – 4', 'Work: Log, Findings, Artefacts, SKILL.md'],
+  ['p / s', 'Dashboard: filter by provenance · by selected skill'],
+  ['a / w / o, f', 'Issues: acknowledge, wontfix, reopen · cycle filter'],
+  ['r', 'Tools: re-probe runtimes, re-verify every locked tool'],
+  ['e / d', 'Settings: edit the selected value · remove the repo'],
+  ['c', 'Settings: review the staged changes'],
+  [':setup', 'the setup wizard, inside the session'],
+  ['a / d', 'Review, Confirm: apply · discard, once the diff is up'],
 ]
 
 const KEY_COLUMN = 16
@@ -64,7 +67,7 @@ export function Help({ layout }: { layout: Layout }): React.ReactElement {
       {shown.map(([key, description]) => (
         <Box key={`${key} ${description}`}>
           <Box width={keyWidth} flexShrink={0}>
-            <Text wrap="truncate" color="cyan">
+            <Text wrap="truncate" color={ACCENT}>
               {truncate(key, keyWidth - 1)}
             </Text>
           </Box>
@@ -73,7 +76,10 @@ export function Help({ layout }: { layout: Layout }): React.ReactElement {
       ))}
       {overflow ? (
         <Text wrap="truncate" dimColor>
-          +{KEYS.length - shown.length} more — a taller window shows them all
+          {truncate(
+            overflowNotice(0, shown.length, KEYS.length, 'a taller window shows the rest'),
+            cols,
+          )}
         </Text>
       ) : (
         <Text wrap="truncate" dimColor>

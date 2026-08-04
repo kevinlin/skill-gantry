@@ -117,6 +117,44 @@ describe('the setup states as a screen', () => {
     expect(driver.saved).toEqual([])
     ui.unmount()
   })
+
+  // §14.2's precedence: the wizard's handler is the only one acting while it is
+  // up. Both handlers are mounted, so before the guard was hoisted above them,
+  // `q` reached the app's quit binding and took the staged configuration with it.
+  it('leaves the wizard for Settings on q rather than quitting the session', async () => {
+    const ui = await settingsScreen()
+    await type(ui, ':setup\r')
+    await type(ui, '\r')
+    expect(ui.lastFrame()).toContain('Select tools')
+
+    await type(ui, 'q')
+
+    expect(ui.lastFrame()).toContain('concurrency')
+    expect(ui.lastFrame()).not.toContain('Select tools')
+    ui.unmount()
+  })
+
+  it('types a repo path containing q, b and p into the field', async () => {
+    const ui = await settingsScreen()
+    // One key per settle: the wizard's handler reads the state of the render it
+    // was registered in, so keys arriving in one tick are all judged against the
+    // step the first of them left.
+    await type(ui, ':setup\r')
+    await type(ui, '\r')
+    await type(ui, '1')
+    await type(ui, '\r')
+    // The installs are async, and until they land the wizard is still on a step
+    // where `q` is its own leave binding — so the field has to be on screen
+    // before a path containing one is typed at it.
+    await ui.settle(120)
+    await type(ui, '\r')
+    expect(ui.lastFrame()).toContain('Credentials and repo')
+
+    await type(ui, '/tmp/qbp-skills')
+
+    expect(ui.lastFrame()).toContain('/tmp/qbp-skills')
+    ui.unmount()
+  })
 })
 
 describe('the confirmation pane', () => {

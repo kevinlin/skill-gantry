@@ -1,6 +1,7 @@
 import { Box, Text } from 'ink'
 import { innerWidth, type Layout, truncate, windowFor } from '../layout.js'
 import { type AppState, paletteMatches } from '../store.js'
+import { ACCENT, overflowNotice } from '../tokens.js'
 import { Panel } from './Panel.js'
 
 /**
@@ -34,7 +35,7 @@ export function Palette({
         return (
           <Box key={command.id}>
             <Text wrap="truncate" bold={index === palette.selected}>
-              {index === palette.selected ? '›' : ' '} <Text color="cyan">{command.id}</Text>{' '}
+              {index === palette.selected ? '›' : ' '} <Text color={ACCENT}>{command.id}</Text>{' '}
               <Text dimColor>{truncate(command.label, cols - command.id.length - 4)}</Text>
             </Text>
           </Box>
@@ -42,7 +43,7 @@ export function Palette({
       })}
       {overflow && (
         <Text dimColor wrap="truncate">
-          +{matches.length - (end - start)} more — keep typing
+          {overflowNotice(start, end, matches.length, 'keep typing to narrow')}
         </Text>
       )}
     </Panel>

@@ -83,6 +83,7 @@ function SetupScreen({
       draftPath={session.path}
       inspection={session.inspection}
       error={session.error}
+      exitLabel="settings"
     />
   )
 }
@@ -265,6 +266,13 @@ export function App({
       }
       return
     }
+    // Third, per §14.2's precedence, and above every binding below rather than
+    // below them: the wizard's own handler is the only one that may act while it
+    // is up. Its repo step is a text field, and the wizard guarded its own keys
+    // against that — but this handler runs too, so `q` in a path quit the whole
+    // session with the staged configuration in it, `esc` jumped to Work instead
+    // of stepping back, and `:` opened the palette over the wizard.
+    if (state.screen === 'setup') return
     // Text entry wins over every single-letter command, for the reason the
     // wizard's own handler documents: a value is digits and a path is letters,
     // and either would otherwise steer the screen instead of filling the field.
@@ -338,9 +346,6 @@ export function App({
       dispatch({ type: 'set-screen', screen: 'work' })
       return
     }
-    // The wizard's own handler is the only one acting while it is up: `1` is a
-    // preset there and a panel switch here.
-    if (state.screen === 'setup') return
     if (state.screen === 'settings') {
       const rows = settingsRows(state, innerWidth(columns, layout.chrome))
       const actionable = rows.flatMap((row) => (row.action ? [row.action] : []))
