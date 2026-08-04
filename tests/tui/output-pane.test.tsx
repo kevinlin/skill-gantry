@@ -156,3 +156,37 @@ describe('output pane — R11.2', () => {
     queue.close()
   })
 })
+
+describe('output pane scrolling — §14', () => {
+  async function longSkill(): Promise<SkillRef[]> {
+    const body = Array.from({ length: 60 }, (_, index) => `body line ${index + 1}`).join('\n')
+    const root = await makeRepo({
+      files: { 'declawed/SKILL.md': `${SKILL_MD('declawed', '1.1.0')}\n${body}\n` },
+    })
+    return discoverSkills({ id: 'fx', path: root, name: 'fx', isGit: false })
+  }
+
+  it('scrolls SKILL.md once the pane holds the focus, and says so before it does', async () => {
+    const { ui } = harness(await longSkill())
+    await ui.settle(40)
+    ui.stdin.send('4')
+    await ui.settle(40)
+
+    // Cut, and saying which rows these are — the pane used to show the head of
+    // the file with nothing to say the rest existed.
+    expect(ui.lastFrame()).toContain('rows 1–')
+    expect(ui.lastFrame()).toContain('tab focuses this pane')
+
+    // skills → stages → output.
+    ui.stdin.send('\t')
+    await ui.settle(20)
+    ui.stdin.send('\t')
+    await ui.settle(20)
+    expect(ui.lastFrame()).toContain('j/k scrolls')
+
+    ui.stdin.send('j')
+    await ui.settle(20)
+    expect(ui.lastFrame()).toContain('rows 2–')
+    ui.unmount()
+  })
+})

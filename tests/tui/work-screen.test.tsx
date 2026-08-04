@@ -106,7 +106,7 @@ describe('Work screen', () => {
     ui.stdin.send('?')
     await ui.settle()
     expect(ui.lastFrame()).toContain('SkillGantry — keys')
-    expect(ui.lastFrame()).toContain('cycle focus')
+    expect(ui.lastFrame()).toContain('skills → stages → output → queue')
 
     ui.stdin.send('') // esc
     await ui.settle()

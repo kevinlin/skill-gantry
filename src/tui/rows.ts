@@ -2,7 +2,7 @@ import { basename } from 'node:path'
 import type { ScalarField } from '../core/index.js'
 import { truncate } from './layout.js'
 import { OUTCOME_COLOUR, SEVERITY_COLOUR } from './tokens.js'
-import type { AppState } from './store.js'
+import type { AppState, SkillRow } from './store.js'
 
 export type SettingsAction =
   | { kind: 'edit-scalar'; field: ScalarField; current: string }
@@ -19,6 +19,62 @@ export interface ScreenRow {
 }
 
 const pct = (rate: number): string => `${Math.round(rate * 100)}%`
+
+/** Rows the current tab holds, and where it sits when nothing is pinned. */
+function outputTab(
+  state: AppState,
+  skill: SkillRow | undefined,
+): { total: number; anchor: 'top' | 'bottom' } {
+  switch (state.panel) {
+    case 'log':
+      // The newest line, because a log is read from its end.
+      return { total: state.log.lines.length, anchor: 'bottom' }
+    case 'findings':
+      return { total: skill?.findings.length ?? 0, anchor: 'top' }
+    case 'artefacts':
+      return { total: state.artefacts.length, anchor: 'top' }
+    case 'skill':
+      return {
+        total: state.skillMd.length === 0 ? 0 : state.skillMd.split('\n').length,
+        anchor: 'top',
+      }
+  }
+}
+
+export interface OutputWindow {
+  /** First and last visible row of the tab's list. */
+  start: number
+  end: number
+  total: number
+  /** Rows the list itself gets, net of whichever footnotes are showing. */
+  rows: number
+  overflow: boolean
+  /** The log's `N earlier lines dropped` row, which costs a row like any other. */
+  dropped: boolean
+  anchor: 'top' | 'bottom'
+}
+
+/**
+ * The whole of what the output pane shows, in one pure function, because the
+ * pane windows against these numbers and the key handler clamps against them.
+ * Two derivations of the same arithmetic is how `j` stops moving a few rows
+ * short of the end and every further press does nothing — the pane silently
+ * disagreeing with the store about how far down is down.
+ */
+export function outputWindow(
+  state: AppState,
+  skill: SkillRow | undefined,
+  height: number,
+): OutputWindow {
+  const { total, anchor } = outputTab(state, skill)
+  const dropped = state.panel === 'log' && state.log.dropped > 0
+  const body = Math.max(1, height - (dropped ? 1 : 0))
+  const overflow = total > body
+  const rows = overflow ? Math.max(1, body - 1) : body
+  const maxStart = Math.max(0, total - rows)
+  const start = Math.min(state.outputOffset ?? (anchor === 'bottom' ? maxStart : 0), maxStart)
+  return { start, end: Math.min(total, start + rows), total, rows, overflow, dropped, anchor }
+}
 
 /** 900ms, 2.5s, 1m 05s — the three magnitudes a stage actually takes. */
 export function humanMs(ms: number | null): string {

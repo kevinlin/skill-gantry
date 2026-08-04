@@ -56,7 +56,12 @@ export const paletteMatches = (query: string): PaletteCommand[] => {
   )
 }
 
-export const FOCUSES = ['skills', 'stages', 'queue'] as const
+/**
+ * In the order the panels sit on the screen, which is why `output` comes before
+ * `queue` rather than being appended: tab reading top-to-bottom is the only
+ * reason a user can predict where the next press lands.
+ */
+export const FOCUSES = ['skills', 'stages', 'output', 'queue'] as const
 export type Focus = (typeof FOCUSES)[number]
 
 export type SkillStatus = 'idle' | 'running' | 'passed' | 'failed' | 'errored'
@@ -106,6 +111,14 @@ export interface AppState {
   log: { lines: readonly string[]; dropped: number }
   skillMd: string
   artefacts: string[]
+  /**
+   * First visible row of the output pane, or `null` for "sit where this tab
+   * naturally sits" — the top for a findings, artefact or SKILL.md list, the
+   * newest line for the log. Null rather than a number so the log keeps
+   * following as it grows: an offset pinned at the tail stops being the tail
+   * the moment the next line lands.
+   */
+  outputOffset: number | null
   /** `?` replaces the whole screen; the footer carries only five keys. */
   help: boolean
   /**
@@ -185,6 +198,20 @@ export type Action =
   | { type: 'cycle-panel'; delta: number }
   | { type: 'set-skill-md'; body: string }
   | { type: 'set-artefacts'; paths: string[] }
+  /**
+   * `total` and `viewport` come from the caller because the reducer cannot know
+   * either: the row count depends on which tab is up and the viewport on the
+   * terminal. `anchor` is where the tab sits when nothing is pinned, so scrolling
+   * back to the newest log line resumes following instead of freezing one line
+   * short of it.
+   */
+  | {
+      type: 'scroll-output'
+      delta: number
+      viewport: number
+      total: number
+      anchor: 'top' | 'bottom'
+    }
   | { type: 'set-statuses'; statuses: Record<string, string> }
   | { type: 'toggle-help'; open?: boolean }
   /** `viewport` is the diff rows the pane can show, so the clamp leaves a full
@@ -252,6 +279,7 @@ export function initialState(skills: readonly SkillRef[], concurrency: number): 
     log: { lines: [], dropped: 0 },
     skillMd: '',
     artefacts: [],
+    outputOffset: null,
     help: false,
     pending: null,
     displacedReviews: 0,
@@ -404,6 +432,8 @@ export function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         selectedSkill: clamp(state.selectedSkill + action.delta, state.skills.length),
+        // Another skill's findings are another list; the offset was about this one.
+        outputOffset: null,
       }
     case 'select-stage':
       return {
@@ -426,14 +456,32 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, focus: action.focus }
     case 'cycle-focus':
       return { ...state, focus: FOCUSES[cycle(FOCUSES, state.focus, action.delta)] as Focus }
+    // Every one of these four replaces what the pane is showing, so the offset
+    // goes back to the tab's anchor: carrying row 40 onto a list of six opens a
+    // pane that looks empty until the user presses `k` forty times.
     case 'set-panel':
-      return { ...state, panel: action.panel }
+      return { ...state, panel: action.panel, outputOffset: null }
     case 'cycle-panel':
-      return { ...state, panel: PANELS[cycle(PANELS, state.panel, action.delta)] as Panel }
+      return {
+        ...state,
+        panel: PANELS[cycle(PANELS, state.panel, action.delta)] as Panel,
+        outputOffset: null,
+      }
     case 'set-skill-md':
-      return { ...state, skillMd: action.body }
+      return { ...state, skillMd: action.body, outputOffset: null }
     case 'set-artefacts':
-      return { ...state, artefacts: action.paths }
+      return { ...state, artefacts: action.paths, outputOffset: null }
+    case 'scroll-output': {
+      // Clamped to the last *full* window, like `scroll-review` and
+      // `scroll-screen`: holding `j` past the end otherwise drives the offset
+      // into the hundreds and needs as many `k` presses before the view moves.
+      const maxOffset = Math.max(0, action.total - Math.max(1, action.viewport))
+      const anchored = action.anchor === 'bottom' ? maxOffset : 0
+      const next = Math.min(maxOffset, Math.max(0, (state.outputOffset ?? anchored) + action.delta))
+      // Back at the anchor is not a pin: the log resumes following, which is the
+      // state a user who has scrolled to the newest line is asking for.
+      return { ...state, outputOffset: next === anchored ? null : next }
+    }
     case 'toggle-help':
       return { ...state, help: action.open ?? !state.help }
     case 'scroll-review': {

@@ -20,12 +20,19 @@ import { Settings } from './components/Settings.js'
 import { Setup } from './components/Setup.js'
 import { Tools } from './components/Tools.js'
 import { Work } from './components/Work.js'
-import { innerWidth, layoutFor, reviewDiffRows, screenBodyRows, truncate } from './layout.js'
+import {
+  innerWidth,
+  layoutFor,
+  reviewDiffRows,
+  screenBodyRows,
+  truncate,
+  type Layout,
+} from './layout.js'
 import { LogPump } from './log-buffer.js'
-import { settingsRows } from './rows.js'
+import { outputWindow, settingsRows } from './rows.js'
 import { useSetupSession } from './use-setup-session.js'
 import { PANELS, initialState, paletteMatches, reducer, selectedSkill } from './store.js'
-import type { Action, AppState } from './store.js'
+import type { Action, AppState, SkillRow } from './store.js'
 import { type GantryViews, listArtefacts, loadSkillMd, loadSkillStatuses } from './views.js'
 
 export interface AppProps {
@@ -86,6 +93,31 @@ function SetupScreen({
       exitLabel="settings"
     />
   )
+}
+
+/**
+ * What `j`/`k` mean on Work, which is whichever panel holds the focus. The
+ * output pane's clamp comes from `outputWindow` rather than from
+ * `layout.outputHeight` directly: the pane spends rows on its own footnotes, and
+ * a clamp against the gross height lets the offset run past what the pane can
+ * ever show — every further press then moving nothing.
+ */
+function moveDown(
+  state: AppState,
+  layout: Layout,
+  skill: SkillRow | undefined,
+  delta: number,
+): Action {
+  if (state.focus === 'queue') return { type: 'select-job', delta }
+  if (state.focus !== 'output') return { type: 'select-skill', delta }
+  const view = outputWindow(state, skill, layout.outputHeight)
+  return {
+    type: 'scroll-output',
+    delta,
+    viewport: view.rows,
+    total: view.total,
+    anchor: view.anchor,
+  }
 }
 
 /** The palette above the same footer hint every screen prints. */
@@ -454,19 +486,11 @@ export function App({
       return
     }
     if ((plain && input === 'j') || key.downArrow) {
-      dispatch(
-        state.focus === 'queue'
-          ? { type: 'select-job', delta: 1 }
-          : { type: 'select-skill', delta: 1 },
-      )
+      dispatch(moveDown(state, layout, current, 1))
       return
     }
     if ((plain && input === 'k') || key.upArrow) {
-      dispatch(
-        state.focus === 'queue'
-          ? { type: 'select-job', delta: -1 }
-          : { type: 'select-skill', delta: -1 },
-      )
+      dispatch(moveDown(state, layout, current, -1))
       return
     }
     if (plain && input === 'h') {

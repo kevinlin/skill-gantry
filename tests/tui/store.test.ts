@@ -349,3 +349,48 @@ describe('config staging', () => {
     expect(reducer(state, { type: 'discard-staged' }).staged).toBeNull()
   })
 })
+
+describe('output pane scrolling', () => {
+  const base = (): AppState => ({
+    ...initialState([skill('alpha')], 1),
+    focus: 'output',
+    artefacts: Array.from({ length: 40 }, (_, index) => `run/artefact-${index}.json`),
+    panel: 'artefacts',
+  })
+
+  /** 10 rows of pane, one spent on the overflow notice, so 9 rows of list. */
+  const scroll = (state: AppState, delta: number): AppState =>
+    reducer(state, { type: 'scroll-output', delta, viewport: 9, total: 40, anchor: 'top' })
+
+  it('starts at the anchor and moves one row per press', () => {
+    expect(base().outputOffset).toBeNull()
+    expect(scroll(base(), 1).outputOffset).toBe(1)
+  })
+
+  it('clamps to the last full window rather than to the last row', () => {
+    let state = base()
+    for (let i = 0; i < 80; i += 1) state = scroll(state, 1)
+    // 40 rows, 9 visible: the last window starts at 31 and is still full.
+    expect(state.outputOffset).toBe(31)
+  })
+
+  it('resumes following when a scrolled log reaches its newest line again', () => {
+    const log = {
+      ...base(),
+      panel: 'log' as const,
+      log: { lines: Array.from({ length: 40 }, (_, index) => `line ${index}`), dropped: 0 },
+    }
+    const action = { type: 'scroll-output' as const, viewport: 9, total: 40, anchor: 'bottom' as const }
+    // Back one row from the tail is a pin; forward again is not.
+    const pinned = reducer(log, { ...action, delta: -1 })
+    expect(pinned.outputOffset).toBe(30)
+    expect(reducer(pinned, { ...action, delta: 1 }).outputOffset).toBeNull()
+  })
+
+  it('drops the offset when the tab or the skill changes', () => {
+    const scrolled = scroll(base(), 5)
+    expect(scrolled.outputOffset).toBe(5)
+    expect(reducer(scrolled, { type: 'set-panel', panel: 'findings' }).outputOffset).toBeNull()
+    expect(reducer(scrolled, { type: 'select-skill', delta: 1 }).outputOffset).toBeNull()
+  })
+})

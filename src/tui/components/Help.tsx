@@ -17,11 +17,11 @@ import { Panel } from './Panel.js'
  * screen that hid `q`.
  */
 const KEYS: readonly (readonly [string, string])[] = [
-  ['j / k, ↓ / ↑', 'move in the focused panel, or scroll a diff'],
+  ['j / k, ↓ / ↑', 'move or scroll in the focused panel, or a diff'],
   [':', 'command palette: any screen, refresh, quit'],
   ['esc', 'back to Work, or close what is open'],
   ['? / q', 'this help · quit'],
-  ['tab, shift-tab', 'Work: cycle focus, skills → stages → queue'],
+  ['tab, shift-tab', 'Work: focus skills → stages → output → queue'],
   ['h / l', 'Work: move along the lifecycle rail'],
   ['space', 'Work: mark the selected skill or stage'],
   ['r', 'Work: run every marked skill and stage as one batch'],

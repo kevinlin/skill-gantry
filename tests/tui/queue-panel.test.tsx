@@ -77,7 +77,9 @@ describe('queue panel — R5.10, R11.6', () => {
     ])
     await ui.settle(40)
 
-    // Focus the queue, move to the second job, cancel it.
+    // Focus the queue — skills → stages → output → queue — then move to the
+    // second job and cancel it.
+    ui.stdin.send('\t')
     ui.stdin.send('\t')
     ui.stdin.send('\t')
     await ui.settle()

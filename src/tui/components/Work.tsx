@@ -125,6 +125,7 @@ function SideBySide({ state, layout }: { state: AppState; layout: Layout }): Rea
           height={layout.outputHeight}
           width={rightWidth}
           chrome={layout.chrome}
+          focused={state.focus === 'output'}
         />
       </Box>
     </Box>
@@ -159,6 +160,7 @@ function Stacked({ state, layout }: { state: AppState; layout: Layout }): React.
         height={layout.outputHeight}
         width={layout.columns}
         chrome={layout.chrome}
+        focused={state.focus === 'output'}
       />
     </Box>
   )
