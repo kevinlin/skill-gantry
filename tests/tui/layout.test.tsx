@@ -1,6 +1,8 @@
+import { readFile } from 'node:fs/promises'
 import type { ReactElement } from 'react'
 import { describe, expect, it } from 'vitest'
-import type { JobRecord, SkillRef } from '../../src/core/index.js'
+import { VERSION, type JobRecord, type SkillRef } from '../../src/core/index.js'
+import { StatusBar } from '../../src/tui/components/StatusBar.js'
 import { Work } from '../../src/tui/components/Work.js'
 import { MIN_COLUMNS, MIN_ROWS, layoutFor, truncate, windowFor } from '../../src/tui/layout.js'
 import { initialState, type AppState } from '../../src/tui/store.js'
@@ -169,6 +171,45 @@ describe('Work screen fits its terminal', () => {
     const state = { ...busyState(), skills: initialState(NAMES.map(skill), 2).skills }
     const frame = frameAt(<Work state={state} />, 80, 16)
     expect(frame).toMatch(/\+\d+ more/)
+  })
+})
+
+describe('the status bar', () => {
+  const versionLine = (frame: string): string =>
+    frame
+      .replace(/\n$/, '')
+      .split('\n')
+      .map((line) => line.replace(/\[[0-9;]*m/g, ''))
+      .at(-1) as string
+
+  it('carries the version beside the keys, on the row the keys already had', () => {
+    const line = versionLine(frameAt(<Work state={busyState()} />, 80, 24))
+    expect(line).toContain('? help')
+    expect(line.trimEnd().endsWith(`v${VERSION}`)).toBe(true)
+  })
+
+  it('reports the packed version rather than a literal that can drift', async () => {
+    const pkg = JSON.parse(
+      await readFile(new URL('../../package.json', import.meta.url), 'utf8'),
+    ) as { version: string }
+    expect(VERSION).toBe(pkg.version)
+  })
+
+  it('shows it on the help and review screens too', () => {
+    const help = versionLine(frameAt(<Work state={{ ...busyState(), help: true }} />, 80, 24))
+    expect(help).toContain(`v${VERSION}`)
+  })
+
+  it('drops the version rather than truncating the keys', () => {
+    const hints = 'j/k move · q quit'
+    const wide = versionLine(frameAt(<StatusBar hints={hints} columns={40} />, 40, 5))
+    expect(wide).toContain(hints)
+    expect(wide).toContain(`v${VERSION}`)
+    // One cell short of holding both: the keys survive whole, the version goes.
+    const tight = hints.length + VERSION.length + 1
+    const narrow = versionLine(frameAt(<StatusBar hints={hints} columns={tight} />, tight, 5))
+    expect(narrow).toContain(hints)
+    expect(narrow).not.toContain(VERSION)
   })
 })
 

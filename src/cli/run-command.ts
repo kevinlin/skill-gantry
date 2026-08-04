@@ -7,6 +7,7 @@ import { discoverSkills } from '../core/discovery/discover.js'
 import { openLedger } from '../core/ledger/db.js'
 import { syncLifecycle } from '../core/ledger/lifecycle.js'
 import { runPipeline } from '../core/pipeline/run.js'
+import { VERSION } from '../core/version.js'
 import type { GantryConfig } from '../core/config/schema.js'
 import type { SkillRef, Stage } from '../core/types.js'
 import { runDoctor } from './doctor-command.js'
@@ -120,7 +121,7 @@ export function buildProgram(deps: CliDeps): GantryProgram {
   // first positional token (the subcommand name), which is what R13.5 needs:
   // root `-V`/`--version` and `release --version <target>` both work.
   program.enablePositionalOptions()
-  program.version('0.1.0')
+  program.version(VERSION)
 
   program
     .command('run')

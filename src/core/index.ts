@@ -1,5 +1,6 @@
 export * from './types.js'
 export * from './pipeline/events.js'
+export { VERSION } from './version.js'
 export { runPipeline, type RunHandle, type RunSummary } from './pipeline/run.js'
 export { openLedger, type Ledger } from './ledger/db.js'
 export { readLifecycleCache, syncLifecycle, type LifecycleState } from './ledger/lifecycle.js'

@@ -5,6 +5,7 @@ import { innerWidth, layoutFor, truncate } from '../layout.js'
 import { settingsRows } from '../rows.js'
 import type { Action, AppState } from '../store.js'
 import { ScreenList } from './ScreenList.js'
+import { StatusBar } from './StatusBar.js'
 
 const HINTS = 'j/k move · e edit · d remove · c confirm · : commands · esc work · q quit'
 
@@ -51,7 +52,7 @@ export function Settings({
           )}
         </Text>
       )}
-      <Text dimColor>{truncate(HINTS, columns)}</Text>
+      <StatusBar hints={HINTS} columns={columns} />
     </Box>
   )
 }

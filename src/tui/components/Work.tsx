@@ -7,6 +7,7 @@ import { OutputPane } from './OutputPane.js'
 import { QueuePanel } from './QueuePanel.js'
 import { ReviewPane } from './ReviewPane.js'
 import { SkillList } from './SkillList.js'
+import { StatusBar } from './StatusBar.js'
 
 /** Five keys, per the layered discoverability rule; the rest are behind `?`. */
 const HINTS = 'j/k move · space mark · r run · x cancel · ? help · q quit'
@@ -29,7 +30,7 @@ export function Work({ state }: { state: AppState }): React.ReactElement {
     return (
       <Box flexDirection="column" width={columns}>
         <ReviewPane pending={state.pending} layout={layout} displacedReviews={state.displacedReviews} />
-        <Text dimColor>{truncate(REVIEW_HINTS, columns)}</Text>
+        <StatusBar hints={REVIEW_HINTS} columns={columns} />
       </Box>
     )
   }
@@ -49,7 +50,7 @@ export function Work({ state }: { state: AppState }): React.ReactElement {
     return (
       <Box flexDirection="column" width={columns}>
         <Help layout={layout} />
-        <Text dimColor>{truncate('esc or ? closes · q quits', columns)}</Text>
+        <StatusBar hints="esc or ? closes · q quits" columns={columns} />
       </Box>
     )
   }
@@ -71,7 +72,7 @@ export function Work({ state }: { state: AppState }): React.ReactElement {
         width={columns}
         chrome={layout.chrome}
       />
-      <Text dimColor>{truncate(HINTS, columns)}</Text>
+      <StatusBar hints={HINTS} columns={columns} />
     </Box>
   )
 }

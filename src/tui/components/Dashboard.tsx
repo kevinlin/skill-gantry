@@ -1,9 +1,10 @@
 import { useEffect } from 'react'
-import { Box, Text, useWindowSize } from 'ink'
-import { innerWidth, layoutFor, truncate } from '../layout.js'
+import { Box, useWindowSize } from 'ink'
+import { innerWidth, layoutFor } from '../layout.js'
 import { dashboardRows } from '../rows.js'
 import type { Action, AppState } from '../store.js'
 import { ScreenList } from './ScreenList.js'
+import { StatusBar } from './StatusBar.js'
 
 const HINTS = 'j/k scroll · p provenance · s scope · : commands · esc work · q quit'
 
@@ -42,7 +43,7 @@ export function Dashboard({
         offset={state.screenOffset}
         layout={layout}
       />
-      <Text dimColor>{truncate(HINTS, columns)}</Text>
+      <StatusBar hints={HINTS} columns={columns} />
     </Box>
   )
 }

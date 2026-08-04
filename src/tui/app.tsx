@@ -1,5 +1,5 @@
 import { useEffect, useReducer, useRef } from 'react'
-import { Box, Text, useApp, useInput, useWindowSize } from 'ink'
+import { Box, useApp, useInput, useWindowSize } from 'ink'
 import {
   DEFAULT_CONFIG,
   configChanges,
@@ -18,6 +18,7 @@ import { Issues } from './components/Issues.js'
 import { Palette } from './components/Palette.js'
 import { Settings } from './components/Settings.js'
 import { Setup } from './components/Setup.js'
+import { StatusBar } from './components/StatusBar.js'
 import { Tools } from './components/Tools.js'
 import { Work } from './components/Work.js'
 import {
@@ -25,7 +26,6 @@ import {
   layoutFor,
   reviewDiffRows,
   screenBodyRows,
-  truncate,
   type Layout,
 } from './layout.js'
 import { LogPump } from './log-buffer.js'
@@ -127,7 +127,7 @@ function PaletteScreen({ state }: { state: AppState }): React.ReactElement {
   return (
     <Box flexDirection="column" width={columns}>
       <Palette palette={state.palette} layout={layout} />
-      <Text dimColor>{truncate('enter run · esc cancel', columns)}</Text>
+      <StatusBar hints="enter run · esc cancel" columns={columns} />
     </Box>
   )
 }
