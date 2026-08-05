@@ -26,6 +26,7 @@ const KEYS: readonly (readonly [string, string])[] = [
   ['space', 'Work: mark the selected skill or stage'],
   ['r', 'Work: run every marked skill and stage as one batch'],
   ['x', 'Work: cancel the selected job'],
+  ['y', 'Work: copy the fix prompt for the selected stage'],
   ['1 – 4', 'Work: Log, Findings, Artefacts, SKILL.md'],
   ['p / s', 'Dashboard: filter by provenance · by selected skill'],
   ['a / w / o, f', 'Issues: acknowledge, wontfix, reopen · cycle filter'],

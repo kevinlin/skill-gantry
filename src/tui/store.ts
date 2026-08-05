@@ -70,6 +70,12 @@ export interface StageCell {
   outcome: StageOutcome | null
   running: boolean
   summary: string
+  /**
+   * R11.9's trigger, per stage. `SkillRow.findings` accumulates across every
+   * stage of the run, so a finding on screen cannot be attributed to the one
+   * the rail has selected — this can.
+   */
+  findings: number
 }
 
 export interface SkillRow {
@@ -181,6 +187,12 @@ export interface AppState {
   viewError: string | null
   /** Bumped by `refresh`, watched by the loading effect. */
   reloads: number
+  /**
+   * R11.9's one-line report, shown in place of the footer hints so it costs no
+   * row (§14.1). Cleared by the next keypress rather than by a timer, which
+   * keeps the TUI tests deterministic.
+   */
+  flash: string | null
 }
 
 export type Action =
@@ -245,10 +257,15 @@ export type Action =
   | { type: 'scroll-screen'; delta: number; viewport: number }
   | { type: 'refresh-views' }
   | { type: 'view-error'; message: string }
+  | { type: 'flash'; message: string }
+  | { type: 'clear-flash' }
 
 const emptyStages = (): Record<Stage, StageCell> =>
   Object.fromEntries(
-    STAGE_ORDER.map((stage) => [stage, { outcome: null, running: false, summary: '' }]),
+    STAGE_ORDER.map((stage) => [
+      stage,
+      { outcome: null, running: false, summary: '', findings: 0 },
+    ]),
   ) as Record<Stage, StageCell>
 
 const toRow = (skill: SkillRef): SkillRow => ({
@@ -301,6 +318,7 @@ export function initialState(skills: readonly SkillRef[], concurrency: number): 
     screenRowCount: 0,
     viewError: null,
     reloads: 0,
+    flash: null,
   }
 }
 
@@ -407,7 +425,13 @@ function onRunEvent(state: AppState, jobId: string, event: RunEvent): AppState {
       )
     case 'stage:done':
       return withSkill(state, skillId, (row) =>
-        withStage(row, event.stage, { running: false, outcome: event.outcome }),
+        withStage(row, event.stage, {
+          running: false,
+          outcome: event.outcome,
+          // The event already carries the whole StageResult, so R11.9's count
+          // costs no change to the event contract.
+          findings: event.result.toolRuns.reduce((n, run) => n + run.findings.length, 0),
+        }),
       )
     default:
       return state
@@ -624,6 +648,10 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, reloads: state.reloads + 1 }
     case 'view-error':
       return { ...state, viewError: action.message }
+    case 'flash':
+      return { ...state, flash: action.message }
+    case 'clear-flash':
+      return state.flash === null ? state : { ...state, flash: null }
     case 'set-statuses':
       return {
         ...state,

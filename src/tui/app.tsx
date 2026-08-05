@@ -1,8 +1,10 @@
 import { useEffect, useReducer, useRef } from 'react'
-import { Box, useApp, useInput, useWindowSize } from 'ink'
+import { Box, useApp, useInput, useStdout, useWindowSize } from 'ink'
 import {
   DEFAULT_CONFIG,
+  STAGE_ORDER,
   configChanges,
+  fixPromptPathFor,
 } from '../core/index.js'
 import type {
   IssueAction,
@@ -26,14 +28,22 @@ import {
   layoutFor,
   reviewDiffRows,
   screenBodyRows,
+  truncateMiddle,
   type Layout,
 } from './layout.js'
+import { osc52 } from './osc52.js'
 import { LogPump } from './log-buffer.js'
 import { outputWindow, settingsRows } from './rows.js'
 import { useSetupSession } from './use-setup-session.js'
 import { PANELS, initialState, paletteMatches, reducer, selectedSkill } from './store.js'
 import type { Action, AppState, SkillRow } from './store.js'
-import { type GantryViews, listArtefacts, loadSkillMd, loadSkillStatuses } from './views.js'
+import {
+  type GantryViews,
+  listArtefacts,
+  loadSkillMd,
+  loadSkillStatuses,
+  readFixPrompt,
+} from './views.js'
 
 export interface AppProps {
   skills: readonly SkillRef[]
@@ -151,6 +161,10 @@ export function App({
   // staged one, or every change would compare against itself.
   const settingsConfig = state.settings?.config ?? DEFAULT_CONFIG
   const { exit } = useApp()
+  // R11.9's escape has to reach the terminal Ink owns — the alternate screen,
+  // raw mode, the stream Ink was constructed with — so it goes out through the
+  // stream Ink itself holds, not `process.stdout`.
+  const { stdout } = useStdout()
   const byId = useRef(new Map(skills.map((skill) => [skill.id, skill])))
   /**
    * The palette's input state, mirrored outside React. Key handling has to be
@@ -255,6 +269,9 @@ export function App({
     // binding writes to the user's repo. Escape and the arrows are unaffected:
     // they arrive as named keys with `input` empty.
     const plain = !key.ctrl && !key.meta && !key.super && !key.hyper
+    // R11.9's flash is cleared by the next keystroke rather than by a timer, so
+    // the frame a test asserts on is the frame the keypress produced.
+    if (state.flash !== null) dispatch({ type: 'clear-flash' })
     // Modal like help, and checked first: the review pane is the one screen
     // that wins over every other modal (Work.tsx renders it first for the
     // same reason), so `?` must not sneak help on top of a diff still
@@ -505,6 +522,44 @@ export function App({
       dispatch(
         state.focus === 'stages' ? { type: 'toggle-stage-mark' } : { type: 'toggle-skill-mark' },
       )
+      return
+    }
+    if (plain && input === 'y') {
+      // R11.9. The rail's stage, not a Findings-pane selection: the pane has no
+      // per-finding cursor and `SkillRow.findings` accumulates across every
+      // stage of the run, so a finding on screen cannot be attributed to one.
+      if (!current) return
+      const stage = STAGE_ORDER[state.selectedStage] as Stage
+      const flash = (message: string) => dispatch({ type: 'flash', message })
+      if (current.runDir === null) {
+        flash(`no run this session — skillgantry fix ${current.skillId} --stage ${stage}`)
+        return
+      }
+      if (current.stages[stage].findings === 0) {
+        flash(`${stage} found nothing — no prompt`)
+        return
+      }
+      const path = fixPromptPathFor(current.runDir, stage)
+      // Cut in the middle so the basename — the part that tells the user which
+      // stage it is — survives the trim.
+      const shown = truncateMiddle(path, Math.max(20, innerWidth(layout.columns, layout.chrome) - 12))
+      void readFixPrompt(path).then((body) => {
+        if (body === null) {
+          flash(`not written yet · ${shown}`)
+          return
+        }
+        const seq = osc52(body)
+        // Never claims a copy the terminal was never asked to make.
+        if (seq === null) {
+          flash(`too large to copy · ${shown}`)
+          return
+        }
+        // Not Ink's `write()` from the same hook: that writes *above* the app
+        // and forces a clear-and-re-render, flickering the frame for a
+        // sequence that renders nothing.
+        stdout.write(seq)
+        flash(`copied · ${shown}`)
+      }, (err: unknown) => flash(`${(err as Error).message} · ${shown}`))
       return
     }
     if (plain && input === 'r') {

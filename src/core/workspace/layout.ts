@@ -25,3 +25,11 @@ export function stageDirFor(runDir: string, index: number, stage: Stage): string
 }
 
 export const toolDirFor = (stageDir: string, toolId: string): string => join(stageDir, toolId)
+
+/**
+ * The pipeline writes it, the CLI reads it and the TUI copies it, so the
+ * filename lives beside `stageDirFor` — which already has `STAGE_ORDER` in
+ * scope — rather than in three callers that could disagree.
+ */
+export const fixPromptPathFor = (runDir: string, stage: Stage): string =>
+  join(stageDirFor(runDir, STAGE_ORDER.indexOf(stage) + 1, stage), 'fix-prompt.md')

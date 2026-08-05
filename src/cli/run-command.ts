@@ -11,6 +11,7 @@ import { VERSION } from '../core/version.js'
 import type { GantryConfig } from '../core/config/schema.js'
 import type { SkillRef, Stage } from '../core/types.js'
 import { runDoctor } from './doctor-command.js'
+import { runFix, type FixOptions } from './fix-command.js'
 import { detectInterrupted, formatInterrupted, runRecover } from './recover-command.js'
 import { runRelease, type ReleaseOptions } from './release-command.js'
 import { runRetire, type RetireOptions } from './retire-command.js'
@@ -240,6 +241,20 @@ export function buildProgram(deps: CliDeps): GantryProgram {
     .option('--json', 'emit one JSON document')
     .action(async (opts: { restore?: string; forget?: string; json?: boolean }) => {
       await runRecover(deps, opts)
+    })
+
+  program
+    .command('fix')
+    .description('print the coding-agent fix prompt for a recorded run')
+    .argument('<skill>', 'skill id or bare name')
+    .option('--stage <stage>', 'restrict to one lifecycle stage')
+    .option('--run <id>', 'a recorded run id; defaults to the most recent')
+    .option('--json', 'emit one JSON document')
+    .action(async (selector: string, opts: FixOptions) => {
+      // R12.6: the code answers "is there a prompt on stdout", not "did the
+      // skill pass" — reusing R12.2's meaning would make a clean skill and a
+      // failed lookup indistinguishable.
+      program.exitCode = await runFix(deps, selector, opts)
     })
 
   program

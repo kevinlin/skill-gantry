@@ -5,7 +5,7 @@ import type {
   StagePlan,
   StageResult,
 } from '../../src/core/stages/types.js'
-import type { Stage, StageOutcome, ToolOutcome } from '../../src/core/types.js'
+import type { RawFinding, Stage, StageOutcome, ToolOutcome } from '../../src/core/types.js'
 
 export interface FakeExecutorOptions {
   /** Stage outcome to report. Defaults to 'passed'. */
@@ -18,6 +18,8 @@ export interface FakeExecutorOptions {
   calls?: string[]
   /** Returned by prepareMutation. Null means the tools changed nothing. */
   pending?: PendingMutation | null
+  /** Reported by the single tool run. Empty unless a test needs R6.10's trigger. */
+  findings?: RawFinding[]
 }
 
 /**
@@ -59,7 +61,7 @@ export function fakeExecutor(stage: Stage, options: FakeExecutorOptions = {}): S
             durationMs: 1,
             errorKind: null,
             artefactDir: `${ctx.stageDir}/fake`,
-            findings: [],
+            findings: options.findings ?? [],
             metrics: { durationMs: 1 },
             summary: `${stage} fake`,
           },

@@ -21,6 +21,19 @@ export async function loadSkillMd(dir: string): Promise<string> {
   }
 }
 
+/**
+ * R11.9. Null when the pipeline has not written one — a stage that found
+ * nothing, or a run from before R6.10 — which the caller reports as a path the
+ * user can still reach with `skillgantry fix`, never as a failed copy.
+ */
+export async function readFixPrompt(path: string): Promise<string | null> {
+  try {
+    return await readFile(path, 'utf8')
+  } catch {
+    return null
+  }
+}
+
 /** Every file the run wrote, relative to the run directory, sorted. */
 export async function listArtefacts(runDir: string | null): Promise<string[]> {
   if (!runDir) return []

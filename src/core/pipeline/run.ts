@@ -14,6 +14,7 @@ import type { Ledger } from '../ledger/db.js'
 import { recordRun } from '../ledger/record.js'
 import { AdapterStageExecutor } from '../stages/adapter-stage.js'
 import { haltsChain, reduceStageMetrics } from '../stages/outcome.js'
+import { buildFixPrompt } from '../stages/fix-prompt.js'
 import { ReleaseStageExecutor } from '../stages/release-stage.js'
 import type {
   PendingMutation,
@@ -30,6 +31,7 @@ import {
   ensureGitignore,
   finalizeRun,
   stageDirFor,
+  writeFixPrompt,
   writeRunJson,
   writeStageJson,
 } from '../workspace/writer.js'
@@ -445,6 +447,20 @@ export function runPipeline(input: RunPipelineInput): RunHandle {
       // declares `binaryArtefacts` has them copied verbatim by the runner, not
       // here.
       await writeStageJson(stageDir, result)
+
+      // R6.10. The prompt names where a coding agent should edit, so it takes
+      // `input.skill` and not `ctx.skill`: the latter points into the mutation
+      // sandbox or into the materialised candidate's temp dir, neither of which
+      // survives this call.
+      const fixPrompt = buildFixPrompt({
+        skill: input.skill,
+        runId: id,
+        stageDir,
+        skillDigest: digest,
+        git,
+        result,
+      })
+      if (fixPrompt !== null) await writeFixPrompt(stageDir, fixPrompt)
 
       results.push(result)
       queue.push({ type: 'stage:done', runId: id, stage, outcome: result.outcome, result })

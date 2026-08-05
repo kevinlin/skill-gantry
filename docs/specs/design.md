@@ -590,6 +590,7 @@ declawed-workspace/                      (mode 0700)
           agentskills/   stdout.log  stderr.log  <native artefacts>
         03-security/
           stage.json
+          fix-prompt.md                ← only when the stage produced a finding
           skillspector/  stdout.log  stderr.log  findings.sarif
           skill-scanner/ stdout.log  stderr.log  findings.sarif
         evidence/                        ← release stage only
@@ -626,6 +627,20 @@ Native artefacts written by the tool itself, `snapshot-pre/` contents, and the r
 This is a deliberate narrowing of R7.4 from its first draft, chosen over routing tools through a private staging directory. It keeps every artefact in the sidecar, which was the original brief.
 
 One case remains where unredacted artefacts could be re-read by a later tool: a repo-root skill whose workspace sat inside the scanned tree. §4.4 closes it structurally, not this policy. A tool is now pointed at a materialised candidate that contains no workspace, so a prior run's unredacted SARIF is not reachable from any tool's input.
+
+### 9.4 Fix prompt
+
+*Satisfies R6.10.*
+
+A stage that reported findings writes `fix-prompt.md` beside its `stage.json`: a prompt for a coding agent that names where the skill is, where each tool's own report is, and what every finding said. Per stage rather than per tool, because a fan-out security stage with two scanners is one job for the agent.
+
+**The trigger is findings, not the outcome.** `buildFixPrompt` returns null unless some tool run carries a finding. §8.1's sub-floor row keeps a finding and passes the tool, and that finding is still filed as an issue — so a `passed` stage with two `low` findings gets a prompt, and an outcome-based trigger would silently drop exactly the case the ledger says is still open.
+
+**The prompt points at the tool's report rather than restating it.** `RawFinding` is a closed six-field record and the shared SARIF parser does not type `properties` at all, so `remediation`, `explanation`, `confidence` and `code_snippet` are dropped on the way in. The raw report is on disk beside `stage.json`; naming its absolute path keeps that evidence reachable without widening the adapter contract, `RawFinding`, or the ledger. Artefact names come from the adapter manifest's declared `artefacts` rather than from a directory listing, so the prompt names what the tool was contracted to write.
+
+The prompt instructs the agent to judge each finding into one of three — correct and worth fixing, correct but the suggested fix does not apply here, false positive — and to stop and report rather than edit code it judges correct. Both findings in the run that motivated this were of the second and third kinds: one named a `permissions` frontmatter field the Agent Skill schema does not have, so writing it would fail validate; the other flagged a run of alignment whitespace inside a `re.VERBOSE` regex. SkillGantry never applies the prompt. It also forbids any write under `*-workspace/` or `.skillgantry-workspace/`, which is the evidence the prompt itself points at.
+
+**It is built from `input.skill`, never `ctx.skill`.** The prompt names where an agent should edit, and `ctx.skill` points into the mutation sandbox or into the materialised candidate's temp directory — neither of which exists after the run. The builder is a pure function in `stages`, which is the only module that adds no §3 edge: it already depends on `adapters` for the manifest lookup, and it already owns no I/O. `workspace` gets a four-line `writeFixPrompt` and no judgement, per §3's own rule that a module owning I/O does not own decisions.
 
 ## 10. Ledger
 
@@ -1196,9 +1211,23 @@ The confirm pane is a sibling of `ReviewPane`, not a generalisation of it: both 
 
 Modal precedence is fixed and ordered by what a keystroke can destroy: the mutation review first, because its `a` writes the user's repo; then the config confirmation; then the setup screen; then the palette; then help.
 
+### 14.3 Copying a fix prompt
+
+*Satisfies R11.9.*
+
+`y` on the Work screen copies the §9.4 fix prompt for the **lifecycle rail's selected stage** — the vim yank verb, unbound before this. It sits in `useInput` after the Work-screen gate and before the `r` handler, so every modal above still wins its keystroke.
+
+The rail's stage and not a Findings-pane selection, because the pane has no per-finding cursor and `SkillRow.findings` accumulates across every stage of the run, so a finding on screen cannot be attributed to a stage at all. The rail already carries a selection moved by `h`/`l`, which also makes `y` work from any output tab. `StageCell` therefore gains a `findings` count, set from the `stage:done` event that already carries the whole `StageResult` — no event contract changes.
+
+**The OSC 52 write lives in `src/tui/`.** The escape has to reach the terminal Ink currently owns — alternate screen, raw mode, the stream Ink was constructed with — and `src/cli/tui-command.ts` hands control away at `startTui` with no live handle on the keystroke. The lint rules ban `console` and `process.exit` in **core**, not stdout writes in the renderer; writing stdout is what the renderer is. Encoding is split into a pure `osc52.ts` so the byte shape is testable without a terminal, base64 over **UTF-8** explicitly — a non-ASCII character in a finding message corrupts a `binary` payload. It returns null above a size cap so the caller can never report a copy that did not happen. The write goes through `useStdout().stdout.write`, not Ink's `write()` helper from the same hook: that one writes above the app and forces a clear-and-re-render, flickering the frame for a sequence that renders nothing.
+
+**The path is surfaced at zero row cost.** Terminal.app, and tmux without passthrough, discard OSC 52 silently, so an action reporting only success is one the user cannot trust. `AppState` gains a `flash` that the Work screen passes to `StatusBar` in place of the hint text — the footer already occupies that row on every screen, so §14.1's budget is unchanged. It names the path in each of the unavailable cases too: no run this session (falling back to the `skillgantry fix` command line), a stage that found nothing, a file not written yet, a body over the cap. The flash clears on the next keypress rather than on a timer, which keeps the TUI tests deterministic, and the path is cut with `truncateMiddle` so the basename survives.
+
+The Findings pane gains **no** footer row. `outputWindow()` is the single derivation the pane renders against and the key handler clamps against, and it already spends rows on `overflow` and `dropped`; a third footnote would cost the findings list a row on every render — paying the budget permanently for a static hint, which is what §14.1's first rule exists to stop. `HINTS` is left alone for the same reason: it is already six pairs at 55 columns and `StatusBar` drops the version when hints plus version exceed the width, so a seventh pair truncates the keys. Discoverability comes from the documented second tier, one row in the help screen's `KEYS`.
+
 ## 15. Headless interface
 
-*Satisfies R12.1–R12.4, R12.5a, R12.5b.*
+*Satisfies R12.1–R12.4, R12.5a, R12.5b, R12.6.*
 
 ```
 skillgantry run <skill> --stage validate,evaluate,security [--json] [--yes]
@@ -1209,6 +1238,7 @@ skillgantry release <skill> --version <semver|major|minor|patch>
 skillgantry retire <skill> [--undo] [--superseded-by <id>]
                            [--yes] [--json] [--allow-dirty]
 skillgantry recover [--restore <runId>] [--forget <runId>] [--json]
+skillgantry fix <skill> [--stage <stage>] [--run <id>] [--json]
 skillgantry [--concurrency <n>]                    # no subcommand: the TUI
 ```
 
@@ -1219,6 +1249,12 @@ A skill is named by `<repoId>/<name>`, by a bare name when that is unambiguous, 
 Consumes the same event stream, rendering line output or newline-delimited JSON. Exits non-zero when any executed stage outcome is not `passed`. Mutating stages are skipped without `--yes`; with it, the diff is emitted before the write.
 
 Every launch, headless or not, first scans for an unresolved mutation record and prints one `warning:` line per record naming `skillgantry recover` (§12.2). It never blocks the launch.
+
+`fix` prints the §9.4 prompt for a recorded run. Its default output is the body alone, so `skillgantry fix declawed --stage security | pbcopy` works; `--json` prints one document rather than `run`'s ndjson, since there is no event stream to follow. With no `--stage` and exactly one stage carrying a prompt it prints that one, and with more than one it lists `<stage>  <path>` and refuses — the same shape the skill selector uses for an ambiguous name.
+
+**Its exit code answers "is there a prompt on stdout", not "did the skill pass"** — `0` when one was produced, `1` when the run resolved and nothing in scope carried a finding. This is a deliberate divergence from R12.2's meaning for `run`: reusing that meaning would make a clean skill and a failed lookup indistinguishable. An unknown skill, run id or stage rejects and reaches the top-level handler like every other command's errors.
+
+**It resolves the run from the sidecar, not the ledger.** The default is the greatest run id in `index.ndjson` — not the `latest` symlink, which is absent mid-write, and not `runs.sidecar_path`, because R8.2 makes the sidecar the evidence, the command already names its skill so no cross-skill query is needed, and a run whose ledger row failed still has complete evidence on disk. When the prompt file is absent but that stage's `stage.json` carries findings, `fix` rebuilds it in memory and marks it `onDisk: false`; it never writes, so the pipeline stays the only writer and runs recorded before §9.4 existed are answerable without rewriting their evidence.
 
 ## 16. Test strategy
 
@@ -1254,6 +1290,10 @@ Every launch, headless or not, first scans for an unresolved mutation record and
 | Traceability | `tests/specs/traceability.test.ts` parses both documents | R13.7: a requirement owned twice, owned never, claimed by no section, or claimed and absent fails the build |
 | Screen row budget | Every screen rendered at 80×24 and 50×14 | §14.1's first rule on four new full-screen views |
 | Config transforms | `withRepo`, `withoutRepo`, `withStageTools`, `withScalar` and `configChanges` as pure functions; id uniqueness and duplicate rejection asserted against `registerRepo`'s own result | The staged path and the live path cannot disagree about what a valid config is — §14.2 |
+| `buildFixPrompt` | Pure, over a fixture `StageResult` modelled on the motivating run — two `medium` findings from one scanner | Every mandated element present; null for a zero-finding result; non-null for a §8.1 sub-floor `passed` stage; a `\|` in a message does not break the table; no Commit row for a non-git repo — R6.10 |
+| Fix-prompt trigger | Through `pipeline/run.ts` with fake executors | A zero-finding stage writes no file; a one-finding stage writes exactly one beside `stage.json`; the sandbox-open-failure path writes none; a §8.1 row-3b abort whose tools had reported findings still writes one; the prompt names the real skill dir, not the materialised candidate |
+| `skillgantry fix` | `buildProgram` with a collecting writer over a fabricated sidecar, plus one run in a second process | Default picks the greatest run id; `--run` and `--stage` override and restrict; two prompted stages list rather than concatenate; a clean run exits 1 saying why; `--json` parses as one document; a missing file with findings regenerates marked `onDisk: false`; **the sidecar is byte-identical afterwards**; the exit-code contract survives the process boundary — R12.6 |
+| `y` and OSC 52 | `renderInk` with a fake queue and a real temp prompt file; `osc52` asserted as pure bytes | The frame carries the base64 of the file's bytes; the StatusBar shows the path; the frame's row count is unchanged by the keypress; each unavailable case names its reason and emits no escape; UTF-8 round-trips and an oversized body returns null — R11.9 |
 | Settings edit | Origin labels over a config with absent keys and a `--concurrency` override; a staged edit with no write; a schema-invalid value refused; discard leaving the file byte-identical; apply writing once and re-reading; the credential rows offering no edit | R11.7 and R11.8, without a terminal |
 
 Fixture capture is a scripted, repeatable step tied to the pinned tool versions, so fixtures and pins cannot drift apart.
@@ -1274,7 +1314,7 @@ Fixture capture is a scripted, repeatable step tied to the pinned tool versions,
 | R5.1, R5.9, R5.11 | 8.2, 11.3 |
 | R5.2, R5.12–R5.14, R12.4 | 11.1, 11.4, 11.5 |
 | R5.3–R5.8, R5.10 queue | 11.1, 11.4 |
-| R6 artefacts | 9, 9.1, 9.2 |
+| R6 artefacts | 9, 9.1, 9.2, 9.4 |
 | R7 credentials and redaction | 9.3, 10.2 |
 | R8 ledger and issues | 10 |
 | R9 release | 12.4 |
@@ -1353,6 +1393,14 @@ Amendments this document took from building against it, each corrected in the br
 | §3 still counted eight adapter-backed tools, and its "Depends on" column predated `isolation`, `release` and the module moves M4 and M5 made | Counts corrected to the four shipped adapters; the column re-derived from real value imports, with type-only imports named as non-dependencies |
 | §15 listed a `--repo` filter nothing required or shipped, and omitted the flags that did | Command list re-derived from the shipped program, including where `--concurrency` and `--version` actually live |
 | The journal read through symlinks, so an apply wrote a regular file over a user's link and a rollback restored a copy of its target — the one place in the system not already following §4.4's link rule | Links are hashed by target string and put back as links, keyed off the `S_IFLNK` bit the recorded mode already carries |
+
+## 18.4 What changed while M6 was implemented
+
+Recorded in [plan_m6-fix-prompts-for-stage-findings.md](plan_m6-fix-prompts-for-stage-findings.md).
+
+| Problem | Resolution |
+|---|---|
+| A failed stage left the user with a finding list and no next step, and the two findings that prompted this were both unsafe to apply mechanically — one named a frontmatter field the schema does not have, the other flagged alignment whitespace inside a regex | R6.10, R11.9 and R12.6: the deliverable is a generated coding-agent prompt, not a fixer. It points at the tool's own report because `RawFinding`'s six fields drop the SARIF `properties` that explain and qualify a finding (§9.4, §14.3, §15) |
 
 ## 19. Risks carried into implementation
 

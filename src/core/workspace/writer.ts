@@ -85,6 +85,15 @@ export async function writeStageJson(
   await writeFile(join(stageDir, 'stage.json'), `${JSON.stringify(doc, null, 2)}\n`)
 }
 
+/**
+ * R6.10. The body is built by `stages/fix-prompt.ts`: this module owns the I/O,
+ * so per §3 it does not also own the decision of what the prompt says.
+ */
+export async function writeFixPrompt(stageDir: string, body: string): Promise<void> {
+  await mkdir(stageDir, { recursive: true })
+  await writeFile(join(stageDir, 'fix-prompt.md'), body)
+}
+
 /** A lock older than this with a dead holder is reclaimable. */
 export const LOCK_STALE_MS = 30_000
 
