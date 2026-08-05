@@ -20,6 +20,19 @@ export interface ScreenRow {
 
 const pct = (rate: number): string => `${Math.round(rate * 100)}%`
 
+/**
+ * Which log the pane is showing: the recorded one for a row rehydrated off disk,
+ * the session's live buffer otherwise. Here rather than in the component,
+ * because the pane renders against these lines and `outputWindow` clamps
+ * against their count — the same reason `outputWindow` itself is one function.
+ */
+export const logLines = (state: AppState, skill: SkillRow | undefined): readonly string[] =>
+  skill?.rehydrated === true ? skill.recordedLog.lines : state.log.lines
+
+/** The dropped-line footnote's count, from whichever log is showing. */
+export const logDropped = (state: AppState, skill: SkillRow | undefined): number =>
+  skill?.rehydrated === true ? skill.recordedLog.dropped : state.log.dropped
+
 /** Rows the current tab holds, and where it sits when nothing is pinned. */
 function outputTab(
   state: AppState,
@@ -28,7 +41,7 @@ function outputTab(
   switch (state.panel) {
     case 'log':
       // The newest line, because a log is read from its end.
-      return { total: state.log.lines.length, anchor: 'bottom' }
+      return { total: logLines(state, skill).length, anchor: 'bottom' }
     case 'findings':
       return { total: skill?.findings.length ?? 0, anchor: 'top' }
     case 'artefacts':
@@ -67,7 +80,7 @@ export function outputWindow(
   height: number,
 ): OutputWindow {
   const { total, anchor } = outputTab(state, skill)
-  const dropped = state.panel === 'log' && state.log.dropped > 0
+  const dropped = state.panel === 'log' && logDropped(state, skill) > 0
   const body = Math.max(1, height - (dropped ? 1 : 0))
   const overflow = total > body
   const rows = overflow ? Math.max(1, body - 1) : body

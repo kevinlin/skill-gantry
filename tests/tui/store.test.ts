@@ -485,6 +485,7 @@ describe('set-last-run — R11.10', () => {
   const recorded = {
     runId: 'run-b',
     runDir: '/w/run-b',
+    log: { lines: ['skillspector │ recorded line'], dropped: 3 },
     stages: [
       {
         stage: 'security' as const,
@@ -509,6 +510,38 @@ describe('set-last-run — R11.10', () => {
     expect(state.skills[0]?.stages.validate.outcome).toBeNull()
     // `set-statuses` owns the glyph, from the same index.
     expect(state.skills[0]?.status).toBe('idle')
+  })
+
+  it('holds the recorded log on the row rather than in the session buffer', () => {
+    const state = reducer(start(), { type: 'set-last-run', skillId: 'declawed', run: recorded })
+    expect(state.skills[0]?.rehydrated).toBe(true)
+    expect(state.skills[0]?.recordedLog).toEqual({
+      lines: ['skillspector │ recorded line'],
+      dropped: 3,
+    })
+    // R11.4's buffer is untouched, which is what stops one skill's recorded
+    // output appearing under another skill that is running.
+    expect(state.log).toEqual({ lines: [], dropped: 0 })
+  })
+
+  it('hands the pane back to the live buffer when a run starts', () => {
+    const rehydrated = reducer(start(), {
+      type: 'set-last-run',
+      skillId: 'declawed',
+      run: recorded,
+    })
+    const live = reducer(rehydrated, {
+      type: 'queue-event',
+      event: run({
+        type: 'run:start',
+        runId: 'r1',
+        skillId: 'declawed',
+        stages: ['security'],
+        runDir: '/w/r1',
+      }),
+    })
+    expect(live.skills[0]?.rehydrated).toBe(false)
+    expect(live.skills[0]?.recordedLog).toEqual({ lines: [], dropped: 0 })
   })
 
   it('leaves other skills alone', () => {

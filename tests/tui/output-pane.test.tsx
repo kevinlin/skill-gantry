@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   createQueue,
@@ -11,6 +11,7 @@ import {
 } from '../../src/core/index.js'
 import { claimRunDir, finalizeRun } from '../../src/core/workspace/writer.js'
 import { App } from '../../src/tui/app.js'
+import { LOG_CAPACITY } from '../../src/tui/log-buffer.js'
 import { listArtefacts, loadLastRun, loadSkillMd, loadSkillStatuses } from '../../src/tui/views.js'
 import { SKILL_MD, makeRepo } from '../helpers/tmp-repo.js'
 import { fakeRun } from '../helpers/fake-run.js'
@@ -111,8 +112,10 @@ async function recordedRuns(): Promise<{ workspacePath: string; newerDir: string
 
   const newerDir = join(workspacePath, 'skillgantry', 'runs', 'run-b')
   const stageDir = stageDirFor(newerDir, 3, 'security')
-  await mkdir(stageDir, { recursive: true })
+  await mkdir(join(stageDir, 'skillspector'), { recursive: true })
   await writeFile(join(stageDir, 'stage.json'), JSON.stringify(securityResult()))
+  await writeFile(join(stageDir, 'skillspector', 'stdout.log'), 'scanning SKILL.md\nscanning scan.py\n')
+  await writeFile(join(stageDir, 'skillspector', 'stderr.log'), 'one warning\n')
   await mkdir(join(workspacePath, 'skillgantry', 'runs', 'run-a'), { recursive: true })
 
   // Appended newest first, which is the order that catches a last-line reader.
@@ -181,6 +184,42 @@ describe('loadLastRun — R11.10', () => {
     const root = await makeRepo({ files: { 'fresh/SKILL.md': SKILL_MD('fresh') } })
     const skills = await discoverSkills({ id: 'fx', path: root, name: 'fx', isGit: false })
     expect(await loadLastRun(skills[0]!.workspacePath)).toBeNull()
+  })
+
+  it('replays the run’s tool logs in the shape the live pump writes', async () => {
+    const { workspacePath } = await recordedRuns()
+    const run = await loadLastRun(workspacePath)
+    // stdout then stderr, prefixed by tool id, so a replayed frame and a live
+    // one read identically. The trailing newline is not a line.
+    expect(run?.log).toEqual({
+      lines: [
+        'skillspector │ scanning SKILL.md',
+        'skillspector │ scanning scan.py',
+        'skillspector │ one warning',
+      ],
+      dropped: 0,
+    })
+  })
+
+  it('keeps the newest lines and reports the rest, like the ring buffer', async () => {
+    const { workspacePath } = await recordedRuns()
+    const stageDir = stageDirFor(join(workspacePath, 'skillgantry', 'runs', 'run-b'), 3, 'security')
+    const many = Array.from({ length: LOG_CAPACITY + 50 }, (_, i) => `line ${i}`).join('\n')
+    await writeFile(join(stageDir, 'skillspector', 'stdout.log'), `${many}\n`)
+    await writeFile(join(stageDir, 'skillspector', 'stderr.log'), '')
+
+    const run = await loadLastRun(workspacePath)
+    expect(run?.log.lines).toHaveLength(LOG_CAPACITY)
+    expect(run?.log.dropped).toBe(50)
+    expect(run?.log.lines.at(-1)).toBe(`skillspector │ line ${LOG_CAPACITY + 49}`)
+  })
+
+  it('reports an empty log for a run whose tools wrote none', async () => {
+    const { workspacePath } = await recordedRuns()
+    const stageDir = stageDirFor(join(workspacePath, 'skillgantry', 'runs', 'run-b'), 3, 'security')
+    await rm(join(stageDir, 'skillspector'), { recursive: true })
+    const run = await loadLastRun(workspacePath)
+    expect(run?.log).toEqual({ lines: [], dropped: 0 })
   })
 
   it('leaves the sidecar byte-identical', async () => {

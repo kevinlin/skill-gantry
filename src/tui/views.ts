@@ -5,6 +5,7 @@ import {
   readIndex,
   runsRoot,
   stageDirFor,
+  toolDirFor,
   type DashboardStats,
   type DoctorReport,
   type GantryConfig,
@@ -20,6 +21,7 @@ import {
   type StageResult,
   type StatsFilter,
 } from '../core/index.js'
+import { LOG_CAPACITY } from './log-buffer.js'
 
 export async function loadSkillMd(dir: string): Promise<string> {
   try {
@@ -102,6 +104,30 @@ export interface LastRun {
   runDir: string
   /** Only stages the run executed; the rest stay `·` on the rail. */
   stages: LastRunStage[]
+  /**
+   * The run's own tool logs, in the `<toolId> │ <line>` shape the live pump
+   * writes, so a replayed frame and a live one read identically. Capped at the
+   * ring buffer's capacity for the same reason the buffer has one.
+   */
+  log: { lines: string[]; dropped: number }
+}
+
+/**
+ * Both streams of one tool run, stdout before stderr. Their true interleaving
+ * is not recoverable — the pipeline writes them as two files — so this is
+ * ordered rather than merged, which is the honest reading of what is on disk.
+ */
+async function toolLogLines(stageDir: string, toolId: string): Promise<string[]> {
+  const out: string[] = []
+  for (const stream of ['stdout.log', 'stderr.log']) {
+    const body = await readFile(join(toolDirFor(stageDir, toolId), stream), 'utf8').catch(() => null)
+    if (body === null) continue
+    for (const line of body.split('\n')) {
+      // A trailing newline yields a final empty part that is not a line.
+      if (line.length > 0) out.push(`${toolId} │ ${line}`)
+    }
+  }
+  return out
 }
 
 /**
@@ -117,8 +143,10 @@ export async function loadLastRun(workspacePath: string): Promise<LastRun | null
   const runDir = join(runsRoot(workspacePath), runId)
 
   const stages: LastRunStage[] = []
+  const lines: string[] = []
   for (const [index, stage] of STAGE_ORDER.entries()) {
-    const path = join(stageDirFor(runDir, index + 1, stage), 'stage.json')
+    const stageDir = stageDirFor(runDir, index + 1, stage)
+    const path = join(stageDir, 'stage.json')
     // A run executes the stages it was asked for, so a missing summary is the
     // ordinary case for the other four — not a failure to read the run.
     const raw = await readFile(path, 'utf8').catch(() => null)
@@ -129,6 +157,7 @@ export async function loadLastRun(workspacePath: string): Promise<LastRun | null
     } catch {
       continue
     }
+    for (const run of result.toolRuns) lines.push(...(await toolLogLines(stageDir, run.toolId)))
     stages.push({
       stage,
       outcome: result.outcome,
@@ -138,7 +167,10 @@ export async function loadLastRun(workspacePath: string): Promise<LastRun | null
       findings: result.toolRuns.flatMap((run) => run.findings),
     })
   }
-  return { runId, runDir, stages }
+  // Newest kept, oldest dropped, reported — the ring buffer's own policy, so a
+  // replayed log and a live one overflow the same way and say so the same way.
+  const dropped = Math.max(0, lines.length - LOG_CAPACITY)
+  return { runId, runDir, stages, log: { lines: lines.slice(dropped), dropped } }
 }
 
 export interface SettingsRepo {

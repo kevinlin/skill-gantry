@@ -178,7 +178,7 @@ describe('rehydrating the last recorded run — R11.10', () => {
     const stageDir = stageDirFor(runDir, 3, 'security')
     await mkdir(join(stageDir, 'skillspector'), { recursive: true })
     await writeFile(join(stageDir, 'skillspector', 'findings.sarif'), '{}')
-    await writeFile(join(stageDir, 'skillspector', 'stdout.log'), 'scanning\n')
+    await writeFile(join(stageDir, 'skillspector', 'stdout.log'), 'scanning declawed/SKILL.md\n')
     await writeFile(join(runDir, 'run.json'), '{}')
     await writeFile(
       join(stageDir, 'stage.json'),
@@ -265,10 +265,70 @@ describe('rehydrating the last recorded run — R11.10', () => {
     queue.close()
   })
 
-  it('names the recorded run directory in the empty Log pane rather than replaying it', async () => {
+  it('replays the recorded run’s tool output in the Log pane', async () => {
     const { ui, queue } = render(await recorded())
     await rehydrated(ui)
-    expect(ui.lastFrame()).toContain('no output this session')
+    // The tool-id prefix the live pump writes, so both read identically.
+    expect(ui.lastFrame()).toContain('skillspector │ scanning declawed/SKILL.md')
+    ui.unmount()
+    queue.close()
+  })
+
+  it('never shows one skill’s live output under another skill — R11.4’s buffer is per session', async () => {
+    const skills = [...(await recorded()), skill('spec-lint')]
+    const runs = new Map<string, FakeRun>()
+    const queue = createQueue({
+      concurrency: 2,
+      startRun: (job) => {
+        const live = fakeRun(`run-${job.skillId}`)
+        runs.set(job.jobId, live)
+        return live.handle
+      },
+    })
+    const ui = renderInk(
+      <App
+        skills={skills}
+        queue={queue}
+        stages={['security']}
+        concurrency={2}
+        views={fakeViews()}
+        intervalMs={20}
+      />,
+    )
+    await ui.settle()
+
+    // spec-lint runs and streams; declawed is the rehydrated row beside it.
+    const [jobId] = queue.enqueue([{ skill: skills[1]!, stages: ['security'] }])
+    await ui.settle()
+    const live = runs.get(jobId!)!
+    live.events.push({
+      type: 'run:start',
+      runId: 'run-spec-lint',
+      skillId: 'spec-lint',
+      stages: ['security'],
+      runDir: '/w/run-spec-lint',
+    })
+    live.events.push({
+      type: 'tool:output',
+      runId: 'run-spec-lint',
+      stage: 'security',
+      toolId: 'skill-lint',
+      stream: 'stdout',
+      chunk: 'linting spec-lint\n',
+    })
+    await waitForFrame(ui, (frame) => frame.includes('linting spec-lint'))
+
+    // The selection is still on declawed, and its pane shows *its* log.
+    expect(ui.lastFrame()).toContain('skillspector │ scanning declawed/SKILL.md')
+    expect(ui.lastFrame()).not.toContain('linting spec-lint')
+
+    // And moving to spec-lint shows the live one.
+    ui.stdin.send('j')
+    await waitForFrame(ui, (frame) => frame.includes('linting spec-lint'))
+    expect(ui.lastFrame()).toContain('linting spec-lint')
+
+    live.finish()
+    await queue.idle()
     ui.unmount()
     queue.close()
   })

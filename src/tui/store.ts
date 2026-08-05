@@ -90,6 +90,15 @@ export interface SkillRow {
   runDir: string | null
   stages: Record<Stage, StageCell>
   findings: RawFinding[]
+  /**
+   * True while this row's state came off disk rather than out of the session's
+   * event stream. It is what lets the Log pane show *this* skill's recorded
+   * output: `state.log` is one session-wide buffer, so a row that never ran
+   * this session would otherwise show whichever skill did.
+   */
+  rehydrated: boolean
+  /** The recorded run's tool logs, shown only while `rehydrated`. */
+  recordedLog: { lines: readonly string[]; dropped: number }
 }
 
 export interface PendingReview {
@@ -290,6 +299,8 @@ const toRow = (skill: SkillRef): SkillRow => ({
   runDir: null,
   stages: emptyStages(),
   findings: [],
+  rehydrated: false,
+  recordedLog: { lines: [], dropped: 0 },
 })
 
 export function initialState(skills: readonly SkillRef[], concurrency: number): AppState {
@@ -372,6 +383,9 @@ function onRunEvent(state: AppState, jobId: string, event: RunEvent): AppState {
       runDir: event.runDir,
       stages: emptyStages(),
       findings: [],
+      // The live buffer takes the pane back over from here.
+      rehydrated: false,
+      recordedLog: { lines: [], dropped: 0 },
     }))
     return { ...next, runIndex: { ...next.runIndex, [event.runId]: event.skillId } }
   }
@@ -749,6 +763,8 @@ export function reducer(state: AppState, action: Action): AppState {
           stages,
           // In stage order, the order a live run would have appended them in.
           findings: action.run.stages.flatMap((recorded) => recorded.findings),
+          rehydrated: true,
+          recordedLog: action.run.log,
           // `status` is left alone: `set-statuses` already owns it, from the
           // same index this run was resolved out of.
         }

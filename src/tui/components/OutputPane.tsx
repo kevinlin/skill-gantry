@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { Box, Text } from 'ink'
 import { innerWidth, truncate, truncateMiddle } from '../layout.js'
-import { outputWindow } from '../rows.js'
+import { logDropped, logLines, outputWindow } from '../rows.js'
 import { PANELS, type AppState, type SkillRow } from '../store.js'
 import { ACCENT, SEVERITY_COLOUR, overflowNotice } from '../tokens.js'
 import { Panel } from './Panel.js'
@@ -105,18 +105,16 @@ function Body({
   ) : null
 
   if (state.panel === 'log') {
-    const lines = state.log.lines.slice(view.start, view.end)
+    const lines = logLines(state, skill).slice(view.start, view.end)
     if (lines.length === 0 && !view.dropped) {
-      // The ring buffer is session-wide and shared by every skill, so a
-      // rehydrated run (R11.10) has no lines to replay — it has a directory
-      // where the full log already is (R11.5). Middle-cut so the run id
-      // survives the trim, and the same single row either way.
+      // A rehydrated run whose tools wrote no log at all still has a directory
+      // to name; a skill that has never run has neither. The path is cut, not
+      // the sentence: eliding the middle of the whole row loses the words that
+      // say why the pane is empty.
       return (
         <Text dimColor wrap="truncate">
           {skill?.runDir
-            ? // The path is cut, not the sentence: eliding the middle of the
-              // whole row loses the words that say why the pane is empty.
-              `no output this session — logs under ${truncateMiddle(skill.runDir, Math.max(12, cols - 38))}`
+            ? `no recorded output — run directory ${truncateMiddle(skill.runDir, Math.max(12, cols - 34))}`
             : 'no output yet — select a skill and press r'}
         </Text>
       )
@@ -132,7 +130,7 @@ function Body({
         {view.dropped && (
           <Text wrap="truncate" dimColor>
             {truncate(
-              `${state.log.dropped} earlier lines dropped — full log under ${
+              `${logDropped(state, skill)} earlier lines dropped — full log under ${
                 skill?.runDir ?? skill?.workspacePath ?? 'the run directory'
               }`,
               cols,
