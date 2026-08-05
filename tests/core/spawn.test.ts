@@ -68,7 +68,11 @@ describe('runTool', () => {
       bin,
       argv: [pidFile],
       toolDir: await toolDir(),
-      timeoutMs: 1_000,
+      // 3s for the same reason the partial-output case below uses it: the
+      // assertion is that the timeout kills the grandchild, not that one
+      // second is long enough for a loaded shell to spawn it and write its
+      // pid. At 1s the read of that file raced the shell and lost.
+      timeoutMs: 3_000,
     })
     expect(out.timedOut).toBe(true)
     expect(out.exitCode).toBeNull()
