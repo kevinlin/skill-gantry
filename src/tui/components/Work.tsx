@@ -9,8 +9,13 @@ import { ReviewPane } from './ReviewPane.js'
 import { SkillList } from './SkillList.js'
 import { StatusBar } from './StatusBar.js'
 
-/** Five keys, per the layered discoverability rule; the rest are behind `?`. */
-const HINTS = 'j/k move · space mark · r run · x cancel · ? help · q quit'
+/**
+ * The keys this screen answers, per the layered discoverability rule; the rest
+ * are behind `?`. Seven pairs is 67 columns, so with the version label it still
+ * fits §14.1's 80-column floor whole. Anything added past this truncates, and
+ * the tail is `q quit` — the one key a user cannot work without.
+ */
+const HINTS = 'j/k move · space mark · r run · x cancel · y copy · ? help · q quit'
 /** The footer carries only keys this screen answers: `?` is swallowed while a
     review is pending, so advertising help here promised a screen that never came. */
 const REVIEW_HINTS = 'a apply · d discard · j/k scroll · esc discard · q quit'
