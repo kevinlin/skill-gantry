@@ -68,6 +68,27 @@ describe('queue panel — R5.10, R11.6', () => {
     queue.close()
   })
 
+  it('counts a running job up and keeps what a finished one cost', async () => {
+    const { ui, queue, runs } = harness(1)
+    await ui.settle()
+    const ids = queue.enqueue([{ skill: SKILLS[0]!, stages: ['security'] }])
+    await ui.settle(40)
+
+    // A stage run is minutes long and its log can go quiet, so the row has to
+    // say something that is still changing.
+    expect(ui.lastFrame()).toMatch(/running\s+declawed security\s+\d+ms/)
+
+    runs.get(ids[0]!)?.finish()
+    await queue.idle()
+    await ui.settle(40)
+    // `passed`, not the job's own `done`: the pool ends every completed run
+    // `done`, verdict included, so the row has to name the verdict.
+    expect(ui.lastFrame()).toMatch(/passed\s+declawed security\s+\d+ms/)
+
+    ui.unmount()
+    queue.close()
+  })
+
   it('cancels the selected job with x', async () => {
     const { ui, queue, runs } = harness(1)
     await ui.settle()

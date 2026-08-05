@@ -198,6 +198,92 @@ describe('job events', () => {
   })
 })
 
+describe('the report a settled queue leaves in the footer', () => {
+  const job = (id: string, skillId: string) => ({
+    jobId: id,
+    skillId,
+    stages: ['security'] as const,
+    state: 'queued' as const,
+    runId: null,
+    outcome: null,
+    error: null,
+    enqueuedAt: '2026-01-01T00:00:00.000Z',
+    startedAt: null,
+    endedAt: null,
+  })
+  const ran = (id: string, skillId: string) => ({
+    ...job(id, skillId),
+    runId: 'r1',
+    startedAt: '2026-01-01T00:00:00.000Z',
+    endedAt: '2026-01-01T00:01:54.000Z',
+  })
+
+  it('names the verdict, what it cost, and where the evidence is', () => {
+    const one = job('j1', 'declawed')
+    const state = feed([
+      { type: 'job:queued', job: one },
+      { type: 'job:started', job: { ...one, state: 'running' } },
+      run({
+        type: 'run:start',
+        runId: 'r1',
+        skillId: 'declawed',
+        stages: ['security'],
+        runDir: '/w/declawed-workspace/runs/r1',
+      }),
+      run({ type: 'stage:done', runId: 'r1', stage: 'security', outcome: 'failed', result: stageResult }),
+      { type: 'job:done', job: { ...ran('j1', 'declawed'), state: 'failed', outcome: 'failed' } },
+    ])
+    expect(state.flash).toBe(
+      'declawed security failed · 1m 54s · 1 finding · /w/declawed-workspace/runs/r1',
+    )
+    expect(state.flashTone).toBe('bad')
+  })
+
+  it('tallies a batch instead of reporting the last job of it', () => {
+    const a = job('j1', 'declawed')
+    const b = job('j2', 'spec-lint')
+    const state = feed([
+      { type: 'job:queued', job: a },
+      { type: 'job:queued', job: b },
+      { type: 'job:started', job: { ...a, state: 'running' } },
+      { type: 'job:done', job: { ...ran('j1', 'declawed'), state: 'done', outcome: 'passed' } },
+      { type: 'job:started', job: { ...b, state: 'running' } },
+      { type: 'job:done', job: { ...ran('j2', 'spec-lint'), state: 'done', outcome: 'failed' } },
+    ])
+    // Worst first, and counted by verdict: a run whose stage failed still ends
+    // as job state `done`, so a tally over the state would say `2 passed`.
+    expect(state.flash).toBe('2 jobs · 1 failed, 1 passed')
+    expect(state.flashTone).toBe('bad')
+  })
+
+  it('stays quiet while any job is still queued or running', () => {
+    const a = job('j1', 'declawed')
+    const b = job('j2', 'spec-lint')
+    const state = feed([
+      { type: 'job:queued', job: a },
+      { type: 'job:queued', job: b },
+      { type: 'job:started', job: { ...a, state: 'running' } },
+      { type: 'job:done', job: { ...ran('j1', 'declawed'), state: 'done', outcome: 'passed' } },
+    ])
+    expect(state.flash).toBeNull()
+  })
+
+  it('does not raise itself again on a later record for an already-finished job', () => {
+    const one = job('j1', 'declawed')
+    const settled = feed([
+      { type: 'job:queued', job: one },
+      { type: 'job:started', job: { ...one, state: 'running' } },
+      { type: 'job:done', job: { ...ran('j1', 'declawed'), state: 'done', outcome: 'passed' } },
+    ])
+    const dismissed = reducer(settled, { type: 'clear-flash' })
+    const again = reducer(dismissed, {
+      type: 'queue-event',
+      event: { type: 'job:done', job: { ...ran('j1', 'declawed'), state: 'done', outcome: 'passed' } },
+    })
+    expect(again.flash).toBeNull()
+  })
+})
+
 describe('navigation', () => {
   it('moves the skill cursor without running off either end', () => {
     let state = reducer(start(), { type: 'select-skill', delta: 1 })

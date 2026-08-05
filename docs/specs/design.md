@@ -1225,6 +1225,20 @@ The rail's stage and not a Findings-pane selection, because the pane has no per-
 
 The Findings pane gains **no** footer row. `outputWindow()` is the single derivation the pane renders against and the key handler clamps against, and it already spends rows on `overflow` and `dropped`; a third footnote would cost the findings list a row on every render — paying the budget permanently for a static hint, which is what §14.1's first rule exists to stop. `HINTS` is left alone for the same reason: it is already six pairs at 55 columns and `StatusBar` drops the version when hints plus version exceed the width, so a seventh pair truncates the keys. Discoverability comes from the documented second tier, one row in the help screen's `KEYS`.
 
+### 14.4 Watching a run, and being told when it lands
+
+*Serves R11.6's queue panel and the fourth product principle: the maintainer is watching a long-running process.*
+
+A real eval iteration ran 1m54s, and a stage's log can go silent for most of that. Everything below is bought at zero row cost, because §14.1's budget does not relax for reassurance.
+
+**The queue row says how long.** `JobRecord` already carries `startedAt` and `endedAt`, so a running job counts up and a finished one holds what it cost — no new state, no core change. The verdict word gets a fixed column (`VERDICT_WIDTH`, derived from the two colour maps rather than counted by hand) so the time lands in one place down the panel, and the label is padded with `padCells`, which measures cells: `padEnd` counts code units, so a CJK skill name was padded to half the column it needed and pushed every value right of it out of line. A job that has not started shows nothing rather than its time in the queue — twenty rows each counting how long they have waited is noise around the one that is working.
+
+**The row names the verdict, not the job's lifecycle.** The pool ends every run that *completed* as `done`, a security stage that found criticals included, so a row rendering `job.state` painted that run green while the rail one panel up said `failed` — one condition under two names in two colours on one screen. `jobVerdict()` in `tokens.ts` is the single resolution: state for anything that has not finished and for a run that threw (`failed` as a state means the run itself failed, which no stage outcome describes), outcome for anything that did.
+
+**The running mark turns.** `SkillList` rotates the `◐` it already uses rather than adding a spinner beside it, so the column stays one cell and the learned shape is unchanged; phase 0 is the resting glyph, so a terminal that never repaints loses nothing. `useTicker(active)` runs an interval **only while something is running** — one left alive on an idle screen re-renders the whole Work tree forever to animate nothing — `unref`s it so `q` never waits on a decoration, and restarts from zero each time it wakes, which is what lets a test assert on the first frame without holding the clock.
+
+**A settled queue reports itself in the footer.** The same row §14.3 established, for the same reason. It is raised when the queue *empties*, not per job: a batch of twenty reporting twenty times would hide the footer's five keys for the whole run, and what the user left the terminal to find out is whether it all passed. One job reports in full — verdict, elapsed, finding count, run directory — because that is the case where the evidence has a single address to name (principle 1); a batch reports a tally by verdict in a fixed worst-first order. Verdict again, never state, or a batch that found criticals reads as `4 passed`. Verdict first and the path last, since `StatusBar` cuts from the end and a narrow terminal should lose the address before it loses the answer. `flashTone` rides with the message and is only ever set with it, so the two cannot describe different events; it uses the same green and red `OUTCOME_COLOUR` gives the rail.
+
 ## 15. Headless interface
 
 *Satisfies R12.1–R12.4, R12.5a, R12.5b, R12.6.*

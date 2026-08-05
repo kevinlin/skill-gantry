@@ -162,6 +162,15 @@ export function setupWidth(columns: number): number {
  * Tail truncation with a reserved ellipsis cell. Measured in cells rather than
  * code units, so a CJK skill name cannot overflow its column by its own width.
  */
+/**
+ * Right-pads to a *cell* count, not a code-unit count. `padEnd` counts units,
+ * so a CJK skill name — two cells per character — was padded to half the column
+ * it needed and every value to its right sat one place left of the row above.
+ */
+export function padCells(text: string, width: number): string {
+  return text + ' '.repeat(Math.max(0, width - stringWidth(text)))
+}
+
 export function truncate(text: string, width: number): string {
   if (width <= 0) return ''
   if (stringWidth(text) <= width) return text

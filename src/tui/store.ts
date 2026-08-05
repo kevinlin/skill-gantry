@@ -21,6 +21,8 @@ import {
   type StageOutcome,
   type StatsFilter,
 } from '../core/index.js'
+import { humanMs } from './rows.js'
+import { jobVerdict } from './tokens.js'
 import type { SettingsView } from './views.js'
 
 export const PANELS = ['log', 'findings', 'artefacts', 'skill'] as const
@@ -193,7 +195,16 @@ export interface AppState {
    * keeps the TUI tests deterministic.
    */
   flash: string | null
+  /**
+   * How the flash should read. Set with the message and only with it, so the
+   * two cannot describe different events; `info` is the dim footer the hints
+   * already use, and the other two are for a verdict that should not have to be
+   * read to be noticed.
+   */
+  flashTone: FlashTone
 }
+
+export type FlashTone = 'info' | 'good' | 'bad'
 
 export type Action =
   | { type: 'queue-event'; event: QueueEvent }
@@ -257,7 +268,7 @@ export type Action =
   | { type: 'scroll-screen'; delta: number; viewport: number }
   | { type: 'refresh-views' }
   | { type: 'view-error'; message: string }
-  | { type: 'flash'; message: string }
+  | { type: 'flash'; message: string; tone?: FlashTone }
   | { type: 'clear-flash' }
 
 const emptyStages = (): Record<Stage, StageCell> =>
@@ -319,6 +330,7 @@ export function initialState(skills: readonly SkillRef[], concurrency: number): 
     viewError: null,
     reloads: 0,
     flash: null,
+    flashTone: 'info',
   }
 }
 
@@ -438,12 +450,75 @@ function onRunEvent(state: AppState, jobId: string, event: RunEvent): AppState {
   }
 }
 
+/** Worst first, so a batch says what went wrong before it says what did not. */
+const TALLY_ORDER = ['failed', 'errored', 'degraded', 'cancelled', 'skipped', 'passed'] as const
+
+/**
+ * What the queue just cost, in the footer's row rather than one of its own —
+ * the same trick R11.9's copy report plays, for the same reason (§14.1).
+ *
+ * Raised when the queue *empties*, not on every job that lands. A batch of
+ * twenty skills reporting twenty times would hide the footer's five keys for
+ * the whole run and tell the user nothing they could act on until the end;
+ * what they walked away from the terminal to find out is whether it all
+ * passed. One job reports itself in full instead, down to the run directory,
+ * because that is the one case where the evidence has a single address to name
+ * (product principle 1).
+ */
+function landingFlash(state: AppState): { flash: string; flashTone: FlashTone } | null {
+  const finished = state.jobs.filter((job) => job.state !== 'queued' && job.state !== 'running')
+  const first = finished[0]
+  if (!first) return null
+
+  // Counted by verdict, never by job state: the pool ends a run whose security
+  // stage failed as `done`, so a tally over the state reported a batch that
+  // found criticals as "4 passed".
+  const verdicts = finished.map((job) => jobVerdict(job).label)
+  const count = (label: string): number => verdicts.filter((word) => word === label).length
+  const tone: FlashTone =
+    count('failed') + count('errored') > 0 ? 'bad' : count('passed') === verdicts.length ? 'good' : 'info'
+
+  if (finished.length > 1) {
+    // A closed set in a fixed order, so the same batch reads the same way twice
+    // and a verdict nobody planned for cannot vanish from the count.
+    const tally = TALLY_ORDER.map((label) => ({ label, n: count(label) }))
+      .filter((entry) => entry.n > 0)
+      .map((entry) => `${entry.n} ${entry.label}`)
+    return { flash: `${finished.length} jobs · ${tally.join(', ')}`, flashTone: tone }
+  }
+
+  const row = state.skills.find((skill) => skill.skillId === first.skillId)
+  const findings = row
+    ? first.stages.reduce((total, stage) => total + row.stages[stage].findings, 0)
+    : 0
+  const elapsed =
+    first.startedAt === null || first.endedAt === null
+      ? null
+      : Date.parse(first.endedAt) - Date.parse(first.startedAt)
+  // Verdict first and the path last: `StatusBar` cuts from the end, so a
+  // narrow terminal loses the address before it loses the answer.
+  const parts = [
+    `${first.skillId} ${first.stages.join(',')} ${jobVerdict(first).label}`,
+    elapsed === null ? '' : humanMs(elapsed),
+    `${findings} finding${findings === 1 ? '' : 's'}`,
+    row?.runDir ?? '',
+  ].filter(Boolean)
+  return { flash: parts.join(' · '), flashTone: tone }
+}
+
 function onQueueEvent(state: AppState, event: QueueEvent): AppState {
   if (event.type === 'run:event') return onRunEvent(state, event.jobId, event.event)
   const index = state.jobs.findIndex((job) => job.jobId === event.job.jobId)
   const jobs = index === -1 ? [...state.jobs, event.job] : [...state.jobs]
   if (index !== -1) jobs[index] = event.job
-  return { ...state, jobs, selectedJob: clamp(state.selectedJob, jobs.length) }
+  const next = { ...state, jobs, selectedJob: clamp(state.selectedJob, jobs.length) }
+  // Only on the update that empties the queue, and only when this event is the
+  // one that emptied it — a later record for an already-finished job would
+  // otherwise re-raise a report the user has already dismissed.
+  const settled = jobs.every((job) => job.state !== 'queued' && job.state !== 'running')
+  const wasRunning = state.jobs.some((job) => job.state === 'queued' || job.state === 'running')
+  if (!settled || !wasRunning) return next
+  return { ...next, ...(landingFlash(next) ?? {}) }
 }
 
 export function reducer(state: AppState, action: Action): AppState {
@@ -649,9 +724,9 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'view-error':
       return { ...state, viewError: action.message }
     case 'flash':
-      return { ...state, flash: action.message }
+      return { ...state, flash: action.message, flashTone: action.tone ?? 'info' }
     case 'clear-flash':
-      return state.flash === null ? state : { ...state, flash: null }
+      return state.flash === null ? state : { ...state, flash: null, flashTone: 'info' }
     case 'set-statuses':
       return {
         ...state,

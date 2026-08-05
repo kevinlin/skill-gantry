@@ -52,6 +52,28 @@ export const JOB_COLOUR: Record<JobRecord['state'], string> = {
 }
 
 /**
+ * What a job is called once it has stopped. `state` is the job's lifecycle and
+ * `outcome` is its verdict, and the pool sets `done` for every run that
+ * *completed* — a security scan that found a critical finding included. A row
+ * rendering the state alone therefore reported that run as a green `done` while
+ * the rail one panel up said `failed`, which is the same condition under two
+ * names in two colours on one screen.
+ *
+ * `failed` as a *state* is the other thing entirely: the run threw. It keeps
+ * the job vocabulary, because no stage outcome describes it.
+ */
+export function jobVerdict(job: JobRecord): { label: string; colour: string } {
+  if (job.state !== 'done') return { label: job.state, colour: JOB_COLOUR[job.state] }
+  const outcome = job.outcome ?? 'done'
+  return { label: outcome, colour: OUTCOME_COLOUR[outcome] ?? JOB_COLOUR.done }
+}
+
+/** Wide enough for whichever word `jobVerdict` can return, so the column holds. */
+export const VERDICT_WIDTH = Math.max(
+  ...[...Object.keys(JOB_COLOUR), ...Object.keys(OUTCOME_COLOUR)].map((word) => word.length),
+)
+
+/**
  * One phrasing for "this pane is showing part of a list", because the body rows
  * that say it had five — `+3 more`, `+3 more — keep typing`, `rows 1–12 of 40 ·
  * j/k scrolls`, `rows 1–12 of 40`, and nothing at all — and a user who learned

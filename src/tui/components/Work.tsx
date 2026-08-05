@@ -74,7 +74,11 @@ export function Work({ state }: { state: AppState }): React.ReactElement {
       />
       {/* R11.9's report takes the footer's row rather than adding one, so the
           §14.1 budget is unchanged whether or not a flash is up. */}
-      <StatusBar hints={state.flash ?? HINTS} columns={columns} />
+      <StatusBar
+        hints={state.flash ?? HINTS}
+        columns={columns}
+        tone={state.flash === null ? 'info' : state.flashTone}
+      />
     </Box>
   )
 }
