@@ -6,6 +6,7 @@ import {
   fixPromptPathFor,
   maxSeverity,
   readIndex,
+  runsRoot,
   stageDirFor,
   type StageResult,
 } from '../core/index.js'
@@ -124,7 +125,7 @@ async function promptFor(
 export async function runFix(deps: CliDeps, selector: string, opts: FixOptions): Promise<number> {
   const { skill } = await selectSkill(deps.home, selector)
   const runId = await resolveRunId(skill, opts.run)
-  const runDir = join(skill.workspacePath, 'skillgantry', 'runs', runId)
+  const runDir = join(runsRoot(skill.workspacePath), runId)
 
   const meta = await readJson<RunMetaOnDisk>(join(runDir, 'run.json'))
   if (meta === null) throw new Error(`run ${runId} has no run.json under ${runDir}`)

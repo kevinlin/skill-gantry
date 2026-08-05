@@ -107,7 +107,19 @@ function Body({
   if (state.panel === 'log') {
     const lines = state.log.lines.slice(view.start, view.end)
     if (lines.length === 0 && !view.dropped) {
-      return <Text dimColor>no output yet — select a skill and press r</Text>
+      // The ring buffer is session-wide and shared by every skill, so a
+      // rehydrated run (R11.10) has no lines to replay — it has a directory
+      // where the full log already is (R11.5). Middle-cut so the run id
+      // survives the trim, and the same single row either way.
+      return (
+        <Text dimColor wrap="truncate">
+          {skill?.runDir
+            ? // The path is cut, not the sentence: eliding the middle of the
+              // whole row loses the words that say why the pane is empty.
+              `no output this session — logs under ${truncateMiddle(skill.runDir, Math.max(12, cols - 38))}`
+            : 'no output yet — select a skill and press r'}
+        </Text>
+      )
     }
     return (
       <Box flexDirection="column">

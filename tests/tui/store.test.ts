@@ -480,3 +480,70 @@ describe('output pane scrolling', () => {
     expect(reducer(scrolled, { type: 'select-skill', delta: 1 }).outputOffset).toBeNull()
   })
 })
+
+describe('set-last-run — R11.10', () => {
+  const recorded = {
+    runId: 'run-b',
+    runDir: '/w/run-b',
+    stages: [
+      {
+        stage: 'security' as const,
+        outcome: 'failed' as const,
+        summary: '1 finding',
+        findings: toolRun.findings,
+      },
+    ],
+  }
+
+  it('fills an untouched row from the recorded run', () => {
+    const state = reducer(start(), { type: 'set-last-run', skillId: 'declawed', run: recorded })
+    expect(state.skills[0]).toMatchObject({ runDir: '/w/run-b', activeRunId: null })
+    expect(state.skills[0]?.stages.security).toEqual({
+      outcome: 'failed',
+      running: false,
+      summary: '1 finding',
+      findings: 1,
+    })
+    expect(state.skills[0]?.findings).toEqual(toolRun.findings)
+    // Only the stage the run executed; the other four stay `·`.
+    expect(state.skills[0]?.stages.validate.outcome).toBeNull()
+    // `set-statuses` owns the glyph, from the same index.
+    expect(state.skills[0]?.status).toBe('idle')
+  })
+
+  it('leaves other skills alone', () => {
+    const state = reducer(start(), { type: 'set-last-run', skillId: 'declawed', run: recorded })
+    expect(state.skills[1]?.runDir).toBeNull()
+  })
+
+  it('refuses a row with a live run, however late the read resolves', () => {
+    const live = feed([
+      run({
+        type: 'run:start',
+        runId: 'r1',
+        skillId: 'declawed',
+        stages: ['security'],
+        runDir: '/w/r1',
+      }),
+    ])
+    const state = reducer(live, { type: 'set-last-run', skillId: 'declawed', run: recorded })
+    expect(state.skills[0]).toMatchObject({ runDir: '/w/r1', activeRunId: 'r1' })
+  })
+
+  it('refuses a row whose run this session has already finished', () => {
+    const finished = feed([
+      run({
+        type: 'run:start',
+        runId: 'r1',
+        skillId: 'declawed',
+        stages: ['security'],
+        runDir: '/w/r1',
+      }),
+      run({ type: 'run:done', runId: 'r1', outcome: 'passed', opened: 0, closed: 0 }),
+    ])
+    // activeRunId is back to null, so `runDir` is what still says "this session".
+    expect(finished.skills[0]?.activeRunId).toBeNull()
+    const state = reducer(finished, { type: 'set-last-run', skillId: 'declawed', run: recorded })
+    expect(state.skills[0]?.runDir).toBe('/w/r1')
+  })
+})
