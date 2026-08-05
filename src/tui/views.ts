@@ -1,15 +1,23 @@
 import { readFile, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
+  STAGE_ORDER,
   readIndex,
+  runsRoot,
+  stageDirFor,
   type DashboardStats,
   type DoctorReport,
   type GantryConfig,
+  type IndexEntry,
   type IssueAction,
   type IssueFilter,
   type IssueRow,
   type ProvenanceOption,
+  type RawFinding,
   type SkillRef,
+  type Stage,
+  type StageOutcome,
+  type StageResult,
   type StatsFilter,
 } from '../core/index.js'
 
@@ -54,6 +62,17 @@ export async function listArtefacts(runDir: string | null): Promise<string[]> {
 }
 
 /**
+ * The greatest run id, never the `latest` symlink — which is absent mid-write
+ * (§9.2). One function rather than the same reduce in both readers below,
+ * because two copies is how they come to disagree about which run is newest.
+ */
+const newestRunId = (entries: readonly IndexEntry[]): string | null =>
+  entries.reduce<string | null>(
+    (max, entry) => (max === null || entry.runId > max ? entry.runId : max),
+    null,
+  )
+
+/**
  * Last recorded outcome per skill, read from each sidecar index rather than
  * the ledger: cross-repo ledger aggregates are M6, and the index is already
  * the per-skill record.
@@ -64,14 +83,62 @@ export async function loadSkillStatuses(
   const out: Record<string, string> = {}
   for (const skill of skills) {
     const entries = await readIndex(skill.workspacePath).catch(() => [])
-    const newest = entries.reduce<string | null>(
-      (max, entry) => (max === null || entry.runId > max ? entry.runId : max),
-      null,
-    )
+    const newest = newestRunId(entries)
     const latest = entries.find((entry) => entry.runId === newest)
     if (latest) out[skill.id] = latest.outcome
   }
   return out
+}
+
+export interface LastRunStage {
+  stage: Stage
+  outcome: StageOutcome
+  summary: string
+  findings: RawFinding[]
+}
+
+export interface LastRun {
+  runId: string
+  runDir: string
+  /** Only stages the run executed; the rest stay `·` on the rail. */
+  stages: LastRunStage[]
+}
+
+/**
+ * R11.10. The newest recorded run's evidence, read from the sidecar rather
+ * than the ledger: R8.2 makes the sidecar the evidence, the caller already
+ * names its skill, and `src/tui/**` may not open the ledger. Read-only — the
+ * pipeline stays the only writer under `runs/`.
+ */
+export async function loadLastRun(workspacePath: string): Promise<LastRun | null> {
+  const entries = await readIndex(workspacePath).catch(() => [])
+  const runId = newestRunId(entries)
+  if (runId === null) return null
+  const runDir = join(runsRoot(workspacePath), runId)
+
+  const stages: LastRunStage[] = []
+  for (const [index, stage] of STAGE_ORDER.entries()) {
+    const path = join(stageDirFor(runDir, index + 1, stage), 'stage.json')
+    // A run executes the stages it was asked for, so a missing summary is the
+    // ordinary case for the other four — not a failure to read the run.
+    const raw = await readFile(path, 'utf8').catch(() => null)
+    if (raw === null) continue
+    let result: StageResult
+    try {
+      result = JSON.parse(raw) as StageResult
+    } catch {
+      continue
+    }
+    stages.push({
+      stage,
+      outcome: result.outcome,
+      // The tool summaries, where a live run's cell shows the tool ids it
+      // started with — the same row saying what it now knows.
+      summary: result.toolRuns.map((run) => run.summary).join(', '),
+      findings: result.toolRuns.flatMap((run) => run.findings),
+    })
+  }
+  return { runId, runDir, stages }
 }
 
 export interface SettingsRepo {

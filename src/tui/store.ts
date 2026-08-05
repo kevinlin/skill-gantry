@@ -23,7 +23,7 @@ import {
 } from '../core/index.js'
 import { humanMs } from './rows.js'
 import { jobVerdict } from './tokens.js'
-import type { SettingsView } from './views.js'
+import type { LastRun, SettingsView } from './views.js'
 
 export const PANELS = ['log', 'findings', 'artefacts', 'skill'] as const
 export type Panel = (typeof PANELS)[number]
@@ -236,6 +236,7 @@ export type Action =
       anchor: 'top' | 'bottom'
     }
   | { type: 'set-statuses'; statuses: Record<string, string> }
+  | { type: 'set-last-run'; skillId: string; run: LastRun }
   | { type: 'toggle-help'; open?: boolean }
   /** `viewport` is the diff rows the pane can show, so the clamp leaves a full
       window at the bottom rather than a single line. */
@@ -727,6 +728,31 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, flash: action.message, flashTone: action.tone ?? 'info' }
     case 'clear-flash':
       return state.flash === null ? state : { ...state, flash: null, flashTone: 'info' }
+    case 'set-last-run':
+      // R11.10's precedence rule and the in-flight race guard in one condition:
+      // the read is async, so a recorded run resolving after an `r` must not
+      // overwrite the live one. `run:start` sets both fields together.
+      return withSkill(state, action.skillId, (row) => {
+        if (row.activeRunId !== null || row.runDir !== null) return row
+        const stages = { ...emptyStages() }
+        for (const recorded of action.run.stages) {
+          stages[recorded.stage] = {
+            outcome: recorded.outcome,
+            running: false,
+            summary: recorded.summary,
+            findings: recorded.findings.length,
+          }
+        }
+        return {
+          ...row,
+          runDir: action.run.runDir,
+          stages,
+          // In stage order, the order a live run would have appended them in.
+          findings: action.run.stages.flatMap((recorded) => recorded.findings),
+          // `status` is left alone: `set-statuses` already owns it, from the
+          // same index this run was resolved out of.
+        }
+      })
     case 'set-statuses':
       return {
         ...state,

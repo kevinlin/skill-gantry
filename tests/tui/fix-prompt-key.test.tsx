@@ -7,7 +7,7 @@ import type { RawFinding, SkillRef, StageResult } from '../../src/core/index.js'
 import { App } from '../../src/tui/app.js'
 import { fakeRun, type FakeRun } from '../helpers/fake-run.js'
 import { fakeViews } from '../helpers/fake-views.js'
-import { renderInk } from '../helpers/render-ink.js'
+import { renderInk, waitForFrame } from '../helpers/render-ink.js'
 
 const FINDING: RawFinding = {
   ruleClass: 'excessive-permission',
@@ -139,7 +139,8 @@ describe('R11.9 the y binding', () => {
 
     const before = rowsOf(h.ui.lastFrame())
     h.ui.stdin.send('y')
-    await h.ui.settle()
+    // The prompt is read off disk, so the flash is what says the read landed.
+    await waitForFrame(h.ui, (frame) => /copied|no recorded run|found nothing|not written yet|too large/.test(frame))
 
     const emitted = h.ui.frames.join('')
     expect(emitted).toContain(']52;c;')
@@ -155,14 +156,17 @@ describe('R11.9 the y binding', () => {
     h.queue.close()
   })
 
-  it('names the CLI fallback and emits nothing when no run started this session', async () => {
+  // R11.10 rehydrates a recorded run, so `runDir === null` now means the skill
+  // has never run — where `skillgantry fix` would exit non-zero too.
+  it('says no run has been recorded, and emits nothing, for a skill that never ran', async () => {
     const h = await harness({ findings: [], body: null })
     await toSecurity(h.ui)
 
     h.ui.stdin.send('y')
-    await h.ui.settle()
+    // The prompt is read off disk, so the flash is what says the read landed.
+    await waitForFrame(h.ui, (frame) => /copied|no recorded run|found nothing|not written yet|too large/.test(frame))
 
-    expect(h.ui.lastFrame()).toContain('skillgantry fix declawed --stage security')
+    expect(h.ui.lastFrame()).toContain('no recorded run for declawed')
     expect(h.ui.frames.join('')).not.toContain(']52;c;')
 
     h.ui.unmount()
@@ -175,7 +179,8 @@ describe('R11.9 the y binding', () => {
     await toSecurity(h.ui)
 
     h.ui.stdin.send('y')
-    await h.ui.settle()
+    // The prompt is read off disk, so the flash is what says the read landed.
+    await waitForFrame(h.ui, (frame) => /copied|no recorded run|found nothing|not written yet|too large/.test(frame))
 
     expect(h.ui.lastFrame()).toContain('security found nothing')
     expect(h.ui.frames.join('')).not.toContain(']52;c;')
@@ -191,7 +196,8 @@ describe('R11.9 the y binding', () => {
     await toSecurity(h.ui)
 
     h.ui.stdin.send('y')
-    await h.ui.settle()
+    // The prompt is read off disk, so the flash is what says the read landed.
+    await waitForFrame(h.ui, (frame) => /copied|no recorded run|found nothing|not written yet|too large/.test(frame))
 
     expect(h.ui.lastFrame()).toContain('not written yet')
     expect(h.ui.lastFrame()).toContain('fix-prompt.md')
@@ -213,7 +219,8 @@ describe('R11.9 the y binding', () => {
 
     const before = rowsOf(h.ui.lastFrame())
     h.ui.stdin.send('y')
-    await h.ui.settle()
+    // The prompt is read off disk, so the flash is what says the read landed.
+    await waitForFrame(h.ui, (frame) => /copied|no recorded run|found nothing|not written yet|too large/.test(frame))
 
     expect(h.ui.lastFrame()).toContain('copied')
     expect(rowsOf(h.ui.lastFrame())).toBe(before)
@@ -229,7 +236,8 @@ describe('R11.9 the y binding', () => {
     await toSecurity(h.ui)
 
     h.ui.stdin.send('y')
-    await h.ui.settle()
+    // The prompt is read off disk, so the flash is what says the read landed.
+    await waitForFrame(h.ui, (frame) => /copied|no recorded run|found nothing|not written yet|too large/.test(frame))
     expect(h.ui.lastFrame()).toContain('copied')
 
     h.ui.stdin.send('j')
@@ -240,5 +248,54 @@ describe('R11.9 the y binding', () => {
     run.finish()
     h.ui.unmount()
     h.queue.close()
+  })
+})
+
+describe('R11.10 the y binding over a rehydrated run', () => {
+  /** A real sidecar: one finalised security run with a prompt beside it. */
+  async function recordedSkill(): Promise<{ skill: SkillRef; body: string }> {
+    const workspacePath = await mkdtemp(join(tmpdir(), 'sg-ws-'))
+    const runDir = join(workspacePath, 'skillgantry', 'runs', 'run-b')
+    const stageDir = join(runDir, '03-security')
+    await mkdir(stageDir, { recursive: true })
+    await writeFile(join(stageDir, 'stage.json'), JSON.stringify(stageResult([FINDING])))
+    const body = '# Fix the security findings on declawed\n'
+    await writeFile(fixPromptPathFor(runDir, 'security'), body)
+    await mkdir(join(workspacePath, 'skillgantry', 'runs'), { recursive: true })
+    await writeFile(
+      join(workspacePath, 'skillgantry', 'runs', 'index.ndjson'),
+      `${JSON.stringify({ runId: 'run-b', outcome: 'failed', endedAt: '2026-08-02T00:00:00Z' })}\n`,
+    )
+    return { skill: { ...skill('declawed'), workspacePath }, body }
+  }
+
+  it('copies the recorded prompt with no run started this session', async () => {
+    const { skill: recorded, body } = await recordedSkill()
+    const queue = createQueue({ concurrency: 1, startRun: (job) => fakeRun(job.jobId).handle })
+    const ui = renderInk(
+      <App
+        skills={[recorded]}
+        queue={queue}
+        stages={['security']}
+        concurrency={1}
+        views={fakeViews()}
+        intervalMs={20}
+      />,
+    )
+    // The rehydrating read is async; the rail is how it announces itself.
+    await waitForFrame(ui, (frame) => frame.includes('failed'))
+    await toSecurity(ui)
+
+    const before = ui.lastFrame().split('\n').length
+    ui.stdin.send('y')
+    await waitForFrame(ui, (frame) => frame.includes('copied'))
+
+    expect(ui.frames.join('')).toContain(Buffer.from(body, 'utf8').toString('base64'))
+    expect(ui.lastFrame()).toContain('copied')
+    // §14.1: still the footer's row, never one of its own.
+    expect(ui.lastFrame().split('\n').length).toBe(before)
+
+    ui.unmount()
+    queue.close()
   })
 })

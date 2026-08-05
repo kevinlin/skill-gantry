@@ -1,10 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { createQueue, discoverSkills, type SkillRef } from '../../src/core/index.js'
+import {
+  createQueue,
+  discoverSkills,
+  stageDirFor,
+  type RawFinding,
+  type SkillRef,
+  type StageResult,
+} from '../../src/core/index.js'
 import { claimRunDir, finalizeRun } from '../../src/core/workspace/writer.js'
 import { App } from '../../src/tui/app.js'
-import { listArtefacts, loadSkillMd, loadSkillStatuses } from '../../src/tui/views.js'
+import { listArtefacts, loadLastRun, loadSkillMd, loadSkillStatuses } from '../../src/tui/views.js'
 import { SKILL_MD, makeRepo } from '../helpers/tmp-repo.js'
 import { fakeRun } from '../helpers/fake-run.js'
 import { renderInk } from '../helpers/render-ink.js'
@@ -60,6 +67,127 @@ describe('views', () => {
   it('reads the last recorded outcome per skill from the sidecar index', async () => {
     const { skills } = await fixture()
     expect(await loadSkillStatuses(skills)).toEqual({ 'fx/declawed': 'failed' })
+  })
+})
+
+const FINDING: RawFinding = {
+  ruleClass: 'excessive-permission',
+  nativeRuleId: 'LP3',
+  severity: 'medium',
+  path: 'declawed/SKILL.md',
+  line: 1,
+  message: 'no declared permissions',
+}
+
+const securityResult = (): StageResult => ({
+  stage: 'security',
+  outcome: 'failed',
+  verdict: 'failed',
+  toolRuns: [
+    {
+      toolId: 'skillspector',
+      toolVersion: '2.5.1',
+      outcome: 'failed',
+      exitCode: 0,
+      durationMs: 1,
+      errorKind: null,
+      artefactDir: '/tmp/x',
+      findings: [FINDING],
+      metrics: {},
+      summary: '1 finding',
+    },
+  ],
+})
+
+/**
+ * Two finalised runs whose index order is the inverse of their id order, so a
+ * reader taking the last line rather than the greatest id resolves the wrong
+ * one. Only the newer run executed security.
+ */
+async function recordedRuns(): Promise<{ workspacePath: string; newerDir: string }> {
+  const root = await makeRepo({ files: { 'declawed/SKILL.md': SKILL_MD('declawed') } })
+  const skills = await discoverSkills({ id: 'fx', path: root, name: 'fx', isGit: false })
+  const workspacePath = skills[0]!.workspacePath
+
+  const newerDir = join(workspacePath, 'skillgantry', 'runs', 'run-b')
+  const stageDir = stageDirFor(newerDir, 3, 'security')
+  await mkdir(stageDir, { recursive: true })
+  await writeFile(join(stageDir, 'stage.json'), JSON.stringify(securityResult()))
+  await mkdir(join(workspacePath, 'skillgantry', 'runs', 'run-a'), { recursive: true })
+
+  // Appended newest first, which is the order that catches a last-line reader.
+  await finalizeRun(workspacePath, {
+    runId: 'run-b',
+    outcome: 'failed',
+    endedAt: '2026-08-02T00:00:00Z',
+  })
+  await finalizeRun(workspacePath, {
+    runId: 'run-a',
+    outcome: 'passed',
+    endedAt: '2026-08-01T00:00:00Z',
+  })
+  return { workspacePath, newerDir }
+}
+
+/** Every file under the workspace with its bytes and mtime, for R11.10's
+    read-only constraint. */
+async function snapshot(dir: string): Promise<Record<string, string>> {
+  const out: Record<string, string> = {}
+  const walk = async (at: string, prefix: string): Promise<void> => {
+    for (const entry of await readdir(at, { withFileTypes: true })) {
+      const rel = prefix ? `${prefix}/${entry.name}` : entry.name
+      if (entry.isDirectory()) await walk(join(at, entry.name), rel)
+      // The finalisation lock is a symlink, and reading one is EISDIR.
+      else if (entry.isFile()) {
+        const info = await stat(join(at, entry.name))
+        out[rel] = `${info.mtimeMs}:${await readFile(join(at, entry.name), 'utf8')}`
+      }
+    }
+  }
+  await walk(dir, '')
+  return out
+}
+
+describe('loadLastRun — R11.10', () => {
+  it('resolves the greatest run id rather than the last index line', async () => {
+    const { workspacePath, newerDir } = await recordedRuns()
+    const run = await loadLastRun(workspacePath)
+    expect(run?.runId).toBe('run-b')
+    expect(run?.runDir).toBe(newerDir)
+  })
+
+  it('carries the stage the run executed, with its outcome, summary and findings', async () => {
+    const { workspacePath } = await recordedRuns()
+    const run = await loadLastRun(workspacePath)
+    expect(run?.stages).toEqual([
+      {
+        stage: 'security',
+        outcome: 'failed',
+        summary: '1 finding',
+        findings: [FINDING],
+      },
+    ])
+  })
+
+  it('skips a stage the run did not execute rather than failing the read', async () => {
+    const { workspacePath } = await recordedRuns()
+    const run = await loadLastRun(workspacePath)
+    // Four of the five have no stage.json; the rail leaves those cells at `·`.
+    expect(run?.stages.map((s) => s.stage)).toEqual(['security'])
+  })
+
+  it('returns null when no run has been recorded', async () => {
+    expect(await loadLastRun('/nowhere/at/all-workspace')).toBeNull()
+    const root = await makeRepo({ files: { 'fresh/SKILL.md': SKILL_MD('fresh') } })
+    const skills = await discoverSkills({ id: 'fx', path: root, name: 'fx', isGit: false })
+    expect(await loadLastRun(skills[0]!.workspacePath)).toBeNull()
+  })
+
+  it('leaves the sidecar byte-identical', async () => {
+    const { workspacePath } = await recordedRuns()
+    const before = await snapshot(workspacePath)
+    await loadLastRun(workspacePath)
+    expect(await snapshot(workspacePath)).toEqual(before)
   })
 })
 

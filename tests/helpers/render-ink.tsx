@@ -66,6 +66,23 @@ export interface InkHarness {
 }
 
 /**
+ * Settles until the frame satisfies `predicate`, or gives up and lets the
+ * caller's own assertion report the frame. A fixed `settle(60)` is enough for
+ * an async read on an idle machine and is not enough under a loaded full-suite
+ * run, which is how a launch-time sidecar read becomes an intermittent failure.
+ */
+export async function waitForFrame(
+  ui: Pick<InkHarness, 'lastFrame' | 'settle'>,
+  predicate: (frame: string) => boolean,
+  attempts = 50,
+): Promise<void> {
+  for (let i = 0; i < attempts; i += 1) {
+    if (predicate(ui.lastFrame())) return
+    await ui.settle(20)
+  }
+}
+
+/**
  * `debug: true` makes Ink write a complete frame per render instead of ANSI
  * deltas, so a frame is directly assertable.
  */

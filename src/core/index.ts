@@ -51,7 +51,7 @@ export type {
   ToolRunRecord,
 } from './stages/types.js'
 export { buildFixPrompt, type FixPromptInput } from './stages/fix-prompt.js'
-export { STAGE_ORDER, fixPromptPathFor, stageDirFor } from './workspace/layout.js'
+export { STAGE_ORDER, fixPromptPathFor, runsRoot, stageDirFor } from './workspace/layout.js'
 export { readIndex, type IndexEntry } from './workspace/writer.js'
 export {
   CATALOGUE,

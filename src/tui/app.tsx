@@ -40,6 +40,7 @@ import type { Action, AppState, SkillRow } from './store.js'
 import {
   type GantryViews,
   listArtefacts,
+  loadLastRun,
   loadSkillMd,
   loadSkillStatuses,
   readFixPrompt,
@@ -235,6 +236,18 @@ export function App({
       void listArtefacts(current.runDir).then((paths) => dispatch({ type: 'set-artefacts', paths }))
     }
   }, [state.panel, current?.skillId, current?.runDir])
+
+  // R11.10. Lazily, per selected skill: eagerly at launch over 54 skills is 270
+  // reads to fill four rows. `skillId` is captured so a response landing after
+  // the selection moved still lands on the row it was read for; the reducer
+  // holds the precedence rule, because the read can resolve after a `run:start`.
+  useEffect(() => {
+    if (!current || current.runDir !== null) return
+    const skillId = current.skillId
+    void loadLastRun(current.workspacePath).then((run) => {
+      if (run !== null) dispatch({ type: 'set-last-run', skillId, run })
+    })
+  }, [current?.skillId, current?.runDir])
 
   // Keyed on the screen, its filters and `reloads`: a screen the user is not
   // looking at is not queried, and `refresh` is what re-runs the one they are.
@@ -532,7 +545,9 @@ export function App({
       const stage = STAGE_ORDER[state.selectedStage] as Stage
       const flash = (message: string) => dispatch({ type: 'flash', message })
       if (current.runDir === null) {
-        flash(`no run this session — skillgantry fix ${current.skillId} --stage ${stage}`)
+        // R11.10 rehydrates a recorded run, so this branch now means the skill
+        // has never run — where `skillgantry fix` would exit non-zero too.
+        flash(`no recorded run for ${current.skillId} — press r`)
         return
       }
       if (current.stages[stage].findings === 0) {

@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { createQueue } from '../../src/core/index.js'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { createQueue, discoverSkills, stageDirFor } from '../../src/core/index.js'
 import type { SkillRef } from '../../src/core/index.js'
+import { claimRunDir, finalizeRun } from '../../src/core/workspace/writer.js'
 import { App } from '../../src/tui/app.js'
 import { fakeRun, type FakeRun } from '../helpers/fake-run.js'
-import { renderInk } from '../helpers/render-ink.js'
+import { renderInk, waitForFrame } from '../helpers/render-ink.js'
 import { fakeViews } from '../helpers/fake-views.js'
+import { SKILL_MD, makeRepo } from '../helpers/tmp-repo.js'
 
 const skill = (id: string): SkillRef => ({
   id,
@@ -159,6 +163,112 @@ describe('Work screen', () => {
     expect(ui.lastFrame()).toContain('skillspector │ scanning file 39')
     run.finish()
     await queue.idle()
+    ui.unmount()
+    queue.close()
+  })
+})
+
+describe('rehydrating the last recorded run — R11.10', () => {
+  /** A real sidecar: one finalised run that executed security alone. */
+  async function recorded(): Promise<SkillRef[]> {
+    const root = await makeRepo({ files: { 'declawed/SKILL.md': SKILL_MD('declawed') } })
+    const skills = await discoverSkills({ id: 'fx', path: root, name: 'fx', isGit: false })
+    const workspacePath = skills[0]!.workspacePath
+    const { runId, runDir } = await claimRunDir(workspacePath)
+    const stageDir = stageDirFor(runDir, 3, 'security')
+    await mkdir(join(stageDir, 'skillspector'), { recursive: true })
+    await writeFile(join(stageDir, 'skillspector', 'findings.sarif'), '{}')
+    await writeFile(join(stageDir, 'skillspector', 'stdout.log'), 'scanning\n')
+    await writeFile(join(runDir, 'run.json'), '{}')
+    await writeFile(
+      join(stageDir, 'stage.json'),
+      JSON.stringify({
+        stage: 'security',
+        outcome: 'failed',
+        verdict: 'failed',
+        toolRuns: [
+          {
+            toolId: 'skillspector',
+            toolVersion: '2.5.1',
+            outcome: 'failed',
+            exitCode: 0,
+            durationMs: 1,
+            errorKind: null,
+            artefactDir: stageDir,
+            findings: [
+              {
+                ruleClass: 'excessive-permission',
+                nativeRuleId: 'LP3',
+                severity: 'medium',
+                path: 'declawed/SKILL.md',
+                line: 1,
+                message: 'no declared permissions',
+              },
+            ],
+            metrics: {},
+            summary: '1 finding',
+          },
+        ],
+      }),
+    )
+    await finalizeRun(workspacePath, {
+      runId,
+      outcome: 'failed',
+      endedAt: '2026-08-02T00:00:00Z',
+    })
+    return skills
+  }
+
+  const render = (skills: readonly SkillRef[]) => {
+    const queue = createQueue({ concurrency: 1, startRun: (job) => fakeRun(job.jobId).handle })
+    const ui = renderInk(
+      <App
+        skills={skills}
+        queue={queue}
+        stages={['security']}
+        concurrency={1}
+        views={fakeViews()}
+        intervalMs={20}
+      />,
+    )
+    return { queue, ui }
+  }
+
+  /** The read is async; waiting for the rail is waiting for it to have landed. */
+  const rehydrated = (ui: { lastFrame(): string; settle(ms?: number): Promise<void> }) =>
+    waitForFrame(ui, (frame) => frame.includes('failed'))
+
+  it('shows the recorded rail with nothing enqueued', async () => {
+    const { ui, queue } = render(await recorded())
+    await rehydrated(ui)
+    // The stage the run executed carries its outcome; the other four are `·`.
+    expect(ui.lastFrame()).toContain('failed')
+    expect(ui.lastFrame()).toMatch(/·\s+·\s+failed\s+·\s+·/)
+    ui.unmount()
+    queue.close()
+  })
+
+  it('lists the recorded findings and the run’s artefacts', async () => {
+    const { ui, queue } = render(await recorded())
+    await rehydrated(ui)
+
+    ui.stdin.send('2')
+    await waitForFrame(ui, (frame) => frame.includes('excessive-permission'))
+    expect(ui.lastFrame()).toContain('excessive-permission')
+
+    ui.stdin.send('3')
+    await waitForFrame(ui, (frame) => frame.includes('findings.sarif'))
+    expect(ui.lastFrame()).toContain('findings.sarif')
+    expect(ui.lastFrame()).toContain('run.json')
+
+    ui.unmount()
+    queue.close()
+  })
+
+  it('names the recorded run directory in the empty Log pane rather than replaying it', async () => {
+    const { ui, queue } = render(await recorded())
+    await rehydrated(ui)
+    expect(ui.lastFrame()).toContain('no output this session')
     ui.unmount()
     queue.close()
   })
