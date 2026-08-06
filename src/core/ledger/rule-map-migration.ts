@@ -2,7 +2,8 @@ import type { DatabaseSync } from 'node:sqlite'
 import { RULE_CLASS_MAP_VERSION, classifyRule } from '../adapters/rule-classes.js'
 import type { RuleClass, Severity } from '../types.js'
 import { fingerprint } from './fingerprint.js'
-import { type IssueState, maxSeverity } from './issues.js'
+import { type DetectorSuppressionRow, type IssueState, maxSeverity } from './issues.js'
+import { recomputeIssueSuppression } from './reconcile.js'
 
 export interface RuleMapMigrationResult {
   applied: number
@@ -82,32 +83,55 @@ function fold(db: DatabaseSync, from: string, to: string): void {
   }
 
   const detectors = db
-    .prepare('select tool_id, last_seen_run, last_absent_run from issue_detectors where issue_fp = ?')
-    .all(from) as Array<{ tool_id: string; last_seen_run: string | null; last_absent_run: string | null }>
+    .prepare(
+      `select tool_id, last_seen_run, last_absent_run, suppressed_run, suppressed_reason
+         from issue_detectors where issue_fp = ?`,
+    )
+    .all(from) as unknown as Array<DetectorSuppressionRow & { tool_id: string }>
 
   for (const d of detectors) {
     const existing = db
-      .prepare('select last_seen_run, last_absent_run from issue_detectors where issue_fp = ? and tool_id = ?')
-      .get(to, d.tool_id) as { last_seen_run: string | null; last_absent_run: string | null } | undefined
+      .prepare(
+        `select last_seen_run, last_absent_run, suppressed_run, suppressed_reason
+           from issue_detectors where issue_fp = ? and tool_id = ?`,
+      )
+      .get(to, d.tool_id) as unknown as DetectorSuppressionRow | undefined
 
     if (existing) {
+      const merged = laterRun(existing.last_seen_run, d.last_seen_run)
+      // R8.15. The pair comes from whichever row's sighting won, never from
+      // the other one merged in: `detectorSuppressed` is an equality against
+      // `last_seen_run`, so a pair taken from the loser would degrade to
+      // unsuppressed on the next read rather than describing the merged row.
+      const winner = merged !== null && merged === d.last_seen_run ? d : existing
       db.prepare(
-        'update issue_detectors set last_seen_run = ?, last_absent_run = ? where issue_fp = ? and tool_id = ?',
+        `update issue_detectors
+            set last_seen_run = ?, last_absent_run = ?,
+                suppressed_run = ?, suppressed_reason = ?
+          where issue_fp = ? and tool_id = ?`,
       ).run(
-        laterRun(existing.last_seen_run, d.last_seen_run),
+        merged,
         laterRun(existing.last_absent_run, d.last_absent_run),
+        winner.suppressed_run,
+        winner.suppressed_reason,
         to,
         d.tool_id,
       )
     } else {
       db.prepare(
-        'insert into issue_detectors (issue_fp, tool_id, last_seen_run, last_absent_run) values (?, ?, ?, ?)',
-      ).run(to, d.tool_id, d.last_seen_run, d.last_absent_run)
+        `insert into issue_detectors
+           (issue_fp, tool_id, last_seen_run, last_absent_run, suppressed_run, suppressed_reason)
+         values (?, ?, ?, ?, ?, ?)`,
+      ).run(to, d.tool_id, d.last_seen_run, d.last_absent_run, d.suppressed_run, d.suppressed_reason)
     }
   }
 
   db.prepare('delete from issue_detectors where issue_fp = ?').run(from)
   db.prepare('delete from issues where fingerprint = ?').run(from)
+  // The surviving issue's detector set has changed, so its cache is stale. One
+  // shared implementation with reconciliation's, because two copies of the
+  // conjunction is how they come to disagree.
+  recomputeIssueSuppression(db, to)
 }
 
 /**
@@ -185,6 +209,10 @@ export function migrateRuleMap(db: DatabaseSync): RuleMapMigrationResult {
         db.prepare('update issue_detectors set issue_fp = ? where issue_fp = ?')
           .run(newFp, issue.fingerprint)
         db.prepare('delete from issues where fingerprint = ?').run(issue.fingerprint)
+        // The insert above cannot carry the suppression pair — the new row's
+        // detectors only arrive on the line after it — so the cache is
+        // recomputed rather than copied.
+        recomputeIssueSuppression(db, newFp)
         reclassified += 1
       }
     }

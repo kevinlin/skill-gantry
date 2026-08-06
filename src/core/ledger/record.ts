@@ -131,10 +131,22 @@ export function recordRun(ledger: Ledger, input: RunRecordInput): RunDelta {
 
         const reported = new Set<string>()
         const ordinalByFp = new Map<string, number>()
+        // R8.15, per tool run: a fingerprint counts as suppressed only when
+        // *every* occurrence of it in this run was. One baselined occurrence
+        // must not hide an issue the same tool is still reporting plainly
+        // beside it, so an unsuppressed sighting deletes the entry outright.
+        const suppressed = new Map<string, string>()
+        const unsuppressed = new Set<string>()
 
         for (const finding of run.findings) {
           const fp = fingerprint(skill.id, finding.path, finding.ruleClass)
           reported.add(fp)
+          if (finding.suppressed === undefined) {
+            unsuppressed.add(fp)
+            suppressed.delete(fp)
+          } else if (!unsuppressed.has(fp)) {
+            suppressed.set(fp, finding.suppressed.justification)
+          }
 
           const existing = db
             .prepare('select state, severity_max from issues where fingerprint = ?')
@@ -199,6 +211,7 @@ export function recordRun(ledger: Ledger, input: RunRecordInput): RunDelta {
           toolId: run.toolId,
           outcome: run.outcome,
           reported,
+          suppressed,
         })
       }
     }

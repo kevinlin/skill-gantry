@@ -128,3 +128,51 @@ describe('setIssueState', () => {
     expect(row).toEqual({ state: 'open', closed_run: null })
   })
 })
+
+describe('listIssues — suppression (R8.15)', () => {
+  const suppressed = { justification: 'accepted false positive' }
+
+  /** ALPHA's prompt-injection issue, reported suppressed by its only detector. */
+  function withSuppressed() {
+    const ledger = seeded()
+    recordFixtureRun(ledger, {
+      runId: '019283af-0000-7000-8000-000000000003',
+      skill: ALPHA,
+      stages: [
+        {
+          stage: 'security',
+          outcome: 'passed',
+          findings: [
+            { ...finding('declawed/SKILL.md', 'prompt-injection', 'high'), suppressed },
+          ],
+        },
+      ],
+    })
+    return ledger
+  }
+
+  it('keeps a suppressed issue in the default listing, marked and sorted last', () => {
+    const rows = listIssues(withSuppressed().db, {})
+    expect(rows).toHaveLength(2)
+    // `high` would otherwise head the list; suppression demotes it.
+    expect(rows.map((r) => r.suppressed)).toEqual([false, true])
+    expect(rows[1]).toMatchObject({
+      skillId: 'alpha/declawed',
+      state: 'open',
+      suppressed: true,
+      suppressionReason: suppressed.justification,
+    })
+  })
+
+  it('narrows both ways when the filter is supplied', () => {
+    const { db } = withSuppressed()
+    expect(listIssues(db, { suppressed: true }).map((r) => r.skillId)).toEqual(['alpha/declawed'])
+    expect(listIssues(db, { suppressed: false }).map((r) => r.skillId)).toEqual(['beta/spec-lint'])
+  })
+
+  it('reports an unsuppressed issue as such, with no reason', () => {
+    const rows = listIssues(seeded().db, {})
+    expect(rows.every((r) => r.suppressed === false)).toBe(true)
+    expect(rows[0]?.suppressionReason).toBeNull()
+  })
+})

@@ -14,6 +14,11 @@ export interface IssueFilter {
   state?: IssueState
   ruleClass?: string
   severity?: Severity
+  /**
+   * R8.15. Omitted means both, so the Issues screen keeps showing suppressed
+   * rows — hiding a suppression on the audit surface makes it unfalsifiable.
+   */
+  suppressed?: boolean
 }
 
 export interface IssueRow {
@@ -30,6 +35,10 @@ export interface IssueRow {
   /** Those that have not since reported a conclusive absence — R8.8's blockers. */
   blockedBy: string[]
   lastSeenRun: string | null
+  /** R8.15: every tool still reporting it reports it suppressed. */
+  suppressed: boolean
+  /** The tool's own justification, or null when not suppressed. */
+  suppressionReason: string | null
 }
 
 const SEVERITY_SQL = `case i.severity_max
@@ -59,18 +68,28 @@ export function listIssues(db: DatabaseSync, filter: IssueFilter): IssueRow[] {
     clauses.push('i.severity_max = ?')
     params.push(filter.severity)
   }
+  if (filter.suppressed !== undefined) {
+    clauses.push(`i.suppressed_run is ${filter.suppressed ? 'not null' : 'null'}`)
+  }
 
   const rows = db
     .prepare(
       `select i.fingerprint as fingerprint, i.skill_id as skillId, k.repo_id as repoId,
               i.rule_class as ruleClass, i.rel_path as relPath,
               i.severity_max as severity, i.state as state,
-              i.occurrence_count as occurrenceCount, i.last_seen_run as lastSeenRun
+              i.occurrence_count as occurrenceCount, i.last_seen_run as lastSeenRun,
+              i.suppressed_run is not null as suppressed,
+              i.suppressed_reason as suppressionReason
          from issues i join skills k on k.id = i.skill_id
         where 1 = 1 ${clauses.length === 0 ? '' : `and ${clauses.join(' and ')}`}
-        order by ${SEVERITY_SQL} desc, i.skill_id, i.rel_path, i.rule_class`,
+        -- Suppressed last, not hidden: a decided issue should not head the
+        -- triage list, but the audit surface must still carry it (R8.15).
+        order by (i.suppressed_run is not null), ${SEVERITY_SQL} desc,
+                 i.skill_id, i.rel_path, i.rule_class`,
     )
-    .all(...params) as unknown as Array<Omit<IssueRow, 'detectors' | 'blockedBy'>>
+    .all(...params) as unknown as Array<
+    Omit<IssueRow, 'detectors' | 'blockedBy' | 'suppressed'> & { suppressed: number }
+  >
 
   if (rows.length === 0) return []
 
@@ -95,6 +114,9 @@ export function listIssues(db: DatabaseSync, filter: IssueFilter): IssueRow[] {
     const mine = detectorRows.filter((detector) => detector.fp === row.fingerprint)
     return {
       ...row,
+      // SQLite has no boolean type, so the projected 0/1 is narrowed here
+      // rather than leaking a number through `IssueRow`.
+      suppressed: row.suppressed === 1,
       detectors: mine.map((detector) => detector.toolId),
       blockedBy: mine.filter((detector) => !detectorSaysGone(detector)).map((d) => d.toolId),
     }

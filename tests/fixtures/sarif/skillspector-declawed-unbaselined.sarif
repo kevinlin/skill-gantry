@@ -1,0 +1,305 @@
+{
+  "version": "2.1.0",
+  "$schema": "https://schemastore.azurewebsites.net/schemas/json/sarif-2.1.0-rtm.4.json",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "skillspector",
+          "version": "2.5.1",
+          "rules": [
+            {
+              "id": "MP2",
+              "shortDescription": {
+                "text": "Context Window Stuffing"
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "MP2",
+          "message": {
+            "text": "Context Window Stuffing"
+          },
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "scripts/scan.py"
+                },
+                "region": {
+                  "startLine": 34
+                }
+              }
+            }
+          ],
+          "properties": {
+            "findingId": "finding-9092a25b25644ba9a601cee7cbe6d083",
+            "severity": "MEDIUM",
+            "category": "Memory Poisoning",
+            "pattern": "Context Window Stuffing",
+            "confidence": 0.8,
+            "finding": "                                          ",
+            "explanation": "Skill attempts to fill the context window with filler content, displacing legitimate instructions and safety constraints. This can degrade agent performance or bypass safety boundaries.",
+            "remediation": "Implement context-window management that detects and rejects padding or stuffing attempts. Prioritize system instructions over user-injected content.",
+            "code_snippet": "# get skipped while the real regex blocks (sections 1-4) come through.\n_NON_PATTERN = re.compile(\n    r\"\"\"^(grep|tr|sed|awk|LC_ALL|python|perl)\\b   # a shell command\n      | <<                                          # heredoc marker\n      | /dev/stdin | draft\\.txt                     # example filenames\n      | <paste                                      # placeholder text\n      | ^PATTERNS$                                  # heredoc terminator",
+            "tags": [
+              "Memory Poisoning"
+            ]
+          }
+        }
+      ],
+      "invocations": [
+        {
+          "executionSuccessful": true,
+          "toolExecutionNotifications": [
+            {
+              "message": {
+                "text": "Hidden file is excluded from the configured scan scope."
+              },
+              "level": "note",
+              "locations": [
+                {
+                  "physicalLocation": {
+                    "artifactLocation": {
+                      "uri": ".DS_Store"
+                    }
+                  }
+                }
+              ],
+              "properties": {
+                "outcome": "out_of_scope",
+                "phase": "discovery",
+                "reasonCode": "hidden_file",
+                "fatal": false
+              }
+            },
+            {
+              "message": {
+                "text": "Hidden file is excluded from the configured scan scope."
+              },
+              "level": "note",
+              "locations": [
+                {
+                  "physicalLocation": {
+                    "artifactLocation": {
+                      "uri": ".skillspector-baseline.yaml"
+                    }
+                  }
+                }
+              ],
+              "properties": {
+                "outcome": "out_of_scope",
+                "phase": "discovery",
+                "reasonCode": "hidden_file",
+                "fatal": false
+              }
+            },
+            {
+              "message": {
+                "text": "Binary content is unsupported by this analyzer."
+              },
+              "level": "warning",
+              "locations": [
+                {
+                  "physicalLocation": {
+                    "artifactLocation": {
+                      "uri": "assets/declawed.png"
+                    }
+                  }
+                }
+              ],
+              "properties": {
+                "outcome": "skipped",
+                "phase": "static",
+                "reasonCode": "binary_content",
+                "fatal": false,
+                "analyzers": [
+                  "static_patterns_agent_snooping",
+                  "static_patterns_anti_refusal",
+                  "static_patterns_data_exfiltration",
+                  "static_patterns_excessive_agency",
+                  "static_patterns_harmful_content",
+                  "static_patterns_memory_poisoning",
+                  "static_patterns_output_handling",
+                  "static_patterns_privilege_escalation",
+                  "static_patterns_prompt_injection",
+                  "static_patterns_rogue_agent",
+                  "static_patterns_ssrf",
+                  "static_patterns_supply_chain",
+                  "static_patterns_system_prompt_leakage",
+                  "static_patterns_tool_misuse"
+                ]
+              }
+            },
+            {
+              "message": {
+                "text": "Analyzer was disabled by the requested configuration."
+              },
+              "level": "warning",
+              "properties": {
+                "kind": "inspection_limitation"
+              }
+            },
+            {
+              "message": {
+                "text": "Analyzer was disabled by the requested configuration."
+              },
+              "level": "warning",
+              "properties": {
+                "kind": "inspection_limitation"
+              }
+            },
+            {
+              "message": {
+                "text": "Analyzer was disabled by the requested configuration."
+              },
+              "level": "warning",
+              "properties": {
+                "kind": "inspection_limitation"
+              }
+            },
+            {
+              "message": {
+                "text": "Analyzer static_patterns_agent_snooping status: degraded."
+              },
+              "level": "warning",
+              "properties": {
+                "kind": "inspection_limitation"
+              }
+            },
+            {
+              "message": {
+                "text": "Analyzer static_patterns_anti_refusal status: degraded."
+              },
+              "level": "warning",
+              "properties": {
+                "kind": "inspection_limitation"
+              }
+            },
+            {
+              "message": {
+                "text": "Analyzer static_patterns_data_exfiltration status: degraded."
+              },
+              "level": "warning",
+              "properties": {
+                "kind": "inspection_limitation"
+              }
+            },
+            {
+              "message": {
+                "text": "Analyzer static_patterns_excessive_agency status: degraded."
+              },
+              "level": "warning",
+              "properties": {
+                "kind": "inspection_limitation"
+              }
+            },
+            {
+              "message": {
+                "text": "Analyzer static_patterns_harmful_content status: degraded."
+              },
+              "level": "warning",
+              "properties": {
+                "kind": "inspection_limitation"
+              }
+            },
+            {
+              "message": {
+                "text": "Analyzer static_patterns_memory_poisoning status: degraded."
+              },
+              "level": "warning",
+              "properties": {
+                "kind": "inspection_limitation"
+              }
+            },
+            {
+              "message": {
+                "text": "Analyzer static_patterns_output_handling status: degraded."
+              },
+              "level": "warning",
+              "properties": {
+                "kind": "inspection_limitation"
+              }
+            },
+            {
+              "message": {
+                "text": "Analyzer static_patterns_privilege_escalation status: degraded."
+              },
+              "level": "warning",
+              "properties": {
+                "kind": "inspection_limitation"
+              }
+            },
+            {
+              "message": {
+                "text": "Analyzer static_patterns_prompt_injection status: degraded."
+              },
+              "level": "warning",
+              "properties": {
+                "kind": "inspection_limitation"
+              }
+            },
+            {
+              "message": {
+                "text": "Analyzer static_patterns_rogue_agent status: degraded."
+              },
+              "level": "warning",
+              "properties": {
+                "kind": "inspection_limitation"
+              }
+            },
+            {
+              "message": {
+                "text": "Analyzer static_patterns_ssrf status: degraded."
+              },
+              "level": "warning",
+              "properties": {
+                "kind": "inspection_limitation"
+              }
+            },
+            {
+              "message": {
+                "text": "Analyzer static_patterns_supply_chain status: degraded."
+              },
+              "level": "warning",
+              "properties": {
+                "kind": "inspection_limitation"
+              }
+            },
+            {
+              "message": {
+                "text": "Analyzer static_patterns_system_prompt_leakage status: degraded."
+              },
+              "level": "warning",
+              "properties": {
+                "kind": "inspection_limitation"
+              }
+            },
+            {
+              "message": {
+                "text": "Analyzer static_patterns_tool_misuse status: degraded."
+              },
+              "level": "warning",
+              "properties": {
+                "kind": "inspection_limitation"
+              }
+            },
+            {
+              "message": {
+                "text": "Analyzer was disabled by the requested configuration."
+              },
+              "level": "warning",
+              "properties": {
+                "kind": "inspection_limitation"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 import { getAdapter } from '../adapters/registry.js'
 import { maxSeverity, type Severity, type SkillRef } from '../types.js'
+import { actionableFindings } from './outcome.js'
 import type { StageResult, ToolRunRecord } from './types.js'
 
 export interface FixPromptInput {
@@ -46,14 +47,19 @@ function toolReportLines(run: ToolRunRecord, lookup: FixPromptInput['lookup']): 
 }
 
 /**
- * Null when no tool run reported a finding — the trigger, in the one pure
- * place. Findings and not the stage outcome: §8.1's sub-floor row passes the
- * tool while keeping the finding, and that finding is still filed as an issue.
+ * Null when no tool run reported an actionable finding — the trigger, in the
+ * one pure place. Findings and not the stage outcome: §8.1's sub-floor row
+ * passes the tool while keeping the finding, and that finding is still filed as
+ * an issue. Suppressed findings are excluded (R6.11): the one instruction a
+ * prompt must never give an agent is to fix what the user has already ruled on,
+ * and sub-floor is not suppressed, so the sub-floor case still writes one.
  */
 export function buildFixPrompt(input: FixPromptInput): string | null {
   const { skill, result, git } = input
-  const findings = result.toolRuns.flatMap((run) => run.findings)
+  const all = result.toolRuns.flatMap((run) => run.findings)
+  const findings = actionableFindings(all)
   if (findings.length === 0) return null
+  const omitted = all.length - findings.length
 
   const highest = findings.reduce<Severity>((acc, f) => maxSeverity(acc, f.severity), 'info')
   const stageJson = join(input.stageDir, 'stage.json')
@@ -102,6 +108,14 @@ export function buildFixPrompt(input: FixPromptInput): string | null {
     '',
     ...table,
     '',
+    // Named rather than silently dropped: the agent is told to read the tool's
+    // own report first, and that report lists more findings than this table.
+    ...(omitted === 0
+      ? []
+      : [
+          `${omitted} further finding(s) are suppressed by this skill's own suppression file and are deliberately omitted. The maintainer has already ruled on them; do not act on them.`,
+          '',
+        ]),
     'Locations here are repo-relative. Locations inside the tool reports are relative to the skill directory.',
     '',
     '## Do this',

@@ -25,6 +25,24 @@ for skill in declawed architecture-diagram; do
   echo "captured $OUT/skillspector-$skill.sarif"
 done
 
+# R4.15. A pair: the same skill scanned with and without its own baseline, so a
+# diff test can assert that --baseline annotates rather than drops. Both halves
+# are captured here, back to back, rather than diffing against
+# skillspector-declawed.sarif above — that file is historical evidence for the
+# M1 and M4 suites and the skill has moved since, so a cross-capture diff would
+# report the skill's own edits as upstream schema drift.
+BASELINE="$REPO/declawed/.skillspector-baseline.yaml"
+if [ -f "$BASELINE" ]; then
+  "$BIN" scan "$REPO/declawed" --no-llm --format sarif \
+    --output "$OUT/skillspector-declawed-unbaselined.sarif"
+  echo "captured $OUT/skillspector-declawed-unbaselined.sarif"
+  "$BIN" scan "$REPO/declawed" --no-llm --format sarif \
+    --output "$OUT/skillspector-declawed-baselined.sarif" --baseline "$BASELINE"
+  echo "captured $OUT/skillspector-declawed-baselined.sarif"
+else
+  echo "skipping the baseline pair: $BASELINE is absent" >&2
+fi
+
 PIN_SKILL_SCANNER="0.3.3"
 SCAN_BIN="${SKILL_SCANNER_BIN:-skill-scanner}"
 

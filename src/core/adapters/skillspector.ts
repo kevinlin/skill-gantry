@@ -43,6 +43,16 @@ export const manifest: AdapterManifest = {
       '{toolDir}/findings.sarif',
     ],
     cwd: 'repoRoot',
+    // R4.14. skillspector 2.5.1 reads a baseline only when it is passed one:
+    // `.skillspector-baseline.yaml` is where `skillspector baseline` writes,
+    // not somewhere `scan` looks. The path carries the substitution vocabulary
+    // rather than being relative, because `cwd` here is `repoRoot`.
+    conditionalArgv: [
+      {
+        whenExists: '{skillDir}/.skillspector-baseline.yaml',
+        argv: ['--baseline', '{skillDir}/.skillspector-baseline.yaml'],
+      },
+    ],
   },
   versionArgv: ['--version'],
   artefacts: ['findings.sarif'],

@@ -44,12 +44,15 @@ export function Issues({ state }: { state: AppState }): React.ReactElement {
   // when the two shared one field — and the rule class is what names the issue.
   const ruleWidth = Math.min(18, Math.max(8, Math.floor(cols * 0.2)))
   const pathWidth = Math.max(8, cols - severityWidth - stateWidth - skillWidth - ruleWidth - 4)
+  const suppressedCount = state.issues.filter((row) => row.suppressed).length
 
   return (
     <Box flexDirection="column" width={columns}>
       <Panel
         title="Issues"
-        hint={`${state.issues.length} · ${state.issueFilter.state ?? 'every state'}`}
+        hint={`${state.issues.length} · ${state.issueFilter.state ?? 'every state'}${
+          suppressedCount === 0 ? '' : ` · ${suppressedCount} suppressed`
+        }`}
         focused
         chrome={layout.chrome}
       >
@@ -68,9 +71,25 @@ export function Issues({ state }: { state: AppState }): React.ReactElement {
           // The detectors that have not since reported a conclusive absence —
           // R8.8's blockers, so "why is this still open" is on the row.
           const blocked = row.blockedBy.length === 0 ? '' : ` ⟂ ${row.blockedBy.join(',')}`
+          // R8.15: marked, never hidden — the Issues screen is the audit
+          // surface. It rides the trailing field beside `blocked` rather than
+          // taking a row. Its width is reserved out of the path's rather than
+          // appended to it: `truncateMiddle` elides the head, so a mark simply
+          // concatenated on is what a long reason eats first. Glyph paired with
+          // the word, so a monochrome terminal loses nothing.
+          const mark = row.suppressed
+            ? truncate(
+                ` ⊘ suppressed${row.suppressionReason ? `: ${row.suppressionReason}` : ''}`,
+                Math.max(14, Math.floor(pathWidth * 0.6)),
+              )
+            : ''
           return (
             <Box key={row.fingerprint}>
-              <Text wrap="truncate" bold={index === state.selectedIssue}>
+              <Text
+                wrap="truncate"
+                bold={index === state.selectedIssue}
+                dimColor={row.suppressed}
+              >
                 {index === state.selectedIssue ? '›' : ' '}{' '}
                 <Text color={SEVERITY_COLOUR[row.severity] ?? 'gray'}>
                   {row.severity.padEnd(severityWidth)}
@@ -78,7 +97,13 @@ export function Issues({ state }: { state: AppState }): React.ReactElement {
                 <Text>{`${STATE_MARK[row.state] ?? '?'} ${row.state}`.padEnd(stateWidth)}</Text>
                 <Text>{truncate(row.skillId, skillWidth).padEnd(skillWidth)}</Text>
                 <Text>{truncate(row.ruleClass, ruleWidth).padEnd(ruleWidth)}</Text>
-                <Text dimColor>{truncateMiddle(`${row.relPath}${blocked}`, pathWidth)}</Text>
+                <Text dimColor>
+                  {truncateMiddle(
+                    `${row.relPath}${blocked}`,
+                    Math.max(4, pathWidth - mark.length),
+                  )}
+                  {mark}
+                </Text>
               </Text>
             </Box>
           )

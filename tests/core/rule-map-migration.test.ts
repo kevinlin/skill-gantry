@@ -130,3 +130,96 @@ describe('migrateRuleMap', () => {
       .toEqual({ rule_class: 'unmapped:skillspector:ZZ9' })
   })
 })
+
+describe('migrateRuleMap — the suppression pair (R8.15)', () => {
+  const suppress = (
+    db: import('node:sqlite').DatabaseSync,
+    fp: string,
+    toolId: string,
+    run: string,
+    reason: string,
+  ): void => {
+    db.prepare(
+      `update issue_detectors set last_seen_run = ?, suppressed_run = ?, suppressed_reason = ?
+        where issue_fp = ? and tool_id = ?`,
+    ).run(run, run, reason, fp, toolId)
+  }
+
+  it('carries the pair through a reclassification onto the new fingerprint', () => {
+    const { db } = openLedger(':memory:')
+    seed(db)
+    const oldFp = insertIssue(db, 'unmapped:skillspector:AST4', 'open', {
+      count: 1, toolId: 'skillspector', toolRunId: 1, ordinals: 1,
+    })
+    suppress(db, oldFp, 'skillspector', 'run-b', 'baselined')
+
+    migrateRuleMap(db)
+
+    const newFp = fingerprint(SKILL, PATH, 'unsafe-script')
+    expect(db.prepare('select suppressed_reason from issue_detectors where issue_fp = ?').get(newFp))
+      .toEqual({ suppressed_reason: 'baselined' })
+    expect(db.prepare('select suppressed_run, suppressed_reason from issues where fingerprint = ?').get(newFp))
+      .toEqual({ suppressed_run: 'run-b', suppressed_reason: 'baselined' })
+  })
+
+  it('takes the pair from the row whose last_seen_run won', () => {
+    const { db } = openLedger(':memory:')
+    seed(db)
+    // Both rows are the same tool, so the merge hits the update branch.
+    const target = insertIssue(db, 'unsafe-script', 'open', {
+      count: 1, toolId: 'skillspector', toolRunId: 2, ordinals: 1,
+    })
+    const stale = insertIssue(db, 'unmapped:skillspector:AST4', 'open', {
+      count: 1, toolId: 'skillspector', toolRunId: 1, ordinals: 1,
+    })
+    suppress(db, target, 'skillspector', 'run-a', 'older')
+    suppress(db, stale, 'skillspector', 'run-b', 'newer')
+
+    migrateRuleMap(db)
+
+    expect(
+      db.prepare('select last_seen_run, suppressed_run, suppressed_reason from issue_detectors where issue_fp = ?').get(target),
+    ).toEqual({ last_seen_run: 'run-b', suppressed_run: 'run-b', suppressed_reason: 'newer' })
+  })
+
+  it('degrades a pair the merged sighting outran to unsuppressed', () => {
+    const { db } = openLedger(':memory:')
+    seed(db)
+    const target = insertIssue(db, 'unsafe-script', 'open', {
+      count: 1, toolId: 'skillspector', toolRunId: 2, ordinals: 1,
+    })
+    const stale = insertIssue(db, 'unmapped:skillspector:AST4', 'open', {
+      count: 1, toolId: 'skillspector', toolRunId: 1, ordinals: 1,
+    })
+    // The later sighting is not suppressed; the earlier one was.
+    suppress(db, stale, 'skillspector', 'run-a', 'older')
+    db.prepare('update issue_detectors set last_seen_run = ? where issue_fp = ? and tool_id = ?')
+      .run('run-b', target, 'skillspector')
+
+    migrateRuleMap(db)
+
+    expect(db.prepare('select suppressed_run from issue_detectors where issue_fp = ?').get(target))
+      .toEqual({ suppressed_run: null })
+    expect(db.prepare('select suppressed_run from issues where fingerprint = ?').get(target))
+      .toEqual({ suppressed_run: null })
+  })
+
+  it('leaves an issue unsuppressed when only one of two merged detectors suppresses', () => {
+    const { db } = openLedger(':memory:')
+    seed(db)
+    const target = insertIssue(db, 'unsafe-script', 'open', {
+      count: 1, toolId: 'skill-lint', toolRunId: 2, ordinals: 1,
+    })
+    const other = insertIssue(db, 'unmapped:skillspector:AST4', 'open', {
+      count: 1, toolId: 'skillspector', toolRunId: 1, ordinals: 1,
+    })
+    suppress(db, other, 'skillspector', 'run-b', 'baselined')
+
+    migrateRuleMap(db)
+
+    expect(db.prepare('select count(*) as n from issue_detectors where issue_fp = ?').get(target))
+      .toEqual({ n: 2 })
+    expect(db.prepare('select suppressed_run from issues where fingerprint = ?').get(target))
+      .toEqual({ suppressed_run: null })
+  })
+})

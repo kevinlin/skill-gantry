@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { parseSarif, rebasePath } from '../../src/core/adapters/sarif.js'
 
 const sarif = (results: unknown[], rules: unknown[] = []): Buffer =>
@@ -111,5 +113,90 @@ describe('parseSarif', () => {
 
   it('errors when the document is not sarif-shaped', () => {
     expect(parseSarif(Buffer.from('{"hello":1}'), opts).outcome).toBe('errored')
+  })
+})
+
+describe('parseSarif — result.suppressions (R4.15)', () => {
+  const opts = { toolId: 'skillspector', skillRelPath: 'declawed' }
+  const suppressed = (over: Record<string, unknown> = {}) => [
+    { kind: 'external', justification: 'accepted false positive', ...over },
+  ]
+
+  it('annotates a suppressed result with the tool’s justification', () => {
+    const out = parseSarif(sarif([result({ suppressions: suppressed() })]), opts)
+    expect(out.findings[0]?.suppressed).toEqual({ justification: 'accepted false positive' })
+  })
+
+  it('treats an absent array and an empty one as unsuppressed — SARIF §3.27.23', () => {
+    // Empty means "explicitly not suppressed", absent means "no information".
+    // A truthiness test on the array conflates them; neither suppresses.
+    expect(parseSarif(sarif([result()]), opts).findings[0]?.suppressed).toBeUndefined()
+    expect(
+      parseSarif(sarif([result({ suppressions: [] })]), opts).findings[0]?.suppressed,
+    ).toBeUndefined()
+  })
+
+  it('ignores a suppression that has not taken effect', () => {
+    for (const status of ['rejected', 'underReview']) {
+      const out = parseSarif(sarif([result({ suppressions: suppressed({ status }) })]), opts)
+      expect(out.findings[0]?.suppressed, status).toBeUndefined()
+    }
+  })
+
+  it('defaults an absent status to accepted, which is what 2.5.1 emits', () => {
+    const out = parseSarif(sarif([result({ suppressions: suppressed({ status: undefined }) })]), opts)
+    expect(out.findings[0]?.suppressed).toBeDefined()
+  })
+
+  it('accepts a suppression carrying no justification', () => {
+    const out = parseSarif(sarif([result({ suppressions: [{ kind: 'external' }] })]), opts)
+    expect(out.findings[0]?.suppressed).toEqual({ justification: '' })
+  })
+
+  it('leaves the verdict and the count alone — §8.1 owns the gate', () => {
+    const out = parseSarif(sarif([result({ suppressions: suppressed() })]), opts)
+    expect(out.outcome).toBe('failed')
+    expect(out.findings).toHaveLength(1)
+    expect(out.metrics.findingsTotal).toBe(1)
+  })
+
+  it('names the suppressed count in the summary, and only when there is one', () => {
+    const mixed = sarif([result({ suppressions: suppressed() }), result({ ruleId: 'MP2' })])
+    expect(parseSarif(mixed, opts).summary).toBe('2 findings, 1 suppressed')
+    expect(parseSarif(sarif([result()]), opts).summary).toBe('1 finding')
+  })
+})
+
+describe('parseSarif — the captured baseline pair', () => {
+  const opts = { toolId: 'skillspector', skillRelPath: 'declawed' }
+  const load = async (name: string): Promise<Buffer> =>
+    readFile(join(process.cwd(), 'tests/fixtures/sarif', name))
+
+  it('differs from its unbaselined twin only in suppressions and findingId', async () => {
+    // Captured back to back by scripts/capture-fixtures.sh at the pinned
+    // version (R13.3), so anything else moving is upstream schema drift.
+    const strip = (doc: Buffer): string =>
+      JSON.stringify(
+        JSON.parse(doc.toString('utf8')) as unknown,
+        (key, value) => (key === 'suppressions' || key === 'findingId' ? undefined : value),
+      )
+    expect(strip(await load('skillspector-declawed-baselined.sarif'))).toBe(
+      strip(await load('skillspector-declawed-unbaselined.sarif')),
+    )
+  })
+
+  it('parses the real baselined capture as one suppressed finding', async () => {
+    const out = parseSarif(await load('skillspector-declawed-baselined.sarif'), opts)
+    expect(out.findings).toHaveLength(1)
+    expect(out.findings[0]?.nativeRuleId).toBe('MP2')
+    expect(out.findings[0]?.suppressed?.justification).toMatch(/re\.VERBOSE/)
+    expect(out.summary).toBe('1 finding, 1 suppressed')
+  })
+
+  it('parses its unbaselined twin as the same finding, unsuppressed', async () => {
+    const out = parseSarif(await load('skillspector-declawed-unbaselined.sarif'), opts)
+    expect(out.findings).toHaveLength(1)
+    expect(out.findings[0]?.suppressed).toBeUndefined()
+    expect(out.outcome).toBe('failed')
   })
 })

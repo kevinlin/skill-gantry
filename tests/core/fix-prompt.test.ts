@@ -189,3 +189,38 @@ describe('R6.10 buildFixPrompt', () => {
     expect(text).toContain(`${STAGE_DIR}/mystery`)
   })
 })
+
+describe('R6.11 suppressed findings', () => {
+  const suppress = (f: RawFinding): RawFinding => ({
+    ...f,
+    suppressed: { justification: 'accepted false positive' },
+  })
+
+  it('writes none when every finding is suppressed', () => {
+    const run = toolRun({ findings: FINDINGS.map(suppress), outcome: 'passed' })
+    expect(buildFixPrompt(input({ result: result({ toolRuns: [run], outcome: 'passed' }) }))).toBeNull()
+  })
+
+  it('omits the suppressed rows, renumbers the survivors, and names the count', () => {
+    const run = toolRun({ findings: [suppress(FINDINGS[0] as RawFinding), FINDINGS[1] as RawFinding] })
+    const text = buildFixPrompt(input({ result: result({ toolRuns: [run] }) })) as string
+
+    expect(text).toContain('| 1 | medium | prompt-injection')
+    expect(text).not.toContain('| 2 |')
+    expect(text).not.toContain('LP3')
+    expect(text).toContain('MP2')
+    expect(text).toContain('1 further finding(s) are suppressed')
+    // The header counts what the table holds, not what the tool reported.
+    expect(text).toContain('with 1 finding(s)')
+  })
+
+  it('says nothing about suppression when there is none', () => {
+    expect(buildFixPrompt(input()) as string).not.toContain('suppressed')
+  })
+
+  it('still writes one for a sub-floor passed stage — suppression is not severity', () => {
+    const low = FINDINGS.map((f) => ({ ...f, severity: 'low' as const }))
+    const run = toolRun({ findings: low, outcome: 'passed' })
+    expect(buildFixPrompt(input({ result: result({ toolRuns: [run], outcome: 'passed' }) }))).not.toBeNull()
+  })
+})

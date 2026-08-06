@@ -144,7 +144,12 @@ export {
 } from './ledger/issue-queries.js'
 export {
   detectorSaysGone,
+  detectorSuppressed,
+  issueSuppression,
   stateOnUserAction,
+  type DetectorSuppressionRow,
   type IssueAction,
   type IssueState,
 } from './ledger/issues.js'
+export { recomputeIssueSuppression } from './ledger/reconcile.js'
+export { actionableFindings } from './stages/outcome.js'

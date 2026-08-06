@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   STAGE_ORDER,
+  actionableFindings,
   buildFixPrompt,
   fixPromptPathFor,
   maxSeverity,
@@ -24,7 +25,10 @@ interface PromptDoc {
   path: string
   /** False when the run predates R6.10 and the body was rebuilt in memory. */
   onDisk: boolean
+  /** Actionable only — R6.11. A fully suppressed stage yields no document. */
   findings: number
+  /** Reported and ruled on by the skill's own suppression file. */
+  suppressed: number
   highestSeverity: Severity
   body: string
 }
@@ -45,9 +49,10 @@ interface RunMetaOnDisk {
 }
 
 const highestOf = (result: StageResult): Severity =>
-  result.toolRuns
-    .flatMap((r) => r.findings)
-    .reduce<Severity>((acc, f) => maxSeverity(acc, f.severity), 'info')
+  actionableFindings(result.toolRuns.flatMap((r) => r.findings)).reduce<Severity>(
+    (acc, f) => maxSeverity(acc, f.severity),
+    'info',
+  )
 
 const stageDirIn = (runDir: string, stage: Stage): string =>
   stageDirFor(runDir, STAGE_ORDER.indexOf(stage) + 1, stage)
@@ -87,13 +92,18 @@ async function promptFor(
   runDir: string,
   meta: RunMetaOnDisk,
   stage: Stage,
-): Promise<PromptDoc | null> {
+): Promise<{ doc: PromptDoc | null; suppressed: number }> {
+  const none = { doc: null, suppressed: 0 }
   const stageDir = stageDirIn(runDir, stage)
   const result = await readJson<StageResult>(join(stageDir, 'stage.json'))
-  if (result === null) return null
+  if (result === null) return none
 
-  const findings = result.toolRuns.flatMap((r) => r.findings).length
-  if (findings === 0) return null
+  // Actionable only (R6.11), so a fully suppressed run reports "nothing to fix"
+  // rather than printing a prompt with an empty table.
+  const all = result.toolRuns.flatMap((r) => r.findings)
+  const findings = actionableFindings(all).length
+  const suppressed = all.length - findings
+  if (findings === 0) return { doc: null, suppressed }
 
   const path = fixPromptPathFor(runDir, stage)
   const stored = await readFile(path, 'utf8').catch((err: NodeJS.ErrnoException) => {
@@ -110,15 +120,19 @@ async function promptFor(
       git: meta.git,
       result,
     })
-  if (body === null) return null
+  if (body === null) return { doc: null, suppressed }
 
   return {
-    stage,
-    path,
-    onDisk: stored !== null,
-    findings,
-    highestSeverity: highestOf(result),
-    body,
+    doc: {
+      stage,
+      path,
+      onDisk: stored !== null,
+      findings,
+      suppressed,
+      highestSeverity: highestOf(result),
+      body,
+    },
+    suppressed,
   }
 }
 
@@ -139,18 +153,27 @@ export async function runFix(deps: CliDeps, selector: string, opts: FixOptions):
   }
 
   const prompts: PromptDoc[] = []
+  let suppressed = 0
   for (const stage of scope) {
-    const doc = await promptFor(skill, runDir, meta, stage)
-    if (doc !== null) prompts.push(doc)
+    const found = await promptFor(skill, runDir, meta, stage)
+    suppressed += found.suppressed
+    if (found.doc !== null) prompts.push(found.doc)
   }
 
   if (opts.json === true) {
-    deps.write(JSON.stringify({ skillId: skill.id, runId, runDir, prompts }))
+    deps.write(JSON.stringify({ skillId: skill.id, runId, runDir, prompts, suppressed }))
     return prompts.length > 0 ? 0 : 1
   }
 
   if (prompts.length === 0) {
-    deps.write(`no findings in run ${runId} — nothing to fix`)
+    // Exit 1 either way — R12.6 binds the code to "is there a prompt on
+    // stdout" — but a run whose findings were all ruled on is not a run that
+    // found nothing, and saying so is the difference between the two.
+    deps.write(
+      suppressed === 0
+        ? `no findings in run ${runId} — nothing to fix`
+        : `every finding in run ${runId} is suppressed by the skill's own suppression file (${suppressed}) — nothing to fix`,
+    )
     return 1
   }
 
