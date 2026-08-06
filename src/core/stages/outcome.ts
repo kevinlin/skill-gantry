@@ -27,6 +27,19 @@ export const TOOL_OUTCOMES: readonly ToolOutcome[] = ['passed', 'failed', 'error
  */
 export const FAIL_SEVERITY_FLOOR: Severity = 'medium'
 
+/**
+ * R4.15. The findings the fail floor is allowed to see: those the tool did not
+ * itself report as suppressed.
+ *
+ * A named helper rather than teaching `highestSeverity` to filter, because a
+ * function called "highest severity" that quietly means "highest actionable
+ * severity" is precisely the hidden policy this file's comments exist to stop.
+ * Every caller that means the whole set keeps saying so.
+ */
+export function actionableFindings(findings: readonly RawFinding[]): RawFinding[] {
+  return findings.filter((f) => f.suppressed === undefined)
+}
+
 /** `null` for an empty set, so a caller cannot mistake "nothing" for `info`. */
 export function highestSeverity(findings: readonly RawFinding[]): Severity | null {
   return findings.reduce<Severity | null>(

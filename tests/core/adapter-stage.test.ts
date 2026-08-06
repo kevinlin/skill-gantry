@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
-import { mkdir, mkdtemp, stat } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { AdapterStageExecutor } from '../../src/core/stages/adapter-stage.js'
-import type { CredentialRequirement } from '../../src/core/adapters/types.js'
+import { AdapterStageExecutor, classifyToolRun } from '../../src/core/stages/adapter-stage.js'
+import { manifest as skillspectorManifest } from '../../src/core/adapters/skillspector.js'
+import type { Adapter, CredentialRequirement, ToolResult } from '../../src/core/adapters/types.js'
 import type { StageContext } from '../../src/core/stages/types.js'
-import type { SkillRef } from '../../src/core/types.js'
+import type { RawFinding, Severity, SkillRef } from '../../src/core/types.js'
 import { makeFakeTool } from '../helpers/fake-tool.js'
 
 const SARIF_EMPTY = JSON.stringify({
@@ -331,5 +332,124 @@ describe('AdapterStageExecutor.execute', () => {
     const ctx = await context({ lock, onOutput })
     await exec.execute(ctx, await exec.plan(ctx))
     expect(onOutput).toHaveBeenCalled()
+  })
+})
+
+/** §8.1 rows 12, 12b and 12c, driven straight through the classifier. */
+describe('classifyToolRun — suppression and the fail floor', () => {
+  const finding = (severity: Severity, suppressed = false): RawFinding => ({
+    ruleClass: 'unsafe-script',
+    nativeRuleId: `MP-${severity}${suppressed ? '-s' : ''}`,
+    severity,
+    path: 'declawed/scripts/scan.py',
+    message: severity,
+    ...(suppressed ? { suppressed: { justification: 'accepted' } } : {}),
+  })
+
+  const adapterReturning = (result: ToolResult): Adapter =>
+    ({ manifest: skillspectorManifest, parse: () => result }) as unknown as Adapter
+
+  const run = {
+    exitCode: 0,
+    signalled: null,
+    timedOut: false,
+    cancelled: false,
+    spawnFailed: false,
+    spawnError: null,
+    durationMs: 10,
+    stdout: '',
+    stderr: '',
+    artefacts: new Map<string, Buffer>(),
+    missingArtefacts: [],
+    oversizeArtefacts: [],
+  }
+
+  const classify = async (findings: RawFinding[], outcome: 'failed' | 'passed' = 'failed') => {
+    const skill = await makeSkill()
+    return classifyToolRun(
+      adapterReturning({ outcome, findings, metrics: {}, summary: `${findings.length} findings` }),
+      skill,
+      run,
+    )
+  }
+
+  it('row 12c: every finding suppressed passes, and keeps all of them', async () => {
+    const out = await classify([finding('critical', true), finding('high', true)])
+    expect(out.outcome).toBe('passed')
+    expect(out.findings).toHaveLength(2)
+    expect(out.summary).toMatch(/none actionable/)
+  })
+
+  it('row 12b: a suppressed high beside a live low still passes', async () => {
+    const out = await classify([finding('high', true), finding('low')])
+    expect(out.outcome).toBe('passed')
+    expect(out.summary).toMatch(/highest low/)
+    expect(out.findings).toHaveLength(2)
+  })
+
+  it('row 12: a suppressed low does not rescue a live high', async () => {
+    expect((await classify([finding('low', true), finding('high')])).outcome).toBe('failed')
+  })
+
+  it('leaves a parser that failed with no findings at all alone', async () => {
+    // Without the `findings.length > 0` guard this would silently downgrade.
+    expect((await classify([])).outcome).toBe('failed')
+  })
+})
+
+/** R4.14. The tool records the argv it was handed, so the assertions are exact. */
+describe('conditional argv — R4.14', () => {
+  const RECORDING = `printf '%s' '${SARIF_EMPTY}' > "$7"; printf '%s\\n' "$@" > "$SG_ARGV_LOG"`
+
+  async function argvOf(ctx: StageContext): Promise<string[]> {
+    const exec = new AdapterStageExecutor('security')
+    await exec.execute(ctx, await exec.plan(ctx))
+    const log = ctx.env.SG_ARGV_LOG as string
+    return (await readFile(log, 'utf8')).split('\n').filter((line) => line.length > 0)
+  }
+
+  async function ctxWithLog(): Promise<StageContext> {
+    const lock = await lockWith(RECORDING)
+    const dir = await mkdtemp(join(tmpdir(), 'sg-argv-'))
+    return context({ lock, env: { SG_ARGV_LOG: join(dir, 'argv') } })
+  }
+
+  it('omits the group when the declared path does not exist', async () => {
+    expect(await argvOf(await ctxWithLog())).not.toContain('--baseline')
+  })
+
+  it('appends it carrying the substituted path when the file exists', async () => {
+    const ctx = await ctxWithLog()
+    const baseline = join(ctx.skill.dir, '.skillspector-baseline.yaml')
+    await writeFile(baseline, 'version: 1\n')
+    const argv = await argvOf(ctx)
+    expect(argv.slice(-2)).toEqual(['--baseline', baseline])
+  })
+
+  it('does not fire on a directory at that path', async () => {
+    const ctx = await ctxWithLog()
+    await mkdir(join(ctx.skill.dir, '.skillspector-baseline.yaml'))
+    expect(await argvOf(ctx)).not.toContain('--baseline')
+  })
+
+  it('names the re-rooted skill dir, not the source, once a sandbox has moved it', async () => {
+    // What `pipeline/run.ts` does before `execute`: `ctx.skill.dir` points at
+    // the sandbox or the materialised candidate, never at the user's tree —
+    // which is why the stat lives in execute() rather than plan().
+    const ctx = await ctxWithLog()
+    const source = ctx.skill.dir
+    const candidate = await mkdtemp(join(tmpdir(), 'sg-candidate-'))
+    await writeFile(join(source, '.skillspector-baseline.yaml'), 'version: 1\n')
+    const rerooted = {
+      ...ctx,
+      skill: { ...ctx.skill, dir: candidate },
+    } as StageContext
+
+    expect(await argvOf(rerooted)).not.toContain('--baseline')
+
+    await writeFile(join(candidate, '.skillspector-baseline.yaml'), 'version: 1\n')
+    const argv = await argvOf(rerooted)
+    expect(argv.slice(-2)).toEqual(['--baseline', join(candidate, '.skillspector-baseline.yaml')])
+    expect(argv).not.toContain(join(source, '.skillspector-baseline.yaml'))
   })
 })

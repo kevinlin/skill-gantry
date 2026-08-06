@@ -152,7 +152,9 @@ function Body({
           >
             <Text color={SEVERITY_COLOUR[finding.severity] ?? 'red'}>{finding.severity}</Text>{' '}
             {truncate(
-              `${finding.ruleClass} ${finding.path} ${finding.message}`,
+              // R8.15: the tool reported it and the skill's own suppression
+              // file rules it out. One glyph on the existing row, no new row.
+              `${finding.suppressed ? '⊘ ' : ''}${finding.ruleClass} ${finding.path} ${finding.message}`,
               cols - finding.severity.length - 1,
             )}
           </Text>

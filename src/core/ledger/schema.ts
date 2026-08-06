@@ -155,4 +155,20 @@ export const MIGRATIONS: readonly Migration[] = [
       }
     },
   },
+  {
+    sql: `
+    -- R8.15. A derived cache over the skill's own suppression file, which is
+    -- the authority — R1.6's pattern, for R1.6's reason: the file edit and the
+    -- ledger transaction cannot be made atomic.
+    --
+    -- No backfill and no default. Every pre-existing row *was* unsuppressed,
+    -- which is what null means here, and the next conclusive run recomputes it
+    -- from the file. A backfill would be the ledger inventing a decision the
+    -- user never made.
+    alter table issue_detectors add column suppressed_run    text;
+    alter table issue_detectors add column suppressed_reason text;
+    alter table issues          add column suppressed_run    text;
+    alter table issues          add column suppressed_reason text;
+    `,
+  },
 ]

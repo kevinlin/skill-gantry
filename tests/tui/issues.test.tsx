@@ -17,6 +17,8 @@ const issue = (over: Partial<IssueRow>): IssueRow => ({
   detectors: ['skillspector', 'skill-scanner'],
   blockedBy: ['skill-scanner'],
   lastSeenRun: '019283af-0000-7000-8000-000000000001',
+  suppressed: false,
+  suppressionReason: null,
   ...over,
 })
 
@@ -155,6 +157,64 @@ describe('Issues screen — R11.3, across every registered repo', () => {
       const { ui } = await onIssues(ROWS, size)
       expect(ui.lastFrame().split('\n').length).toBeLessThanOrEqual(size.rows)
       ui.unmount()
+    }
+  })
+})
+
+describe('Issues screen — suppression (R8.15)', () => {
+  const SUPPRESSED = issue({
+    fingerprint: 'fp222222cafe',
+    relPath: 'declawed/scripts/scan.py',
+    suppressed: true,
+    suppressionReason: 'alignment, not padding',
+    blockedBy: [],
+  })
+
+  it('marks the row with the glyph and the reason rather than hiding it', async () => {
+    const { ui } = await onIssues([...ROWS, SUPPRESSED], { columns: 140, rows: 30 })
+    const frame = ui.lastFrame()
+    expect(frame).toContain('⊘ suppressed')
+    expect(frame).toContain('alignment, not padding')
+    expect(frame).toContain('scan.py')
+    ui.unmount()
+  })
+
+  it('keeps the glyph and the word even when the reason has to be cut', async () => {
+    // The mark's width is reserved out of the path's, so the head of the
+    // trailing field is what goes — never the mark itself.
+    const wordy = issue({
+      ...SUPPRESSED,
+      suppressionReason: 'whitespace run is re.VERBOSE comment alignment, not context padding',
+    })
+    const { ui } = await onIssues([wordy], { columns: 80, rows: 24 })
+    expect(ui.lastFrame()).toContain('⊘ suppressed')
+    ui.unmount()
+  })
+
+  it('counts them in the panel title', async () => {
+    const { ui } = await onIssues([...ROWS, SUPPRESSED])
+    expect(ui.lastFrame()).toContain('1 suppressed')
+    ui.unmount()
+  })
+
+  it('says nothing about suppression when there is none', async () => {
+    const { ui } = await onIssues(ROWS)
+    expect(ui.lastFrame()).not.toContain('suppressed')
+    ui.unmount()
+  })
+
+  it('costs no rows, at 80x24 and 50x14 — §14.1', async () => {
+    for (const size of [
+      { columns: 80, rows: 24 },
+      { columns: 50, rows: 14 },
+    ]) {
+      const plain = await onIssues(ROWS, size)
+      const marked = await onIssues([ROWS[0] as IssueRow, SUPPRESSED], size)
+      expect(marked.ui.lastFrame().split('\n').length).toBe(
+        plain.ui.lastFrame().split('\n').length,
+      )
+      plain.ui.unmount()
+      marked.ui.unmount()
     }
   })
 })

@@ -303,3 +303,161 @@ describe('conjunctive closure across detectors', () => {
     expect(stateOf(ledger, fp)).toBe('fixed')
   })
 })
+
+const SUPPRESSED = { justification: 'accepted false positive' }
+
+const detectorOf = (
+  ledger: Ledger,
+  toolId = 'skillspector',
+  fp = FP,
+): { last_seen_run: string | null; last_absent_run: string | null; suppressed_run: string | null; suppressed_reason: string | null } | undefined =>
+  ledger.db
+    .prepare(
+      `select last_seen_run, last_absent_run, suppressed_run, suppressed_reason
+         from issue_detectors where issue_fp = ? and tool_id = ?`,
+    )
+    .get(fp, toolId) as never
+
+const issueSuppressionOf = (
+  ledger: Ledger,
+  fp = FP,
+): { suppressed_run: string | null; suppressed_reason: string | null } | undefined =>
+  ledger.db
+    .prepare('select suppressed_run, suppressed_reason from issues where fingerprint = ?')
+    .get(fp) as never
+
+describe('suppression — phase 1 (R8.15)', () => {
+  it('records a suppressed finding as reported, closing nothing and touching no state', () => {
+    const run = toolRun({ outcome: 'passed', findings: [finding({ suppressed: SUPPRESSED })] })
+    recordRun(ledger, input([stage([run], 'passed')]))
+
+    expect(stateOf(ledger)).toBe('open')
+    const detector = detectorOf(ledger)
+    expect(detector?.last_seen_run).toBe('run-1')
+    // The whole safety property: absent instead would close it as `fixed`.
+    expect(detector?.last_absent_run).toBeNull()
+    expect(detector?.suppressed_run).toBe('run-1')
+    expect(detector?.suppressed_reason).toBe(SUPPRESSED.justification)
+    expect(issueSuppressionOf(ledger)?.suppressed_run).toBe('run-1')
+  })
+
+  it('does not close a suppressed issue on a later suppressed run either', () => {
+    const run = toolRun({ outcome: 'passed', findings: [finding({ suppressed: SUPPRESSED })] })
+    recordRun(ledger, input([stage([run], 'passed')]))
+    const delta = recordRun(ledger, input([stage([run], 'passed')]))
+    expect(delta.closed).toBe(0)
+    expect(stateOf(ledger)).toBe('open')
+  })
+
+  it('clears both columns on the next unsuppressed sighting, keeping the history', () => {
+    const suppressed = toolRun({ outcome: 'passed', findings: [finding({ suppressed: SUPPRESSED })] })
+    recordRun(ledger, input([stage([suppressed], 'passed')]))
+    recordRun(ledger, input([stage([toolRun()], 'failed')]))
+
+    expect(detectorOf(ledger)).toMatchObject({
+      last_seen_run: 'run-2',
+      suppressed_run: null,
+      suppressed_reason: null,
+    })
+    expect(issueSuppressionOf(ledger)).toMatchObject({
+      suppressed_run: null,
+      suppressed_reason: null,
+    })
+    expect(
+      ledger.db.prepare('select first_seen_run, occurrence_count from issues where fingerprint = ?').get(FP),
+    ).toMatchObject({ first_seen_run: 'run-1', occurrence_count: 1 })
+    expect(detectionCount(ledger)).toBe(2)
+  })
+
+  it('counts and grades a suppressed occurrence like any other', () => {
+    // §10.3: `occurrence_count` answers "how many times was this seen last time
+    // we looked", and the tool did see them. Severity is the finding's, not the
+    // user's decision about it.
+    const run = toolRun({
+      outcome: 'passed',
+      findings: [
+        finding({ suppressed: SUPPRESSED }),
+        finding({ line: 99, severity: 'critical', suppressed: SUPPRESSED }),
+      ],
+    })
+    recordRun(ledger, input([stage([run], 'passed')]))
+    expect(
+      ledger.db.prepare('select occurrence_count, severity_max from issues where fingerprint = ?').get(FP),
+    ).toMatchObject({ occurrence_count: 2, severity_max: 'critical' })
+  })
+
+  it('does not suppress when one occurrence of the fingerprint is live', () => {
+    const run = toolRun({
+      findings: [finding({ suppressed: SUPPRESSED }), finding({ line: 99 })],
+    })
+    recordRun(ledger, input([stage([run], 'failed')]))
+    expect(detectorOf(ledger)?.suppressed_run).toBeNull()
+    expect(issueSuppressionOf(ledger)?.suppressed_run).toBeNull()
+  })
+
+  it('does not suppress regardless of which occurrence the tool reported first', () => {
+    const run = toolRun({
+      findings: [finding({ line: 99 }), finding({ suppressed: SUPPRESSED })],
+    })
+    recordRun(ledger, input([stage([run], 'failed')]))
+    expect(detectorOf(ledger)?.suppressed_run).toBeNull()
+  })
+})
+
+describe('suppression — the issue-level conjunction (R8.15)', () => {
+  const spector = (suppressed: boolean): ToolRunRecord =>
+    toolRun({
+      outcome: suppressed ? 'passed' : 'failed',
+      findings: [finding(suppressed ? { suppressed: SUPPRESSED } : {})],
+    })
+  const scanner = (suppressed: boolean): ToolRunRecord =>
+    toolRun({
+      toolId: 'skill-scanner',
+      outcome: suppressed ? 'passed' : 'failed',
+      findings: [finding({ nativeRuleId: 'C14', ...(suppressed ? { suppressed: SUPPRESSED } : {}) })],
+    })
+
+  it('leaves the issue unsuppressed while one detector still reports it plainly', () => {
+    recordRun(ledger, input([stage([spector(true), scanner(false)], 'failed')]))
+    expect(issueSuppressionOf(ledger)?.suppressed_run).toBeNull()
+  })
+
+  it('reaches the same verdict in the other finish order', () => {
+    recordRun(ledger, input([stage([scanner(false), spector(true)], 'failed')]))
+    expect(issueSuppressionOf(ledger)?.suppressed_run).toBeNull()
+  })
+
+  it('suppresses only once both detectors do', () => {
+    recordRun(ledger, input([stage([spector(true), scanner(true)], 'passed')]))
+    expect(issueSuppressionOf(ledger)).toMatchObject({
+      suppressed_run: 'run-1',
+      suppressed_reason: SUPPRESSED.justification,
+    })
+  })
+
+  it('gives a detector that says gone no vote', () => {
+    recordRun(ledger, input([stage([spector(false), scanner(false)], 'failed')]))
+    // skill-scanner now reports nothing; skillspector reports it suppressed.
+    const goneScanner = toolRun({ toolId: 'skill-scanner', outcome: 'passed', findings: [] })
+    recordRun(ledger, input([stage([spector(true), goneScanner], 'passed')]))
+
+    expect(stateOf(ledger)).toBe('open')
+    expect(detectorOf(ledger, 'skill-scanner')?.last_absent_run).toBe('run-2')
+    expect(issueSuppressionOf(ledger)?.suppressed_run).toBe('run-2')
+  })
+})
+
+describe('suppression — the fail-safe (R8.15)', () => {
+  const conclusive = toolRun({ outcome: 'passed', findings: [finding({ suppressed: SUPPRESSED })] })
+
+  for (const outcome of ['errored', 'skipped'] as const) {
+    it(`leaves both columns as the last conclusive run left them after an ${outcome} run`, () => {
+      recordRun(ledger, input([stage([conclusive], 'passed')]))
+      const before = detectorOf(ledger)
+
+      recordRun(ledger, input([stage([toolRun({ outcome, findings: [] })], 'errored')]))
+      expect(detectorOf(ledger)).toEqual(before)
+      expect(issueSuppressionOf(ledger)?.suppressed_run).toBe('run-1')
+    })
+  }
+})

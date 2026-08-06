@@ -21,11 +21,17 @@ interface SarifLocation {
     region?: SarifRegion
   }
 }
+interface SarifSuppression {
+  kind?: string
+  status?: string
+  justification?: string
+}
 interface SarifResult {
   ruleId?: string
   level?: string
   message?: { text?: string }
   locations?: SarifLocation[]
+  suppressions?: SarifSuppression[]
 }
 interface SarifDoc {
   runs?: Array<{ results?: SarifResult[] }>
@@ -33,6 +39,22 @@ interface SarifDoc {
 
 function errored(summary: string): ToolResult {
   return { outcome: 'errored', findings: [], metrics: {}, summary }
+}
+
+/**
+ * R4.15. The suppression in force, or undefined.
+ *
+ * SARIF §3.27.23: an EMPTY `suppressions` array means "explicitly not
+ * suppressed", an ABSENT one means "no information" — a truthiness test on the
+ * array conflates the two. `rejected` and `underReview` have not taken effect;
+ * an absent `status` defaults to `accepted`, which is what skillspector 2.5.1
+ * emits.
+ */
+function suppressionOf(res: SarifResult): { justification: string } | undefined {
+  if (!Array.isArray(res.suppressions)) return undefined
+  const active = res.suppressions.find((s) => (s.status ?? 'accepted') === 'accepted')
+  if (!active) return undefined
+  return { justification: active.justification ?? '' }
 }
 
 export interface SarifParseOptions {
@@ -68,9 +90,21 @@ export function parseSarif(bytes: Buffer, opts: SarifParseOptions): ToolResult {
         message: res.message?.text ?? nativeRuleId,
       }
       if (typeof line === 'number') finding.line = line
+      // Assigned conditionally, not as `undefined`: `exactOptionalPropertyTypes`
+      // is on, the same reason `line` above is written this way.
+      const suppressed = suppressionOf(res)
+      if (suppressed) finding.suppressed = suppressed
       findings.push(finding)
     }
   }
+
+  // `outcome`, the count and `findingsTotal` are deliberately blind to
+  // suppression: the parser's verdict is "did I see anything", and a count that
+  // drops when a user edits a YAML file makes "did this skill improve"
+  // unanswerable. §8.1 owns the gate; the summary names the split so the
+  // lifecycle rail says the flag fired.
+  const suppressedCount = findings.filter((f) => f.suppressed).length
+  const plural = findings.length === 1 ? '' : 's'
 
   return {
     outcome: findings.length === 0 ? 'passed' : 'failed',
@@ -79,6 +113,8 @@ export function parseSarif(bytes: Buffer, opts: SarifParseOptions): ToolResult {
     summary:
       findings.length === 0
         ? 'no findings'
-        : `${findings.length} finding${findings.length === 1 ? '' : 's'}`,
+        : suppressedCount === 0
+          ? `${findings.length} finding${plural}`
+          : `${findings.length} finding${plural}, ${suppressedCount} suppressed`,
   }
 }

@@ -229,3 +229,68 @@ describe('R12.6 skillgantry fix', () => {
     await expect(run(['fix', 'nosuch'])).rejects.toThrow(/no skill matching/)
   })
 })
+
+describe('R6.11 fix over a suppressed run', () => {
+  const SUPPRESSED = { ...FINDING, suppressed: { justification: 'accepted false positive' } }
+
+  it('exits 1 naming the suppression rather than 0 with an empty table', async () => {
+    const { out, program, run } = await harness([
+      { id: 'run-1', stages: { security: [SUPPRESSED] } },
+    ])
+    await run(['fix', 'sk'])
+    expect(out.join('\n')).toMatch(/every finding in run run-1 is suppressed/)
+    expect(out.join('\n')).toContain('(1)')
+    expect(program.exitCode).toBe(1)
+  })
+
+  it('distinguishes a suppressed run from one that found nothing', async () => {
+    const { out, run } = await harness([{ id: 'run-1', stages: { security: [] } }])
+    await run(['fix', 'sk'])
+    expect(out.join('\n')).toContain('no findings in run run-1')
+  })
+
+  it('prints the survivors when only some are suppressed', async () => {
+    const live = { ...FINDING, nativeRuleId: 'MP2', path: 'sk/scripts/scan.py' }
+    const { out, program, run } = await harness([
+      { id: 'run-1', stages: { security: [SUPPRESSED, live] } },
+    ])
+    await run(['fix', 'sk'])
+    const text = out.join('\n')
+    expect(text).toContain('MP2')
+    expect(text).not.toContain('LP3')
+    expect(text).toContain('1 further finding(s) are suppressed')
+    expect(program.exitCode).toBe(0)
+  })
+
+  it('reports both counts as siblings under --json', async () => {
+    const live = { ...FINDING, nativeRuleId: 'MP2', path: 'sk/scripts/scan.py' }
+    const { out, run } = await harness([
+      { id: 'run-1', stages: { security: [SUPPRESSED, live] } },
+    ])
+    await run(['fix', 'sk', '--json'])
+    const doc = JSON.parse(out.join('')) as {
+      suppressed: number
+      prompts: Array<{ findings: number; suppressed: number }>
+    }
+    expect(doc.suppressed).toBe(1)
+    expect(doc.prompts[0]).toMatchObject({ findings: 1, suppressed: 1 })
+  })
+
+  it('leaves the sidecar byte-identical', async () => {
+    const { ws, run } = await harness([{ id: 'run-1', stages: { security: [SUPPRESSED] } }])
+    const before = await fingerprint(ws)
+    await run(['fix', 'sk'])
+    expect(await fingerprint(ws)).toEqual(before)
+  })
+
+  it('answers a pre-feature stage.json exactly as before', async () => {
+    // No `suppressed` key anywhere: absent means unsuppressed, which is what
+    // every run recorded before this feature was.
+    const { out, program, run } = await harness([
+      { id: 'run-1', stages: { security: [FINDING] }, withPrompt: ['security'] },
+    ])
+    await run(['fix', 'sk'])
+    expect(out.join('\n')).toContain('# stored prompt for security')
+    expect(program.exitCode).toBe(0)
+  })
+})

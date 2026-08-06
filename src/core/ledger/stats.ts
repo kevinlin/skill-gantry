@@ -73,6 +73,8 @@ export interface DashboardStats {
   evalCases: EvalCaseRate
   openBySeverity: SeverityCount[]
   openByRuleClass: RuleClassCount[]
+  /** Open or acknowledged, but suppressed by the skill's own file — R8.15. */
+  openSuppressed: number
   history: RunHistoryRow[]
 }
 
@@ -213,12 +215,19 @@ export function evalCaseRate(db: DatabaseSync, filter: StatsFilter): EvalCaseRat
 
 const OPEN_STATES = `i.state in ('open', 'acknowledged')`
 
+/**
+ * R8.15. An issue the user has baselined is one they have decided about, so it
+ * leaves the counts — otherwise the Dashboard's open number could never fall
+ * for anyone who uses a suppression file, which is that number's entire job.
+ * It is reported separately rather than dropped, and `listIssues` still lists it.
+ */
 export function openIssueCounts(
   db: DatabaseSync,
   filter: StatsFilter,
-): { bySeverity: SeverityCount[]; byRuleClass: RuleClassCount[] } {
+): { bySeverity: SeverityCount[]; byRuleClass: RuleClassCount[]; suppressed: number } {
   const scope = issueScope(filter)
-  const join = `from issues i join skills k on k.id = i.skill_id where ${OPEN_STATES} ${scope.sql}`
+  const base = `from issues i join skills k on k.id = i.skill_id where ${OPEN_STATES} ${scope.sql}`
+  const join = `${base} and i.suppressed_run is null`
 
   const bySeverity = db
     .prepare(
@@ -237,7 +246,11 @@ export function openIssueCounts(
     )
     .all(...scope.params) as unknown as RuleClassCount[]
 
-  return { bySeverity, byRuleClass }
+  const { n } = db
+    .prepare(`select count(*) as n ${base} and i.suppressed_run is not null`)
+    .get(...scope.params) as { n: number }
+
+  return { bySeverity, byRuleClass, suppressed: n }
 }
 
 export function runHistory(db: DatabaseSync, filter: StatsFilter, limit = 20): RunHistoryRow[] {
@@ -320,6 +333,7 @@ export function dashboard(
     evalCases: evalCaseRate(db, filter),
     openBySeverity: open.bySeverity,
     openByRuleClass: open.byRuleClass,
+    openSuppressed: open.suppressed,
     history: runHistory(db, filter, historyLimit),
   }
 }

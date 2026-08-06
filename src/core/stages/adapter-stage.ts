@@ -1,8 +1,10 @@
+import { stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { getAdapter } from '../adapters/registry.js'
 import {
   type Adapter,
   type AdapterManifest,
+  type ConditionalArgv,
   type CredentialRequirement,
   credentialsSatisfied,
   missingCredentials,
@@ -11,7 +13,12 @@ import { MUTATING_STAGES } from '../queue/types.js'
 import { type RunToolOutput, runTool } from '../runner/spawn.js'
 import type { ErrorKind, SkillRef, Stage } from '../types.js'
 import { applyFromSandbox, discardFromSandbox, prepareFromSandbox } from './mutation.js'
-import { highestSeverity, meetsFailFloor, reduceStageOutcome } from './outcome.js'
+import {
+  actionableFindings,
+  highestSeverity,
+  meetsFailFloor,
+  reduceStageOutcome,
+} from './outcome.js'
 import type {
   MutationScope,
   PendingMutation,
@@ -39,6 +46,35 @@ function substitute(argv: readonly string[], vars: Readonly<Record<string, strin
   return argv.map((arg) =>
     arg.replace(/\{(skillDir|repoRoot|toolDir)\}/g, (_m, key: string) => vars[key] ?? _m),
   )
+}
+
+/**
+ * R4.14. The groups whose declared path exists, appended in declaration order.
+ *
+ * Here and not in `plan()`: `plan()` runs on the context from before
+ * `openSandbox` re-roots `skill.dir`, and a repo-root skill's tool is handed a
+ * materialised candidate copy rather than the skill directory — so a stat
+ * against the pre-substitution path answers for a directory the tool never sees.
+ *
+ * `isFile()` rather than existence: `--baseline <dir>` makes skillspector exit
+ * 2 with no SARIF written. A stat failure of any kind reads as absent, because
+ * a file the engine cannot stat is one the tool cannot read, and the loud
+ * direction — every suppressed finding resurfacing — is the safe one.
+ */
+async function resolveConditionalArgv(
+  groups: readonly ConditionalArgv[] | undefined,
+  vars: Readonly<Record<string, string>>,
+): Promise<string[]> {
+  const out: string[] = []
+  for (const group of groups ?? []) {
+    const [path] = substitute([group.whenExists], vars) as [string]
+    const present = await stat(path).then(
+      (info) => info.isFile(),
+      () => false,
+    )
+    if (present) out.push(...substitute(group.argv, vars))
+  }
+  return out
 }
 
 type Classification = Pick<
@@ -108,19 +144,31 @@ export function classifyToolRun(
     return errored('parse', parsed.summary, durationMs)
   }
 
-  // Row 12b: the parse found things, but nothing that reaches the fail floor.
-  // The findings pass through untouched, so they are still filed and still
-  // reconciled — dropping them would make every issue this tool ever filed look
-  // absent and close all of them. Only the gate softens.
-  const highest = highestSeverity(parsed.findings)
-  if (parsed.outcome === 'failed' && highest !== null && !meetsFailFloor(highest)) {
+  // Rows 12b and 12c: the parse found things, but nothing the gate may act on —
+  // either every finding is below the fail floor, or the tool itself reported
+  // them all as suppressed by the user's own suppression file (R4.15).
+  //
+  // The findings pass through untouched in both cases, so they are still filed
+  // and still reconciled — dropping them would make every issue this tool ever
+  // filed look absent and close all of them. Only the gate softens.
+  //
+  // `findings.length > 0` is load-bearing: every shipped parser derives `failed`
+  // from `findings.length`, and without the clause a future parser returning
+  // `failed` with nothing to point at would be silently downgraded.
+  const highest = highestSeverity(actionableFindings(parsed.findings))
+  if (
+    parsed.outcome === 'failed' &&
+    parsed.findings.length > 0 &&
+    (highest === null || !meetsFailFloor(highest))
+  ) {
     return {
       outcome: 'passed',
       errorKind: null,
       findings: parsed.findings,
       metrics: { ...parsed.metrics, durationMs },
       // Named, because "2 findings" beside `passed` otherwise reads as a bug.
-      summary: `${parsed.summary}, highest ${highest}`,
+      summary:
+        highest === null ? `${parsed.summary}, none actionable` : `${parsed.summary}, highest ${highest}`,
     }
   }
 
@@ -291,11 +339,15 @@ export class AdapterStageExecutor implements StageExecutor {
       }
 
       const { manifest } = adapter
-      const argv = substitute(manifest.invoke.argv, {
+      const vars = {
         skillDir: ctx.skill.dir,
         repoRoot: ctx.skill.repo.path,
         toolDir: artefactDir,
-      })
+      }
+      const argv = [
+        ...substitute(manifest.invoke.argv, vars),
+        ...(await resolveConditionalArgv(manifest.invoke.conditionalArgv, vars)),
+      ]
 
       const run = await runTool({
         bin: locked.bin,

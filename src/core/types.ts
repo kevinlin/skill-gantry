@@ -146,4 +146,16 @@ export interface RawFinding {
   /** Display only. Never part of a fingerprint. */
   line?: number
   message: string
+  /**
+   * R4.15. SARIF 2.1.0 `result.suppressions`. The tool still reported the
+   * finding and still believes it; the user's own suppression file says do not
+   * act on it. Absent means unsuppressed.
+   *
+   * One optional field rather than a second array on `ToolResult`, because
+   * R8.4's fingerprint collapses a baselined and an unbaselined finding of one
+   * class in one file to a single issue — and because forgetting a second
+   * array closes issues silently, while forgetting this field files the
+   * finding exactly as before.
+   */
+  suppressed?: { justification: string }
 }

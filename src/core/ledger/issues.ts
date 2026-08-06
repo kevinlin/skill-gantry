@@ -60,3 +60,53 @@ export function detectorSaysGone(row: {
     (row.last_seen_run === null || row.last_absent_run > row.last_seen_run)
   )
 }
+
+/**
+ * R8.15. Whether one detector's *current* sighting was wholly suppressed.
+ *
+ * An equality against `last_seen_run` rather than a presence test on
+ * `suppressed_run`, so a pair left behind by an older sighting degrades to
+ * unsuppressed instead of outliving the sighting it describes. Reconciliation
+ * writes both columns in one statement, so the two agree by construction; the
+ * equality is what keeps that true through §10.6's merge, which takes each
+ * column from a row rather than from a write.
+ */
+export function detectorSuppressed(row: {
+  last_seen_run: string | null
+  suppressed_run: string | null
+}): boolean {
+  return row.suppressed_run !== null && row.suppressed_run === row.last_seen_run
+}
+
+/**
+ * R8.15. The issue-level conjunction, the twin of R8.8's closure conjunction:
+ * an issue reads as suppressed only when every detector *still reporting it*
+ * reports it suppressed. A detector that says gone has no vote, and an issue no
+ * detector is reporting is not suppressed.
+ *
+ * This is what stops one tool's baseline speaking for a tool it never consulted
+ * — skillspector's file cannot hide a finding skill-scanner is still reporting
+ * plainly beside it.
+ */
+export interface DetectorSuppressionRow {
+  last_seen_run: string | null
+  last_absent_run: string | null
+  suppressed_run: string | null
+  suppressed_reason: string | null
+}
+
+export function issueSuppression(
+  rows: readonly DetectorSuppressionRow[],
+): { run: string; reason: string } | null {
+  const voters = rows.filter((row) => !detectorSaysGone(row))
+  if (voters.length === 0) return null
+  if (!voters.every(detectorSuppressed)) return null
+
+  // The latest voter, tie-broken by reason text, so two detectors suppressing
+  // in one run produce one deterministic answer rather than an insertion-order
+  // one — the same property that made closure a conjunction over a set.
+  const winner = voters.reduce((best, row) =>
+    (row.suppressed_run as string) > (best.suppressed_run as string) ? row : best,
+  ) as DetectorSuppressionRow
+  return { run: winner.suppressed_run as string, reason: winner.suppressed_reason ?? '' }
+}

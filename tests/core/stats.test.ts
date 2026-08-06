@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { provenanceFingerprint } from '../../src/core/ledger/fingerprint.js'
-import { dashboard, provenanceOptions } from '../../src/core/ledger/stats.js'
+import { dashboard, openIssueCounts, provenanceOptions } from '../../src/core/ledger/stats.js'
 import { memoryLedger, recordFixtureRun, skillFixture } from '../helpers/ledger-fixture.js'
 
 const ALPHA = skillFixture('alpha', 'declawed')
@@ -134,5 +134,56 @@ describe('provenance grouping — R7.6', () => {
   it('excludes an issue whose last sighting was under another provenance', () => {
     const stats = dashboard(seeded().db, { provenanceFp: provenanceFingerprint(P2) })
     expect(stats.openBySeverity).toEqual([])
+  })
+})
+
+describe('openIssueCounts — suppression (R8.15)', () => {
+  it('excludes a suppressed issue from the counts and reports it separately', () => {
+    const ledger = memoryLedger()
+    const skill = skillFixture('alpha', 'declawed')
+    const raw = {
+      ruleClass: 'prompt-injection' as never,
+      nativeRuleId: 'AS3',
+      severity: 'high' as const,
+      path: 'declawed/SKILL.md',
+      message: 'x',
+    }
+    recordFixtureRun(ledger, {
+      runId: '019283af-0000-7000-8000-0000000000a1',
+      skill,
+      stages: [{ stage: 'security', outcome: 'failed', findings: [raw] }],
+    })
+    expect(openIssueCounts(ledger.db, {})).toMatchObject({
+      bySeverity: [{ severity: 'high', count: 1 }],
+      suppressed: 0,
+    })
+
+    recordFixtureRun(ledger, {
+      runId: '019283af-0000-7000-8000-0000000000a2',
+      skill,
+      stages: [
+        {
+          stage: 'security',
+          outcome: 'passed',
+          findings: [{ ...raw, suppressed: { justification: 'baselined' } }],
+        },
+      ],
+    })
+    // Still open — a suppression is not a closure — but out of the count.
+    expect(openIssueCounts(ledger.db, {})).toMatchObject({
+      bySeverity: [],
+      byRuleClass: [],
+      suppressed: 1,
+    })
+
+    recordFixtureRun(ledger, {
+      runId: '019283af-0000-7000-8000-0000000000a3',
+      skill,
+      stages: [{ stage: 'security', outcome: 'failed', findings: [raw] }],
+    })
+    expect(openIssueCounts(ledger.db, {})).toMatchObject({
+      bySeverity: [{ severity: 'high', count: 1 }],
+      suppressed: 0,
+    })
   })
 })

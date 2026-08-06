@@ -316,7 +316,7 @@ Fan-out tools run concurrently, capped at two, each in its own artefact director
 
 ## 7. Adapter contract
 
-*Satisfies R1.5, R4.1–R4.5, R4.12.*
+*Satisfies R1.5, R4.1–R4.5, R4.12, R4.14, R4.15.*
 
 ```ts
 type Stage    = 'validate' | 'evaluate' | 'security' | 'optimise' | 'release'
@@ -345,7 +345,12 @@ interface AdapterManifest {
   /** Free-form label for how the tool was asked to analyse, recorded in provenance. */
   analysisMode: string
   install: InstallSpec
-  invoke: { argv: string[]; cwd: 'skillDir' | 'repoRoot' }
+  invoke: {
+    argv: string[]
+    cwd: 'skillDir' | 'repoRoot'
+    /** R4.14. Appended after `argv`, in declaration order. */
+    conditionalArgv?: ConditionalArgv[]
+  }
   versionArgv: string[]
   artefacts: string[]              // relative to this tool's artefact dir
   binaryArtefacts?: string[]       // subset copied verbatim, never parsed
@@ -386,6 +391,16 @@ interface ParseContext {
   durationMs: number
 }
 
+/**
+ * R4.14. An argument group the stage executor appends only when a path exists.
+ * Declared, never probed: R4.3 forbids an adapter touching the filesystem.
+ */
+interface ConditionalArgv {
+  /** Same `{skillDir}`/`{repoRoot}`/`{toolDir}` vocabulary as `argv`. */
+  whenExists: string
+  argv: string[]
+}
+
 interface RawFinding {
   ruleClass: RuleClass
   nativeRuleId: string
@@ -393,6 +408,12 @@ interface RawFinding {
   path: string                     // repo-relative, normalised separators
   line?: number                    // display only, never in the fingerprint
   message: string
+  /**
+   * R4.15. SARIF 2.1.0 `result.suppressions`. The tool still reported the
+   * finding and still believes it; the user's own suppression file says do not
+   * act on it. Absent means unsuppressed.
+   */
+  suppressed?: { justification: string }
 }
 
 interface ToolResult {
@@ -424,8 +445,15 @@ export const manifest: AdapterManifest = {
   analysisMode: 'static',
   install: { kind: 'uv-tool', spec: 'git+https://github.com/NVIDIA/skillspector.git', pin: 'v2.5.1',
              binName: 'skillspector' },
-  invoke: { argv: ['scan', '{skillDir}', '--no-llm', '--format', 'sarif',
-                   '--output', '{toolDir}/findings.sarif'], cwd: 'repoRoot' },
+  invoke: {
+    argv: ['scan', '{skillDir}', '--no-llm', '--format', 'sarif',
+           '--output', '{toolDir}/findings.sarif'],
+    cwd: 'repoRoot',
+    conditionalArgv: [
+      { whenExists: '{skillDir}/.skillspector-baseline.yaml',
+        argv: ['--baseline', '{skillDir}/.skillspector-baseline.yaml'] },
+    ],
+  },
   versionArgv: ['--version'],
   artefacts: ['findings.sarif'],
   timeoutMs: 120_000,
@@ -456,6 +484,18 @@ credentials: {
 ```
 
 `detects` for either mode is derived by the fixture-capture script from real output at the pinned version, not hand-listed, so the declaration and the fixtures cannot drift apart. Under §10.4 a too-narrow `detects` is no longer a correctness hazard, only a completeness one.
+
+**Conditional argument groups, and why the stat is in `execute()`.** SkillSpector 2.5.1 reads a suppression baseline only when `--baseline <path>` is passed; `.skillspector-baseline.yaml` is merely where `skillspector baseline` writes one, and nothing auto-discovers it. A manifest declares the condition and the stage executor answers it, because R4.3 forbids an adapter touching the filesystem — and because the adapter could not answer it correctly even if it were allowed to. The test runs in `execute()`, against the **substituted** path, never in `plan()`: `plan()` runs before the sandbox re-roots `ctx.skill.dir`, and a repo-root skill's tool is handed a materialised candidate copy rather than the skill directory, so a stat against the manifest's own vocabulary would answer for a directory the tool never sees.
+
+Three rules, each covering a real failure. The test is `isFile()` rather than existence, because `--baseline <dir>` makes skillspector exit 2 with no SARIF written. A non-`ENOENT` stat failure reads as absent, because a baseline the engine cannot stat is one the tool cannot read, and the loud direction — every suppressed finding resurfacing — is the safe one. And the path must carry the substitution vocabulary rather than be a literal relative path: `cwd` is `repoRoot` for this adapter, so a relative path would resolve against the wrong directory.
+
+The group is appended after `argv`, so a manifest ending in a positional argument cannot use one — the group would land past the positional and read as more positionals. Every shipped manifest ends in an option value.
+
+**A suppressed finding crosses the parse boundary annotated, not dropped** (R4.15). `--baseline` does not remove the result; it annotates it with SARIF 2.1.0's `result.suppressions`, so SkillGantry receives both the finding and the user's own justification text. It is one optional field on `RawFinding` rather than a second array on `ToolResult` for two reasons. R8.4's fingerprint is `(skillId, relPath, ruleClass)`, so two findings of one class in one file — one baselined, one not — collapse to one issue, and a split array destroys the pairing §10.4 needs to decide whether that issue is suppressed at all. And the failure shapes are asymmetric: a consumer that forgets a second array never files those findings, so §10.4 sees their fingerprints absent and closes the issues as `fixed`; a consumer that forgets the optional field files the finding exactly as it does today. The feature degrades to "no suppression", never to "issue closed and history lost".
+
+`outcome`, `findings.length` and `metrics.findingsTotal` are unchanged by suppression — the parser's verdict stays "did I see anything", and a count that drops when a user edits a YAML file makes "did this skill improve" unanswerable. `summary` gains the count (`2 findings, 1 suppressed`), which reaches the lifecycle rail and `stage.json` and is the feature's always-on signal that the flag fired.
+
+Two consequences fall out of the baseline file being an ordinary file inside the skill directory. It is part of the candidate manifest (§4.4), so writing or editing it moves the skill digest — which is what makes R9.9 refuse a release whose passing gates were recorded against different bytes (§12.4). And it is therefore inside the release archive, which is correct: a consumer receives the maintainer's accepted-false-positive list along with the skill.
 
 ### 7.1 Rule-class mapping
 
@@ -522,8 +562,9 @@ Evaluated in order; the first row that matches wins.
 | 9 | `parse` returns `errored` | `errored` | `parse` | no |
 | 10 | `parse` succeeds, no findings, exit code 0 | `passed` | — | yes |
 | 11 | `parse` succeeds, no findings, exit code non-zero | `passed` | — | yes |
-| 12 | `parse` succeeds, a finding at or above the fail floor | `failed` | — | yes |
-| 12b | `parse` succeeds, findings present, every one below the fail floor | `passed` | — | yes |
+| 12 | `parse` succeeds, an unsuppressed finding at or above the fail floor | `failed` | — | yes |
+| 12b | `parse` succeeds, unsuppressed findings present, every one below the fail floor | `passed` | — | yes |
+| 12c | `parse` succeeds, findings present, none of them unsuppressed | `passed` | — | yes |
 | 13 | Spawn itself failed (ENOENT, EACCES) | `errored` | `spawn` | no |
 
 Rows 7 and 8 are ordered so a missing report is classified before the parser is ever handed an empty map; revision 2 left this to whichever error the parser happened to throw. Row 11 is the rule that matters most in practice: a scanner exiting 1 with a clean report has passed, and the parse says so.
@@ -532,7 +573,7 @@ Rows 3b and 3c are the two a *stage* rather than a tool produces. R10.11 aborts 
 
 Row 3c exists because the two cases need opposite recovery and one kind could not carry both. The sandbox record is the authority for telling them apart — both strategies mark it `applied` only once the journal is complete — so the split is read off disk rather than inferred from how far the code got. Settling a completed apply as an abort flipped a git sandbox's marker to `discarded` over a written tree, putting it beyond recovery's reach, and on the snapshot strategy restored the pre-tool state over an apply the user had approved. Neither row keeps its stage's tool runs out of the record: an aborted stage carries whatever the tools produced before the abort, and appends its own synthesised run, because R5.13's partial evidence is the point.
 
-Only rows 10 to 12b feed issue reconciliation: the tool actually ran and its output was understood. Every other row leaves the ledger's issue states untouched, which is the fail-safe that stops a crashed or absent scanner from closing everything it once found.
+Only rows 10 to 12c feed issue reconciliation: the tool actually ran and its output was understood. Every other row leaves the ledger's issue states untouched, which is the fail-safe that stops a crashed or absent scanner from closing everything it once found.
 
 **The fail floor is `medium`.** Revision 3's row 12 read "findings present" with no severity dimension, so an advisory failed a gate as hard as a critical. Observed: skill-lint 0.2.0 over `zapac-agent-skills/declawed` exited 0, called the skill `SAFE`, and reported two `LOW` `R06` findings — "bundled script, review contents carefully" against a `.sh` and a `.py` that are the skill's own content. Validate failed and R5.1 halted the lifecycle on a tool that had found nothing wrong.
 
@@ -543,6 +584,10 @@ Row 12b keeps the findings. They are returned verbatim, so §10.4 files them as 
 The floor is a uniform rule over normalised severity, not a reproduction of each tool's own verdict. skill-lint bands a weighted score (`CRITICAL 10 / HIGH 5 / MEDIUM 2 / LOW 1`), so two `LOW`s and one `MEDIUM` both score 2 and one of those crosses the floor while the other does not. Matching every tool's scoring formula would put a per-tool policy in the engine and re-tune it on each upstream release.
 
 The floor is a constant, deliberately not configurable. A per-skill or per-repo threshold would make two runs of one tool incomparable in the ledger, which §10 exists to prevent.
+
+**Rows 12 and 12b read the unsuppressed findings only, and row 12c is what a fully baselined report reaches** (R4.15). The severity comparison runs over `actionableFindings(parsed.findings)` — those carrying no `suppressed` annotation — through a named helper rather than by teaching `highestSeverity` to filter, because a function called "highest severity" that quietly means "highest actionable severity" is precisely the hidden policy this design writes comments against. Row 12b's guard also requires `findings.length > 0`: every shipped parser derives `failed` from `findings.length`, and without the clause a future parser returning `failed` with nothing to point at would be silently downgraded to `passed`.
+
+All three rows keep every finding, suppressed ones included, and all three reconcile. That is the safety property §10.4 depends on: a suppressed finding recorded as *reported* holds its issue open, whereas one dropped here would look absent to every detector and close as `fixed`.
 
 The parser's own verdict is confined to `passed | failed | errored`; `skipped` is producible only by the executor, since a tool that never ran has no parser to speak for it.
 
@@ -567,6 +612,8 @@ StageOutcome =
 This is total: every non-empty combination of the four tool outcomes maps to exactly one stage outcome. Worked cases the review called out — `failed + errored → degraded`, `passed + skipped → degraded`, `failed + skipped → degraded`, `errored + skipped → errored`.
 
 A `pick-one` stage has exactly one tool, so its stage outcome equals that tool's outcome and `degraded` cannot arise.
+
+Suppression changes nothing here, stated so a reader does not go looking for it: §8.1 has already resolved it into a `ToolOutcome`, and this reduction sees outcomes only.
 
 The chain halts unless the stage outcome is `passed`. The headless exit code is zero only when every executed stage is `passed`. Release refuses on anything other than `passed`.
 
@@ -630,7 +677,7 @@ One case remains where unredacted artefacts could be re-read by a later tool: a 
 
 ### 9.4 Fix prompt
 
-*Satisfies R6.10.*
+*Satisfies R6.10, R6.11.*
 
 A stage that reported findings writes `fix-prompt.md` beside its `stage.json`: a prompt for a coding agent that names where the skill is, where each tool's own report is, and what every finding said. Per stage rather than per tool, because a fan-out security stage with two scanners is one job for the agent.
 
@@ -640,11 +687,13 @@ A stage that reported findings writes `fix-prompt.md` beside its `stage.json`: a
 
 The prompt instructs the agent to judge each finding into one of three — correct and worth fixing, correct but the suggested fix does not apply here, false positive — and to stop and report rather than edit code it judges correct. Both findings in the run that motivated this were of the second and third kinds: one named a `permissions` frontmatter field the Agent Skill schema does not have, so writing it would fail validate; the other flagged a run of alignment whitespace inside a `re.VERBOSE` regex. SkillGantry never applies the prompt. It also forbids any write under `*-workspace/` or `.skillgantry-workspace/`, which is the evidence the prompt itself points at.
 
+**Suppressed findings are omitted, and their count is named** (R6.11). The table is built from `actionableFindings`, the survivors are numbered from 1, and one line says how many were left out and why. `buildFixPrompt` returns null when that set is empty, so a fully baselined stage writes no prompt at all. The one instruction a prompt must never give a coding agent is to fix the thing the user has already ruled on — and the omitted count is there so the agent is not left wondering why the tool report it is told to read first lists more findings than the table does. Sub-floor findings are not suppressed, so the paragraph above is untouched.
+
 **It is built from `input.skill`, never `ctx.skill`.** The prompt names where an agent should edit, and `ctx.skill` points into the mutation sandbox or into the materialised candidate's temp directory — neither of which exists after the run. The builder is a pure function in `stages`, which is the only module that adds no §3 edge: it already depends on `adapters` for the manifest lookup, and it already owns no I/O. `workspace` gets a four-line `writeFixPrompt` and no judgement, per §3's own rule that a module owning I/O does not own decisions.
 
 ## 10. Ledger
 
-*Satisfies R8.1–R8.12.*
+*Satisfies R8.1–R8.12, R8.15.*
 
 ### 10.1 Schema
 
@@ -671,7 +720,9 @@ tool_runs(id, stage_id, tool_id, tool_version, outcome,
 
 issues(fingerprint PK, skill_id, rule_class, rel_path,
        severity_max, state, note, occurrence_count,
-       first_seen_run, last_seen_run, closed_run, reopened_run)
+       first_seen_run, last_seen_run, closed_run, reopened_run,
+       suppressed_run,             -- derived cache (R8.15); null = not suppressed
+       suppressed_reason)
 
 issue_detections(issue_fp, tool_run_id, ordinal,
                  native_rule_id, native_severity, line, message,
@@ -680,10 +731,18 @@ issue_detections(issue_fp, tool_run_id, ordinal,
 issue_detectors(issue_fp, tool_id,          -- one row per tool that has ever detected it
                 last_seen_run,              -- last run in which this tool reported it
                 last_absent_run,            -- last conclusive run in which it did not
+                suppressed_run,             -- that sighting was wholly suppressed (R8.15)
+                suppressed_reason,          -- the tool's own justification text
                 PRIMARY KEY(issue_fp, tool_id))
 ```
 
 `issue_detectors` is what makes closure deterministic under concurrent fan-out; §10.4 explains why a single "most recent detector" could not be.
+
+**The four suppression columns are a derived cache, and the skill's own suppression file is the authority** (R8.15) — R1.6's pattern, adopted here for R1.6's reason: the file edit and the ledger transaction cannot be made atomic, so one of them has to be named the truth. Every conclusive tool run recomputes them; migration 5 adds them with no backfill and no default, because every pre-existing row *was* unsuppressed and a backfill would be the ledger inventing a decision the user never made.
+
+Two levels because the question has two, exactly the shape `issue_detectors` already has for closure: evidence per tool, decision as a conjunction over the set. A detector row is suppressed when `suppressed_run` is non-null *and equal to* `last_seen_run` — an equality rather than a presence test, so a pair left behind by an older sighting degrades to unsuppressed rather than outliving the sighting it describes. Nothing is stored on `issue_detections`: R8.2 makes the SARIF artefact the per-occurrence evidence, and an unread column is maintenance with no reader.
+
+Suppression is a column, never a `state`, so R8.7's "exactly one state" survives. It and `wontfix` are orthogonal by construction: both hide, deleting a baseline entry unsuppresses but leaves the `wontfix`, and reopening a `wontfix` leaves the suppression.
 
 The ledger stores no raw tool output; `tool_runs.artefact_dir` points at the sidecar, which holds the evidence.
 
@@ -731,9 +790,11 @@ Revision 1 added a `messageShape` component, which the review correctly showed c
 
 Accepted consequence: three distinct credential findings in one file are one issue with three detections. The issue count reads as "files with a problem of class X", not "occurrences of X".
 
+`occurrence_count` counts suppressed occurrences too. The definition above is "how many times was this seen last time we looked", and the tool did see them — the user's suppression file is a decision about acting on a finding, not a claim that it was not reported. `severity_max` likewise still rises on a suppressed finding and stays monotone: severity is a property of the finding, suppression a property of the user's decision about it. This is also why one baselined occurrence cannot hide an issue: a fingerprint counts as suppressed for a tool run only when **every** occurrence of it in that run was suppressed.
+
 ### 10.4 Reconciliation
 
-*Satisfies R8.8, R8.12.*
+*Satisfies R8.8, R8.12, R8.15.*
 
 Runs once, inside the same transaction that records the run. Two phases: each conclusive tool records what it did and did not see, then an issue closes only when **every** tool that has ever detected it agrees it is gone.
 
@@ -742,18 +803,27 @@ Runs once, inside the same transaction that records the run. Two phases: each co
 for each toolRun in this run where outcome ∈ {passed, failed}:
     scope    ← manifest(toolRun.tool_id).detects
                  ∪ { rule classes this tool has previously produced for this skill }
-    reported ← fingerprints this toolRun produced
+    reported ← fingerprints this toolRun produced          # suppressed ones included
+    suppressed ← { fp ∈ reported : every occurrence of fp in this toolRun was suppressed }
     for fp in reported:
-        upsert issue_detectors(fp, tool_id, last_seen_run = run.id)
+        upsert issue_detectors(fp, tool_id, last_seen_run = run.id,
+                               suppressed_run    = fp ∈ suppressed ? run.id : null,
+                               suppressed_reason = fp ∈ suppressed ? justification : null)
     for fp in (issues for this skill with rule_class ∈ scope
                AND an issue_detectors row for this tool) \ reported:
-        update issue_detectors(fp, tool_id, last_absent_run = run.id)
+        update issue_detectors(fp, tool_id, last_absent_run = run.id,
+                               suppressed_run = null, suppressed_reason = null)
 
 # phase 2 — closure
 for each issue for this skill where state ∈ {open, acknowledged}:
     if every row in issue_detectors(issue.fp) has
            last_absent_run set AND (last_seen_run is null OR last_absent_run > last_seen_run):
         transition(issue, 'fixed', closed_run = run.id)
+
+# phase 3 — recompute the issue-level suppression cache
+for each fp phase 1 touched:                               # every issue, not only the candidates
+    voters ← rows of issue_detectors(fp) that do not say gone
+    issues(fp).suppressed ← voters ≠ ∅ AND every voter is suppressed
 ```
 
 **Why not "the most recent detector".** Revision 2 closed an issue when the tool owning its most recent detection reported a conclusive absence. Fan-out tools run concurrently, so two detections from one run have no defined order, and completion or insertion order decided ownership. If the winning scanner passed without the finding while the other errored, the issue closed; had they finished the other way round it survived. Identical runs could disagree. Modelling absence per detecting tool removes ordering from the decision entirely: closure is a conjunction over a set, and a set has no order.
@@ -762,7 +832,13 @@ The conservative direction is deliberate. An issue that two scanners found close
 
 **Scope is widened at runtime.** `manifest.detects` is a declaration, and a declaration that is too narrow used to mean an issue could never close — the tool would not consider its own past finding in scope. Scope is therefore `detects` unioned with every rule class this tool has actually produced for this skill, which subsumes revision 2's separate `unmapped:` clause and also covers a mapped class the manifest forgot to list. `detects` remains useful for presets and for the wizard; it is no longer load-bearing for correctness.
 
-Tool runs with outcome `errored` or `skipped` contribute nothing to either phase, per §8.1.
+Tool runs with outcome `errored` or `skipped` contribute nothing to any phase, per §8.1. That is also why the suppression writes live here rather than in `record.ts`: `record.ts` iterates every tool run including the errored ones, and this loop has already `continue`d past them, so the existing fail-safe extends to suppression for free. An errored or skipped run leaves both columns exactly as the last conclusive run left them.
+
+**Why a suppressed finding is *reported*, not absent.** It joins `reported`, which falls out of phase 1 with no change to its first loop and is the whole safety property. Were a suppressed sighting recorded as an absence instead, `last_absent_run` would advance, every detector would agree the issue was gone, and phase 2 would set `state = 'fixed'`. The history would survive literally — the detections and the first-seen run are still there — but the issue would read `fixed` while not being fixed, and an issue the user had *acknowledged* would be silently closed by `stateOnAbsence`. Phase 2 itself is unchanged and does not read the new columns: a suppressed sighting blocks closure by advancing `last_seen_run`, and by nothing else. Suppression never writes `state`.
+
+**The clear is structural, not a second code path.** Both columns are bound in the same upsert that advances `last_seen_run` — to the run id when the sighting was wholly suppressed, to `null` when it was not — so there is no clear path a caller can forget to call. The absent branch nulls them too, so a detector row reads honestly on its own.
+
+**The per-issue conjunction is the twin of the closure conjunction**, and it is what stops a tool-scoped baseline speaking for a tool that was never consulted: an issue reads as suppressed only when every detector *still reporting it* reports it suppressed, and a detector that says gone has no vote. skillspector's baseline therefore cannot hide a finding skill-scanner is still reporting plainly beside it. Phase 3 recomputes over **every** fingerprint phase 1 touched rather than only phase 2's `open`/`acknowledged` candidates, because restricting it would freeze a `wontfix` issue's flag forever, and `wontfix` rows appear on the Issues screen. It is exported as `recomputeIssueSuppression(db, fp)` because §10.6's migration must call it too — a second copy of the conjunction is how the two would come to disagree.
 
 ### 10.5 Issue state machine
 
@@ -788,13 +864,19 @@ Tool runs with outcome `errored` or `skipped` contribute nothing to either phase
 | `fixed` | detected again | `open` | `reopened_run` set, `closed_run` cleared |
 | any | detecting tool `errored`/`skipped` | unchanged | the fail-safe |
 | any | detected by a tool that never has before | unchanged | a new `issue_detectors` row joins the closure conjunction |
+| any | detected again, every occurrence suppressed | unchanged | `last_seen_run` advances; the suppression columns are set, no `state` is written |
+| any | detected again, unsuppressed after a suppressed sighting | unchanged | the suppression columns are cleared by the same upsert |
 | any | rule-map migration | merged | §10.6 |
+
+The last two rows are not states. Suppression is a pair of columns (§10.1), so it composes with each row above rather than replacing one. `wontfix` was considered and rejected as the mechanism: §10.5 makes it sticky and reversible only by explicit user action, so deleting a baseline entry would leave the issue suppressed forever, and the Issues screen could not tell a maintainer's standing decision from a scanner's current one.
 
 ### 10.6 Rule-map migration
 
 *Satisfies R8.14.*
 
 Adding a mapping turns `unmapped:<tool>:<id>` into a `KnownRuleClass`, which changes fingerprints. Migration is explicit, versioned with the rule map, and runs inside one transaction: recompute affected fingerprints, merge issues that now collide, re-parent their detections and their `issue_detectors` rows, taking the later `last_seen_run` and the later `last_absent_run` per tool, take the strongest state by precedence `wontfix > acknowledged > open > fixed`, and write a migration note onto the surviving issue. It is never implicit.
+
+`fold()` names the detector columns explicitly in both its select and its insert, so the suppression pair has to be carried deliberately: left alone, a merge would drop the pair on insert and keep the target's stale pair on update. Both are taken from whichever row's `last_seen_run` won, which preserves §10.1's equality invariant — a pair whose `suppressed_run` no longer matches the merged `last_seen_run` degrades to unsuppressed rather than outliving its sighting. `recomputeIssueSuppression` then runs on the surviving fingerprint. No `RULE_CLASS_MAP_VERSION` bump: the rule map itself has not changed.
 
 ### 10.7 Statistics queries
 
@@ -819,12 +901,14 @@ interface StatsFilter {
 | stage pass rate | `stagePassRates` | `stages.outcome` grouped by `stages.stage` |
 | eval case pass rate | `evalCaseRate` | `casesTotal` / `casesPassed` / `casesErrored` from `stages.metrics_json` where `stage = 'evaluate'` |
 | wall-clock per stage | `stageWallClock` | `stages.ended_at − stages.started_at`, median and max |
-| open issue counts by severity and rule class | `openIssueCounts` | `issues` in state `open` or `acknowledged`, grouped twice |
+| open issue counts by severity and rule class | `openIssueCounts` | `issues` in state `open` or `acknowledged` and not suppressed, grouped twice, plus a sibling count of the suppressed ones |
 | run history | `runHistory` | `runs` newest first by run id |
 
 `dashboard()` composes all five plus the three counts a header needs. Medians
 and the metric sums are computed in TypeScript: SQLite has no median, and
 summing JSON in SQL would put the metric key set in two places.
+
+**Counts exclude suppressed issues; listings do not** (R8.15). An issue the user has baselined is one they have decided about, and counting it would keep the Dashboard's open number from ever falling for anyone who uses a baseline — which is that number's entire job. `listIssues` keeps them, projects the tool's justification from the row it already selects, sorts them last, and offers an optional `suppressed` filter that narrows both ways; omitting it returns both, so an existing caller is unchanged. The Issues screen is the audit surface, and a suppression hidden there is a suppression that cannot be falsified.
 
 **Wall clock is the stage's own span, not its tools'.** `durationMs` is
 deliberately absent from `stages.metrics_json`: fan-out tools run concurrently,
@@ -1019,6 +1103,8 @@ apply or later         → abort  (compensating rollback via the journal)
 
 **Preconditions.** The skill is not deprecated, per the authority rule in §13. The most recent validate, evaluate and security stage outcomes are all `passed`. Each of those runs' `skill_digest` equals the candidate's current digest — the R9.9 binding that stops evidence from an older state authorising a newer release. When `versions.json` exists, its entry and the frontmatter version already agree.
 
+A fully suppressed security stage reports `passed` (§8.1 row 12c), so these preconditions permit the release — and a baseline is therefore a gate override in effect. That is intended, and R9.9 is what stops it being a retroactive one: the baseline file is an ordinary file inside the candidate manifest, so writing or editing it moves the skill digest, and the digest binding above refuses a release whose passing gates were recorded against the bytes from before. You cannot baseline your way past a gate that has already passed; you can only baseline and then re-run the gates, which is the visible, recorded path. `release/preconditions.ts` needs no change. The audit trail is threefold: the SARIF `suppressions` annotation on disk, `issue_detectors.suppressed_reason` in the ledger, and the baseline file itself inside the archive the consumer receives.
+
 **Target version.** Supplied explicitly as a semver, or as a bump level (`major` / `minor` / `patch`) applied to the current frontmatter version. Never inferred silently.
 
 **Stage-candidate-edits.** Inside the sandbox: `SKILL.md` frontmatter version, `CHANGELOG.md` section prepended, and `versions.json` when it exists. Manifest handling is unchanged — when no repo-root `versions.json` exists, the case for all 54 skills in `~/.claude/skills`, release updates only `SKILL.md` and records `"manifest": "none"`. SkillGantry never creates one.
@@ -1114,6 +1200,8 @@ list, `enter` runs the selection and `esc` cancels. Direct keys were rejected
 because Work already spends `1`–`4` on its output panels, and a second digit
 scheme reading differently per screen is how a keymap becomes unguessable.
 `esc` on any screen other than Work returns to Work.
+
+**A suppressed issue is marked, never hidden** (R8.15). The Issues row carries `⊘ suppressed: <reason>` on its trailing field, beside the existing `⟂ blockers` precedent, and renders dimmed; the panel title gains `· N suppressed`. Zero new rows, zero new keys — §14.1's budget is what that constraint exists for — and the mark survives `truncateMiddle`, which elides the head. The glyph is paired with the word, so a monochrome terminal loses nothing. A suppressed finding in the Work screen's Findings pane carries the same glyph on its existing row. No new requirement covers either: R11.3 puts the Issues screen on the map and R8.15's listing clause says what must appear on it.
 
 Dashboard, Issues, Tools and Settings each render one `Panel` whose body is
 windowed against `layout.rows` by `screenBodyRows()`, so §14.1's four rules
@@ -1288,6 +1376,8 @@ Every launch, headless or not, first scans for an unresolved mutation record and
 
 **Its exit code answers "is there a prompt on stdout", not "did the skill pass"** — `0` when one was produced, `1` when the run resolved and nothing in scope carried a finding. This is a deliberate divergence from R12.2's meaning for `run`: reusing that meaning would make a clean skill and a failed lookup indistinguishable. An unknown skill, run id or stage rejects and reaches the top-level handler like every other command's errors.
 
+**Suppression reaches the headless surface additively.** `run --json` carries `ToolRunRecord` on `tool:done`, so each suppressed finding simply gains one optional key: no new event, no version bump. `RunDelta` is deliberately not extended — a `suppressed` counter would mean editing six files kept in step for a number the stage summary already puts on the rail during the run and the Issues screen already answers after it. `fix` gains one exit case: a run whose findings are all suppressed exits `1` saying so, rather than `0` with an empty table, and `--json` reports `findings` (actionable) and `suppressed` as siblings.
+
 **It resolves the run from the sidecar, not the ledger.** The default is the greatest run id in `index.ndjson` — not the `latest` symlink, which is absent mid-write, and not `runs.sidecar_path`, because R8.2 makes the sidecar the evidence, the command already names its skill so no cross-skill query is needed, and a run whose ledger row failed still has complete evidence on disk. When the prompt file is absent but that stage's `stage.json` carries findings, `fix` rebuilds it in memory and marks it `onDisk: false`; it never writes, so the pipeline stays the only writer and runs recorded before §9.4 existed are answerable without rewriting their evidence.
 
 ## 16. Test strategy
@@ -1328,6 +1418,10 @@ Every launch, headless or not, first scans for an unresolved mutation record and
 | Fix-prompt trigger | Through `pipeline/run.ts` with fake executors | A zero-finding stage writes no file; a one-finding stage writes exactly one beside `stage.json`; the sandbox-open-failure path writes none; a §8.1 row-3b abort whose tools had reported findings still writes one; the prompt names the real skill dir, not the materialised candidate |
 | `skillgantry fix` | `buildProgram` with a collecting writer over a fabricated sidecar, plus one run in a second process | Default picks the greatest run id; `--run` and `--stage` override and restrict; two prompted stages list rather than concatenate; a clean run exits 1 saying why; `--json` parses as one document; a missing file with findings regenerates marked `onDisk: false`; **the sidecar is byte-identical afterwards**; the exit-code contract survives the process boundary — R12.6 |
 | `y` and OSC 52 | `renderInk` with a fake queue and a real temp prompt file; `osc52` asserted as pure bytes | The frame carries the base64 of the file's bytes; the StatusBar shows the path; the frame's row count is unchanged by the keypress; each unavailable case names its reason and emits no escape; UTF-8 round-trips and an oversized body returns null — R11.9 |
+| SARIF suppressions | Hand-built documents plus a golden fixture captured with `--baseline` pointed at the reference repo's own `declawed/.skillspector-baseline.yaml` | An empty `suppressions` array and an absent one are both unsuppressed; `rejected` and `underReview` do not suppress and an absent `status` does; a missing justification yields `''`; `findingsTotal` still counts every result and `outcome` is still `failed`; a diff test asserts the only deltas from the unbaselined capture are `result.suppressions` and the nondeterministic `properties.findingId`, so upstream moving anything else fails the suite — R4.15 |
+| Conditional argv | Fake tool through `AdapterStageExecutor.execute` | Absent file → no flag; present → the flag carrying the **substituted** path; a directory at that path does not fire it; against a re-rooted `ctx.skill.dir` the flag names the materialised candidate — R4.14 |
+| Suppression classification | `classifyToolRun` over parsed results | Every at-or-above-floor finding suppressed → `passed` with all findings retained; suppressed `high` + live `low` → `passed` via row 12b; suppressed `low` + live `high` → `failed`; a parser returning `failed` with zero findings is still `failed` — §8.1 rows 12, 12b, 12c |
+| Suppression cache | In-memory SQLite through `recordRun` and `reconcile` | A suppressed fingerprint joins `reported`, advances `last_seen_run`, closes nothing and writes no `state`; the next unsuppressed sighting nulls both columns with `first_seen_run`, `occurrence_count` and every detection row intact; two fan-out detectors with one suppressing leave the issue unsuppressed in either finish order and both suppressing make it suppressed; a detector that says gone has no vote; one tool reporting two occurrences with one suppressed does not suppress; an `errored` and a `skipped` run each leave both columns untouched; a v4 database migrates with all four columns null and no backfill — R8.15 |
 | Settings edit | Origin labels over a config with absent keys and a `--concurrency` override; a staged edit with no write; a schema-invalid value refused; discard leaving the file byte-identical; apply writing once and re-reading; the credential rows offering no edit | R11.7 and R11.8, without a terminal |
 
 Fixture capture is a scripted, repeatable step tied to the pinned tool versions, so fixtures and pins cannot drift apart.
@@ -1435,6 +1529,17 @@ Recorded in [plan_m6-fix-prompts-for-stage-findings.md](plan_m6-fix-prompts-for-
 | Problem | Resolution |
 |---|---|
 | A failed stage left the user with a finding list and no next step, and the two findings that prompted this were both unsafe to apply mechanically — one named a frontmatter field the schema does not have, the other flagged alignment whitespace inside a regex | R6.10, R11.9 and R12.6: the deliverable is a generated coding-agent prompt, not a fixer. It points at the tool's own report because `RawFinding`'s six fields drop the SARIF `properties` that explain and qualify a finding (§9.4, §14.3, §15) |
+
+## 18.5 Respecting a tool's own suppression file
+
+Recorded in [plan_m6-respect-skillspector-baseline.md](plan_m6-respect-skillspector-baseline.md).
+
+| Problem | Resolution |
+|---|---|
+| A security run failed a gate on a finding the user had accepted in `declawed/.skillspector-baseline.yaml` 76 seconds earlier. skillspector 2.5.1 supports baselines; nothing auto-discovers the file, and SkillGantry's argv was a frozen literal with no `--baseline` flag | R4.14's `ConditionalArgv`: a manifest declares an argument group appended only when a path exists, and the stage executor answers the condition in `execute()` against the substituted path, because `plan()` runs before the sandbox re-roots `skillDir` and a repo-root skill's tool is handed a materialised candidate (§7) |
+| The flag does not drop the result — it annotates it with SARIF `result.suppressions` — and the shared parser ignored the field, so the finding still failed the gate and still filed an open issue | R4.15: one optional field on `RawFinding`, not a second array on `ToolResult`, because R8.4 collapses a baselined and an unbaselined finding of one class in one file to a single issue, and a forgotten second array closes issues silently while a forgotten optional field files the finding exactly as today (§7, §8.1 row 12c) |
+| Nothing in the ledger could say "reported, and the user has ruled on it" — `wontfix` is sticky, and dropping the finding in the parser would close the issue as `fixed` and make an accepted false positive indistinguishable from a real fix | R8.15: four columns as a derived cache over the skill's own file, on R1.6's pattern and for R1.6's reason. A suppressed sighting is *reported*, so it holds its issue open; the conjunction is per issue over the detectors still reporting it, so a tool-scoped baseline cannot speak for a scanner that was never consulted (§10.1, §10.4, §10.5, §10.6) |
+| A prompt built from every finding would tell a coding agent to fix the thing the user had just ruled on | R6.11: the table is built from the actionable set, the omitted count is named, and a fully suppressed stage writes no prompt (§9.4) |
 
 ## 19. Risks carried into implementation
 

@@ -30,6 +30,7 @@ Which milestone owns which requirement is a separate question, answered only by 
 | [plan-m6.md](plan-m6.md) | M6 | Shipped, compacted; extension planned | Statistics queries, Dashboard, Issues, Tools and Settings screens, the command palette. Extended in place with editable Settings (R11.7, R11.8) — shipped |
 | [plan-m6-settings-edit.md](plan-m6-settings-edit.md) | M6 (extension) | Shipped | Editable Settings (R11.7, R11.8) — the executable form of plan-m6's Tasks 13–17: pure config transforms, origin reporting, staging, the setup states as a screen, the confirmation pane |
 | [plan_m6-fix-prompts-for-stage-findings.md](plan_m6-fix-prompts-for-stage-findings.md) | M6 (extension) | Shipped | Coding-agent fix prompt per findings-bearing stage (R6.10, R11.9, R12.6): the builder in `stages`, the pipeline hook, `skillgantry fix`, and `y` on the Work screen |
+| [plan_m6-respect-skillspector-baseline.md](plan_m6-respect-skillspector-baseline.md) | M6 (extension) | Planned | Honour a tool's own suppression file (R4.14, R4.15, R6.11, R8.15): conditional argv, `RawFinding.suppressed`, the ledger's derived suppression cache, and the Issues mark |
 | [plan_m3-promptfoo-removal.md](plan_m3-promptfoo-removal.md) | M3 (M4 prereq) | Shipped | Drop promptfoo from the catalogue — it evaluates prompts declared in a config, has no notion of a skill, so it is removed rather than deferred |
 
 ## Reviews (historical)

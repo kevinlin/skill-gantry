@@ -37,6 +37,23 @@ export type CredentialRequirement =
   | { kind: 'none' }
   | { kind: 'one-of'; alternatives: readonly CredentialSet[] }
 
+/**
+ * R4.14. An argument group the stage executor appends only when a path exists.
+ * Declared, never probed: R4.3 forbids an adapter touching the filesystem and
+ * lint enforces it, so the manifest names the condition and the executor
+ * answers it — after substitution, which is the only point at which the path a
+ * tool will actually be handed is known.
+ *
+ * Appended after `argv`, so a manifest ending in a positional argument cannot
+ * use one: the group would land past the positional and read as more
+ * positionals. Every shipped manifest ends in an option value.
+ */
+export interface ConditionalArgv {
+  /** Same `{skillDir}`/`{repoRoot}`/`{toolDir}` vocabulary as `argv`. */
+  whenExists: string
+  argv: readonly string[]
+}
+
 export interface AdapterManifest {
   id: string
   stage: Stage
@@ -53,7 +70,11 @@ export interface AdapterManifest {
   analysisMode: string
   install: InstallSpec
   /** `{skillDir}`, `{repoRoot}` and `{toolDir}` are substituted at spawn time. */
-  invoke: { argv: readonly string[]; cwd: 'skillDir' | 'repoRoot' }
+  invoke: {
+    argv: readonly string[]
+    cwd: 'skillDir' | 'repoRoot'
+    conditionalArgv?: readonly ConditionalArgv[]
+  }
   versionArgv: readonly string[]
   artefacts: readonly string[]
   binaryArtefacts?: readonly string[]
