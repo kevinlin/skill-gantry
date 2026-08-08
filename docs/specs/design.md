@@ -5,7 +5,7 @@
 **Layer:** design (layer 2 of 3: [requirements](requirements.md) → design → plan)
 **Traces to:** [requirements.md](requirements.md), [decision-log.md](decision-log.md)
 
-Each section names the requirements it satisfies. Revision 2 closed the twelve findings of the first review, revision 3 the eleven of the second, and every milestone since has amended sections in place rather than opening a revision. §18 indexes all of it: which sections each pass touched, and which document holds its reasoning.
+Each section names the requirements it satisfies. Revision 2 closed the twelve findings of the first review, revision 3 the eleven of the second, and every milestone since has amended sections in place rather than opening a revision. §18 indexes all of it: which sections each pass touched, and which document holds its reasoning. A bare `§14.x` anywhere below is [design-tui.md](design-tui.md)'s, which holds the terminal interface under its original numbers; every other `§n` is this document's.
 
 ---
 
@@ -477,23 +477,9 @@ export const parse: Parse = (ctx) =>
 
 v1 pins the static mode: `--no-llm`, `credentials: { kind: 'none' }`, and a `detects` set covering only what static analysis reaches. The reason is comparability. LLM-mode findings are nondeterministic, which makes golden fixtures worthless and the two modes' statistics incommensurable, so silently degrading from one to the other is worse than failing. `analysisMode` is copied into `run.json` provenance, so a later mode change is a visible boundary in the stats exactly as a provider change is.
 
-An LLM-mode variant is a separate adapter id when it is wanted, declaring:
+An LLM-mode variant, when it is wanted, is a separate adapter id declaring `credentials: { kind: 'one-of' }` with one `CredentialSet` per provider — NVIDIA, OpenAI, Anthropic — each naming its required key and the `SKILLSPECTOR_PROVIDER` value that selects it.
 
-```ts
-credentials: {
-  kind: 'one-of',
-  alternatives: [
-    { provider: 'NVIDIA', required: ['NVIDIA_INFERENCE_KEY'],
-      selects: { SKILLSPECTOR_PROVIDER: 'nv_inference' } },
-    { provider: 'OpenAI', required: ['OPENAI_API_KEY'], optional: ['OPENAI_BASE_URL'],
-      selects: { SKILLSPECTOR_PROVIDER: 'openai' } },
-    { provider: 'Anthropic', required: ['ANTHROPIC_API_KEY'],
-      selects: { SKILLSPECTOR_PROVIDER: 'anthropic' } },
-  ],
-}
-```
-
-`detects` for either mode is derived by the fixture-capture script from real output at the pinned version, not hand-listed, so the declaration and the fixtures cannot drift apart. Under §10.4 a too-narrow `detects` is no longer a correctness hazard, only a completeness one.
+`detects` for either mode is derived by the fixture-capture script from real output at the pinned version rather than hand-listed, so the declaration and the fixtures cannot drift apart. Under §10.4 a too-narrow `detects` is a completeness hazard, not a correctness one.
 
 **Conditional argument groups, and why the stat is in `execute()`.** SkillSpector 2.5.1 reads a suppression baseline only when `--baseline <path>` is passed; `.skillspector-baseline.yaml` is merely where `skillspector baseline` writes one, and nothing auto-discovers it. A manifest declares the condition and the stage executor answers it, because R4.3 forbids an adapter touching the filesystem — and because the adapter could not answer correctly even if allowed to. The test runs in `execute()` against the **substituted** path, never in `plan()`: `plan()` runs before the sandbox re-roots `ctx.skill.dir`, and a repo-root skill's tool is handed a materialised candidate copy, so a stat against the manifest's own vocabulary would answer for a directory the tool never sees.
 
@@ -579,21 +565,19 @@ Rows 7 and 8 are ordered so a missing report is classified before the parser is 
 
 Rows 3b and 3c are the two a *stage* rather than a tool produces. R10.11 aborts an apply when a target has drifted since the change set was built, and that is neither a tool failure nor a verdict about the skill: the tools ran and were understood, and then the write was refused. Without the row, `applyMutation` throwing propagated out of the pipeline and the run rejected, discarding the partial evidence R5.13 requires a cancelled or aborted run to keep.
 
-Row 3c exists because the two cases need opposite recovery and one kind could not carry both. The sandbox record is the authority for telling them apart — both strategies mark it `applied` only once the journal is complete — so the split is read off disk rather than inferred from how far the code got. Settling a completed apply as an abort flipped a git sandbox's marker to `discarded` over a written tree, putting it beyond recovery's reach, and on the snapshot strategy restored the pre-tool state over an apply the user had approved. Neither row keeps its stage's tool runs out of the record: an aborted stage carries whatever the tools produced before the abort, and appends its own synthesised run, because R5.13's partial evidence is the point.
+Row 3c exists because the two cases need opposite recovery and one kind could not carry both. The sandbox record tells them apart — both strategies mark it `applied` only once the journal is complete — so the split is read off disk rather than inferred from how far the code got. Settling a completed apply as an abort flipped a git sandbox's marker to `discarded` over a written tree, putting it beyond recovery's reach, and on the snapshot strategy restored the pre-tool state over an apply the user had approved. Neither row keeps its stage's tool runs out of the record: an aborted stage carries whatever the tools produced before the abort and appends its own synthesised run, because R5.13's partial evidence is the point.
 
 Only rows 10 to 12c feed issue reconciliation: the tool actually ran and its output was understood. Every other row leaves the ledger's issue states untouched, which is the fail-safe that stops a crashed or absent scanner from closing everything it once found.
 
-**The fail floor is `medium`.** Revision 3's row 12 read "findings present" with no severity dimension, so an advisory failed a gate as hard as a critical. Observed: skill-lint 0.2.0 over `zapac-agent-skills/declawed` exited 0, called the skill `SAFE`, and reported two `LOW` `R06` findings — "bundled script, review contents carefully" against a `.sh` and a `.py` that are the skill's own content. Validate failed and R5.1 halted the lifecycle on a tool that had found nothing wrong.
+**The fail floor is `medium`.** A table without a severity dimension failed a gate on an advisory as hard as on a critical: skill-lint 0.2.0 over `declawed` exited 0, called the skill `SAFE`, reported two `LOW` findings against the skill's own scripts, and R5.1 halted the lifecycle on a tool that had found nothing wrong.
 
-`medium` rather than `high`, because §7.1 normalises SARIF `warning → medium` and `medium` is also the fallback for a result carrying no level, while a failing eval case is `medium` under §7.2. A `high` floor would pass most scanner findings and every failing eval case, which is the opposite defect.
+`medium` rather than `high`, because §7.1 normalises SARIF `warning → medium`, `medium` is the fallback for a result carrying no level, and a failing eval case is `medium` under §7.2 — a `high` floor would pass most scanner findings and every failing eval case, the opposite defect.
 
-Row 12b keeps the findings. They are returned verbatim, so §10.4 files them as issues and reconciles them exactly as row 12's do — a sub-floor finding is tracked and closes when it goes away, it merely stops halting the chain. Dropping the findings instead would make every issue the tool had ever filed look absent, and close all of them.
+Row 12b keeps its findings verbatim, so §10.4 files and reconciles them exactly as row 12's: a sub-floor finding is tracked and closes when it goes away, it merely stops halting the chain. Dropping them would make every issue that tool had filed look absent and close all of them.
 
-The floor is a uniform rule over normalised severity, not a reproduction of each tool's own verdict. skill-lint bands a weighted score (`CRITICAL 10 / HIGH 5 / MEDIUM 2 / LOW 1`), so two `LOW`s and one `MEDIUM` both score 2 and one of those crosses the floor while the other does not. Matching every tool's scoring formula would put a per-tool policy in the engine and re-tune it on each upstream release.
+The floor is a uniform rule over normalised severity and a constant. Not each tool's own verdict, because skill-lint bands a weighted score (`CRITICAL 10 / HIGH 5 / MEDIUM 2 / LOW 1`) where two `LOW`s and one `MEDIUM` both total 2 while only one crosses the floor, and matching every tool's formula would put a per-tool policy in the engine to re-tune on each upstream release. Not configurable, because a per-skill or per-repo threshold would make two runs of one tool incomparable in the ledger, which §10 exists to prevent.
 
-The floor is a constant, deliberately not configurable. A per-skill or per-repo threshold would make two runs of one tool incomparable in the ledger, which §10 exists to prevent.
-
-**Rows 12 and 12b read the unsuppressed findings only, and row 12c is what a fully baselined report reaches** (R4.15). The severity comparison runs over `actionableFindings(parsed.findings)` — those carrying no `suppressed` annotation — through a named helper rather than by teaching `highestSeverity` to filter, because a function called "highest severity" that quietly means "highest actionable severity" is precisely the hidden policy this design writes comments against. Row 12b's guard also requires `findings.length > 0`: every shipped parser derives `failed` from `findings.length`, and without the clause a future parser returning `failed` with nothing to point at would be silently downgraded to `passed`.
+**Rows 12 and 12b read the unsuppressed findings only, and row 12c is what a fully baselined report reaches** (R4.15). The severity comparison runs over `actionableFindings(parsed.findings)` — those carrying no `suppressed` annotation — through a named helper rather than by teaching `highestSeverity` to filter, because a function called "highest severity" that quietly means "highest actionable severity" is the hidden policy this design writes comments against. Row 12b also requires `findings.length > 0`: every shipped parser derives `failed` from that length, and without the clause a future parser returning `failed` with nothing to point at would be silently downgraded.
 
 All three rows keep every finding, suppressed ones included, and all three reconcile. That is the safety property §10.4 depends on: a suppressed finding recorded as *reported* holds its issue open, whereas one dropped here would look absent to every detector and close as `fixed`.
 
@@ -834,15 +818,15 @@ for each fp phase 1 touched:                               # every issue, not on
     issues(fp).suppressed ← voters ≠ ∅ AND every voter is suppressed
 ```
 
-**Why not "the most recent detector".** Revision 2 closed an issue when the tool owning its most recent detection reported a conclusive absence. Fan-out tools run concurrently, so two detections from one run have no defined order, and completion or insertion order decided ownership. If the winning scanner passed without the finding while the other errored, the issue closed; had they finished the other way round it survived. Identical runs could disagree. Modelling absence per detecting tool removes ordering from the decision entirely: closure is a conjunction over a set, and a set has no order.
+**Why not "the most recent detector".** Closing on the tool that owned the most recent detection made completion or insertion order decide ownership, and fan-out tools run concurrently: if the scanner that won passed without the finding while the other errored the issue closed, and had they finished the other way round it survived. Identical runs could disagree. Modelling absence per detecting tool removes ordering entirely — closure is a conjunction over a set, and a set has no order.
 
-The conservative direction is deliberate. An issue that two scanners found closes only when both have since run conclusively without it. One scanner erroring or being deselected holds the issue open, which is the same fail-safe as before, now applied per tool rather than to one arbitrarily chosen tool.
+The conservative direction is deliberate. An issue two scanners found closes only when both have since run conclusively without it, and one scanner erroring or being deselected holds it open — the same fail-safe, applied per tool rather than to one arbitrarily chosen tool.
 
-**Scope is widened at runtime.** `manifest.detects` is a declaration, and a declaration that is too narrow used to mean an issue could never close — the tool would not consider its own past finding in scope. Scope is therefore `detects` unioned with every rule class this tool has actually produced for this skill, which subsumes revision 2's separate `unmapped:` clause and also covers a mapped class the manifest forgot to list. `detects` remains useful for presets and for the wizard; it is no longer load-bearing for correctness.
+**Scope is widened at runtime.** A `manifest.detects` that is too narrow would otherwise mean an issue can never close, the tool not considering its own past finding in scope. Scope is `detects` unioned with every rule class this tool has actually produced for this skill, which covers unmapped classes and a mapped class the manifest forgot alike. `detects` stays useful for presets and the wizard; it is not load-bearing for correctness.
 
-Tool runs with outcome `errored` or `skipped` contribute nothing to any phase, per §8.1. That is also why the suppression writes live here rather than in `record.ts`: `record.ts` iterates every tool run including the errored ones, and this loop has already `continue`d past them, so the existing fail-safe extends to suppression for free. An errored or skipped run leaves both columns exactly as the last conclusive run left them.
+Tool runs with outcome `errored` or `skipped` contribute nothing to any phase, per §8.1. That is also why the suppression writes live here rather than in `record.ts`, which iterates every tool run including the errored ones: this loop has already `continue`d past them, so the fail-safe extends to suppression for free, and an errored or skipped run leaves both columns exactly as the last conclusive run left them.
 
-**Why a suppressed finding is *reported*, not absent.** It joins `reported`, which falls out of phase 1 with no change to its first loop and is the whole safety property. Were a suppressed sighting recorded as an absence instead, `last_absent_run` would advance, every detector would agree the issue was gone, and phase 2 would set `state = 'fixed'`. The history would survive literally — the detections and the first-seen run are still there — but the issue would read `fixed` while not being fixed, and an issue the user had *acknowledged* would be silently closed by `stateOnAbsence`. Phase 2 itself is unchanged and does not read the new columns: a suppressed sighting blocks closure by advancing `last_seen_run`, and by nothing else. Suppression never writes `state`.
+**Why a suppressed finding is *reported*, not absent.** It joins `reported`, and that is the whole safety property. Recorded as an absence instead, `last_absent_run` would advance, every detector would agree the issue was gone, and phase 2 would set `state = 'fixed'` — the detections and the first-seen run would survive, but the issue would read fixed while not being fixed, and one the user had *acknowledged* would be silently closed by `stateOnAbsence`. Phase 2 does not read the new columns at all: a suppressed sighting blocks closure by advancing `last_seen_run` and by nothing else. Suppression never writes `state`.
 
 **The clear is structural, not a second code path.** Both columns are bound in the same upsert that advances `last_seen_run` — to the run id when the sighting was wholly suppressed, to `null` when it was not — so there is no clear path a caller can forget to call. The absent branch nulls them too, so a detector row reads honestly on its own.
 
@@ -1164,7 +1148,7 @@ Rows 3 to 5 precede the preconditions deliberately: each is a question about the
 | The apply was refused with nothing written — preimage drift (R10.11), a journal that could not be written, a sandbox that could not be opened, or a non-process failure raised inside the stage | `errored` | `mutation-aborted` |
 | The apply completed and something after it threw — the evidence bundle is the reachable case | `errored` | `mutation-incomplete` |
 
-The two are §8.1's rows 3b and 3c, and they call for opposite recovery, which is why `mutation-aborted` cannot cover both: nothing is compensated for an apply that completed, and treating one as the other either flips a sandbox marker to `discarded` over a written tree, so recovery never offers it again, or restores a pre-tool snapshot over an apply the user approved.
+The two are §8.1's rows 3b and 3c, and they call for opposite recovery — see §8.1, which states the failure once.
 
 A refusal is `failed` with no `error_kind`, because the gate ran and understood the skill — the same distinction §8.1's governing rule draws between a verdict and an error. A tool run with no adapter touches no issue: `reconcile.ts` tolerates a tool it has no rule-class map for, so this `skills` tool run never enters reconciliation.
 
@@ -1189,229 +1173,7 @@ The cache still earns its place: the Issues and Dashboard screens filter depreca
 
 ## 14. Terminal interface
 
-*Satisfies R11.1–R11.6.*
-
-One store fed exclusively by core events; Ink components are pure functions of it. Commands flow back through `RunHandle` and `QueueHandle`.
-
-A run in flight, with the Log tab up and the terminal too short for §14.6's Overview card:
-
-```
-SkillGantry 8 skills · 1/2 running
-┌─ Skills 1/8 · 1 marked ──┐┌────────────────────────────────────────┐
-│ ▸ ◐ declawed             ││  Validate  Evaluate  Security  Opt  Rel│
-│   ○ gap-analysis         ││  passed    failed·2  running   ·    ·  │
-│  *! spec-lint            │├────────────────────────────────────────┤
-│   ○ zuhlke-slides        ││ 1 Log 2 Findings 2 3 Issues 3 4 Art 5 S│
-│  rows 1–4 of 8 · j/k     ││ skillspector: scanning scripts/scan.py │
-└──────────────────────────┘└────────────────────────────────────────┘
-┌─ Queue 1/2 running · 2 waiting · +1 more ──────────────────────────┐
-│ ▸ ▶ running  declawed  validate,security              0m 42s       │
-└────────────────────────────────────────────────────────────────────┘
-j/k move · space mark · r run · x cancel · y copy · ? help · q quit
-```
-
-Render discipline, the whole mitigation for choosing Ink: `tool:output` chunks enter a per-tool-run ring buffer of 2000 lines held **outside** React. A 100 ms tick copies the visible window into state. Every other pane re-renders only on discrete state change. Log text never enters component state line by line.
-
-The output pane shares a focus stop with the rail — the three zones and why they are three are §14.6's — and `j`/`k` scroll whichever tab is up, except in Findings, where they move that pane's cursor (§14.6). `AppState.outputOffset` is the first visible row, or `null` for "wherever this tab naturally sits": the top of a findings, artefact or SKILL.md list, the newest line of the log. Null rather than a number because an offset pinned at the tail stops being the tail the moment the next line lands, so a log scrolled back to its newest line resumes following instead of freezing one line short. Scrolling the log reads the same flushed window R11.4 already puts in state and adds no path from the ring buffer into React. `outputWindow()` in `src/tui/rows.ts` is the one place the window is derived, because the pane renders against it and the key handler clamps against it — two derivations of that arithmetic is how `j` stops several rows before the end and every further press does nothing.
-
-Screens: Work (above), Dashboard (ledger aggregates), Issues (cross-repo table with state transitions), Tools (install, pin, verify, doctor), Settings (§14.2: every setting's value, holding file and origin, editable through one staged document). Vim-style movement, `?` for help, `:` for a command palette. The queue is a panel on Work, showing `QueueHandle.snapshot()` with per-job cancel.
-
-The palette is the screen switcher: `:` opens it, typing filters the command
-list, `enter` runs the selection and `esc` cancels. Direct keys were rejected
-because Work already spends `1`–`5` on its output panels, and a second digit
-scheme reading differently per screen is how a keymap becomes unguessable.
-`esc` on any screen other than Work returns to Work.
-
-**A suppressed issue is marked, never hidden** (R8.15). The Issues row carries `⊘ suppressed: <reason>` on its trailing field, beside the existing `⟂ blockers` precedent, and renders dimmed; the panel title gains `· N suppressed`. Zero new rows, zero new keys — §14.1's budget is what that constraint exists for — and the mark survives `truncateMiddle`, which elides the head. The glyph is paired with the word, so a monochrome terminal loses nothing. A suppressed finding in the Findings pane carries the same glyph on its existing row.
-
-Dashboard, Issues, Tools and Settings each render one `Panel` whose body is
-windowed against `layout.rows` by `screenBodyRows()`, so §14.1's four rules hold
-on them as they do on Work and on help, and each builds its body as a flat row
-list through a pure function in `src/tui/rows.ts` — which is what lets the row
-budget be asserted without rendering Ink.
-
-#### 14.1 Responsive layout
-
-`layoutFor(columns, rows)` in `src/tui/layout.ts` is the single place pane sizes are decided, and it is pure: `Work` reads `useWindowSize()` and passes the result down. Nothing in the tree carries a fixed height. The fixed sizes it replaced (a 12-row log, a 5-row queue, a 24-cell skill column) rendered 26 rows into an 80×24 window and scrolled the header away.
-
-Three modes, by terminal width, with the skill list, rail and pane visible in all of them (R11.1):
-
-| Mode | Width | Layout |
-|---|---|---|
-| `standard` | ≥ 110 | list beside the rail, 18% of the width as the column, 26–34 cells |
-| `standard` | 76–109 | as above, 22-cell column |
-| `narrow` | 50–75 | list stacked above the rail, borders dropped |
-| `too-small` | < 50 or < 14 rows | the required size, and nothing else |
-
-The two width bands above 76 differ only in how much width the skill column gets, so they are one mode. `mode` names the branches `Work` actually takes; a fourth name that no code read invited a `mode === 'wide'` branch that would have meant nothing.
-
-Narrow drops the borders rather than the panels. Four bordered boxes cost fifteen rows of chrome in a stacked column, which leaves nothing for content in a 60×20 split; titles alone cost eight. That is what `chrome: 'boxed' | 'bare'` selects, and `Panel` is the one component that reads it.
-
-Four rules keep a frame inside its budget, each learned from a row that overflowed it:
-
-- **Every panel renders exactly the rows it was allocated.** An overflow count (`+5 more`) or a footnote (`4 earlier lines dropped`) is counted *against* that allocation, never appended below it. One extra row pushes the panel beneath it off the bottom.
-- **Text truncates, never wraps.** Content rows carry `wrap="truncate"`, and labels are cut with `truncate()`, which measures cells through `string-width` so a CJK skill name cannot overflow its column by its own width. `truncateMiddle()` is its head-elided twin, for paths whose basename is what identifies them.
-- **What the chrome costs is `layout.ts`'s to know, not each pane's.** `innerWidth(width, chrome)` is the single expression of `Panel`'s border and padding. Three panes each re-deriving `width - 4` meant a change to `Panel`'s padding would silently truncate every label to the wrong width, with nothing failing. §14.6 moves a titled panel's heading into its top border, which takes `BOXED_CHROME` from 11 to 10 and makes an explicit width mandatory for such a panel — both are decisions of this module, for this rule's reason.
-- **The rail and the output pane share one horizontal rule** (`borderTop={false}`), because two adjacent boxes each drawing their own spent two rows on one seam.
-
-Every full-screen view obeys the budget, including the help screen: it renders through `Panel`, windows its binding list against `layout.rows`, and reports what it cut. Drawing its own fixed-size frame scrolled its own title away on a 50×14 terminal. The wizard is the one view sized independently — it is inline rather than full-screen — but its width is still a `layout.ts` decision (`setupWidth`), never a constant in the component.
-
-Discoverability is layered rather than crammed into the header: a footer hint bar, `?` for the full binding list. That footer is one component, `StatusBar`, rendered by every screen — keys left, `v<version>` right, no screen composing its own, because eight hand-rolled copies of one row is how the Issues footer came to omit `q quit` while `q` quit from there. The version rides that row rather than taking one of its own and is dropped whole when the keys will not fit beside it, since truncating the keys defeats what the footer is for; it is read from `package.json` through `core/version.ts`, the same source `skillgantry --version` reports.
-
-The Work screen renders on the alternate screen so a session does not bury the user's scrollback; `skillgantry setup` stays inline, because it is summon-choose-exit and its result should remain in scrollback. §14.2 renders the same wizard a second time as a full screen inside the session, where the alternate screen and the row budget both apply — the states and the component are shared, the framing is the caller's.
-
-#### 14.2 Settings: viewing and editing the configuration
-
-*Satisfies R11.7, R11.8.*
-
-M6 shipped Settings read-only and recorded why: an editable screen would be a second write path to `config.json` with no requirement asking for one. R11.8 is that requirement, and the "second write path" is what this section is arranged to prevent — there is one staged document, one validation, one write.
-
-**The view names the file, not just the value.** Rows are grouped by the file that holds them, and every editable value carries its origin: the file, a built-in default, or a session override.
-
-```
-Repos                            ~/.skillgantry/config.json
-  zapac        20 skills  git    /Users/…/zapac-agent-skills
-Execution                        ~/.skillgantry/config.json
-  concurrency        4           config.json  (session 2, via --concurrency)
-  artefact cap       32 MiB      default
-  mutation timeout   5m 00s      config.json
-  validate           skill-lint  config.json
-Credentials                      ~/.skillgantry/.env          read-only
-  skillspector       ok  via anthropic
-Ledger and tools                 ~/.skillgantry/gantry.db, tools/lock.json
-```
-
-Origin costs a second read of the raw file, because `loadConfig` parses through the schema and the schema substitutes a default for every absent key — by the time the config reaches a screen, a value the user wrote and a value nobody wrote are the same number. `settings()` therefore reports which top-level keys were literally present. Without it the screen invites a user to edit a file that does not contain the setting they are looking at.
-
-**Three edit paths, one staged document.** Every path writes into a staged `GantryConfig` held in the app store, seeded from the loaded one. Nothing touches disk until the change set is confirmed.
-
-| Path | Key | Covers |
-|---|---|---|
-| The setup states, as a screen | `:setup`, or from a Settings row | `stageTools`, `repos` additions |
-| Inline value editor | `e` on a selected row | `concurrency`, `artefactSizeCapBytes`, `mutationTimeoutMs`, `timeoutOverridesMs` |
-| Repo removal | `d` on a repo row | `repos` removals |
-
-`version` is not editable: it is the schema's own literal, and a user who could change it could only make the file unloadable. `timeoutOverridesMs` is a record rather than a scalar, so the screen renders one row per selected tool carrying its effective timeout — the adapter's default or the override — and editing that row stages an override while clearing it removes the key. A record with no row per key would let a user see an override and have no way to take it back off.
-
-The setup states are the same `setupReducer` and the same `Setup` component `skillgantry setup` renders; `Screen` gains `setup`, so the palette entry follows from the screen list rather than being a second registration. Two things follow from re-entering a wizard that was written to run once on a clean machine. Its initial state is seeded from the current selection, because an empty `selected` renders as "no tool chosen" and makes an unchanged pass through the screen look like a request to clear every stage. And its install step marks a tool already locked at its pinned version and already verified as `ok` without reinstalling it, because changing one tool otherwise reinstalls the whole selection. Both apply to the inline wizard too: the second is a fix there, not a divergence.
-
-Removal takes the repo out of the configuration and nothing else. Workspaces, sidecar evidence and ledger rows survive, so re-registering the same path finds its history — and the confirmation says so, because "remove" over a path is otherwise read as a delete.
-
-**The change set is semantic, not textual.** `unifiedDiffFor` spawns, and `src/tui/**` may not; more to the point a line diff of a JSON document reports an array edit as a block move, which is not what the user did. `configChanges(current, staged)` is pure, lives in core, and emits one row per changed field:
-
-```ts
-interface ConfigChange {
-  kind: 'add' | 'remove' | 'change'
-  /** Dotted field path, e.g. `stageTools.validate`, `repos[zapac]`. */
-  path: string
-  before: string | null
-  after: string | null
-}
-```
-
-There is no per-row "needs a restart" flag, because today it would be `true` on every row: `startTui` closes over the tool selection, the lock, the environment and the caps, `createQueue` captures the pool size, and the skill list is resolved once — so no field is rebindable mid-session. The pane states it once, over the whole change set, which is what R11.8 asks for while the answer is uniform. A field that later becomes live-rebindable is what would reintroduce the flag, and it would then carry information instead of restating a constant on every line.
-
-The confirm pane is a sibling of `ReviewPane`, not a generalisation of it: both are `Panel` bodies under §14.1's budget, but one renders diff text and the other renders change rows, so a shared component would be a switch with two disjoint halves. `a` applies, `d` discards, `j`/`k` scroll — the same three keys the mutation review already trains.
-
-**What the gate does not cover.** Installing a tool spawns an installer and writes `tools/lock.json` before any configuration changes, and no confirmation can undo that. The change set covers `config.json` alone, and says which file it covers in its title. `.env` is neither staged nor rendered into a change row (R7.3), which is why credentials are a view-only group rather than an editable one that refuses.
-
-**Applying rebinds nothing that is already running.** `startTui` resolves `stageTools`, the lock, the environment, the caps and the pool size once and closes over them, and a queued job carries the plan it was admitted under. A run whose provenance and tool lock were recorded under one configuration and executed under another would make the ledger's own record untrue, which is a worse failure than waiting for a restart. So apply writes the file, re-reads it into the view, and marks each change that the session will not honour until relaunch.
-
-**Where the decisions live.** The transforms are decisions over a document, so they stay out of the module that owns the file: `withRepo`, `withoutRepo`, `withStageTools` and `withScalar` are pure functions in core, `registerRepo` becomes its filesystem half plus a call to `withRepo`, and the staged path and the live path can no longer disagree about id uniqueness or duplicate rejection. The terminal interface reaches the write through one new port method, `applyConfig(next)`, which validates and saves; the transforms and `configChanges` are pure and need no port.
-
-Modal precedence is fixed and ordered by what a keystroke can destroy: the mutation review first, because its `a` writes the user's repo; then the config confirmation; then the setup screen; then the palette; then help.
-
-### 14.3 Copying a fix prompt
-
-*Satisfies R11.9.*
-
-`y` on the Work screen copies the §9.4 fix prompt for **the stage that produced the selected finding**, falling back to the lifecycle rail's selected stage when the Findings pane holds no selection — the vim yank verb, unbound before this. It sits in `useInput` after the Work-screen gate and before the `r` handler, so every modal above still wins its keystroke.
-
-The first cut of this bound `y` to the rail alone, on the grounds that a finding on screen could not be attributed to a stage at all. §14.6 retires that reasoning rather than the rail: `FindingRow` carries the stage its finding came from, which the reducer had in `event.stage` all along, so a selected finding answers the question better, and the rail — whose selection `h`/`l` already move, which is what makes `y` work from any output tab — stays the fallback. `StageCell` gains a `findings` count, set from the `stage:done` event that already carries the whole `StageResult`, so no event contract changes either way.
-
-**The OSC 52 write lives in `src/tui/`.** The escape has to reach the terminal Ink currently owns — alternate screen, raw mode, the stream Ink was constructed with — and `src/cli/tui-command.ts` hands control away at `startTui` with no live handle on the keystroke. The lint rules ban `console` and `process.exit` in **core**, not stdout writes in the renderer; writing stdout is what the renderer is. Encoding is split into a pure `osc52.ts` so the byte shape is testable without a terminal, base64 over **UTF-8** explicitly — a non-ASCII character in a finding message corrupts a `binary` payload. It returns null above a size cap so the caller can never report a copy that did not happen. The write goes through `useStdout().stdout.write`, not Ink's `write()` helper from the same hook: that one writes above the app and forces a clear-and-re-render, flickering the frame for a sequence that renders nothing.
-
-**The path is surfaced at zero row cost.** Terminal.app, and tmux without passthrough, discard OSC 52 silently, so an action reporting only success is one the user cannot trust. `AppState` gains a `flash` that the Work screen passes to `StatusBar` in place of the hint text — the footer already occupies that row on every screen, so §14.1's budget is unchanged. It names the path in each unavailable case too: no recorded run, a stage that found nothing, a file not written yet, a body over the cap. The first case says `press r` rather than offering `skillgantry fix`, because §14.5 now presents a recorded run, so what remains is a skill that has never run at all — where that command would exit non-zero too. The flash clears on the next keypress rather than on a timer, which keeps the TUI tests deterministic, and the path is cut with `truncateMiddle` so the basename survives.
-
-The Findings pane gains **no** footer row: `outputWindow()` already spends rows on `overflow` and `dropped`, and a third footnote would cost the findings list a row on every render, paying the budget permanently for a static hint. `HINTS` carries `y copy` as its seventh pair, which measures 67 columns and so still fits beside the version at the 80-column floor; an eighth would cost the tail, `q quit`. The help screen's `KEYS` row is the second tier.
-
-### 14.4 Watching a run, and being told when it lands
-
-*Serves R11.6's queue panel and the fourth product principle: the maintainer is watching a long-running process.*
-
-A real eval iteration ran 1m54s, and a stage's log can go silent for most of that. Everything below is bought at zero row cost, because §14.1's budget does not relax for reassurance.
-
-**The queue row says how long.** `JobRecord` already carries `startedAt` and `endedAt`, so a running job counts up and a finished one holds what it cost — no new state, no core change. The verdict word gets a fixed column (`VERDICT_WIDTH`, derived from the two colour maps rather than counted by hand) so the time lands in one place down the panel, and the label is padded with `padCells`: `padEnd` counts code units, so a CJK name was padded to half the column it needed and pushed every value right of it out of line. A job that has not started shows nothing, since twenty rows counting how long they have waited is noise around the one that is working.
-
-**The row names the verdict, not the job's lifecycle.** The pool ends every run that *completed* as `done`, a security stage that found criticals included, so a row rendering `job.state` painted that run green while the rail one panel up said `failed`. `jobVerdict()` in `tokens.ts` is the single resolution: state for anything unfinished and for a run that threw (`failed` as a state means the run itself failed, which no stage outcome describes), outcome for anything that did.
-
-**The running mark turns.** `SkillList` rotates the `◐` it already uses rather than adding a spinner beside it, so the column stays one cell; phase 0 is the resting glyph, so a terminal that never repaints loses nothing. `useTicker(active)` runs an interval **only while something is running** — one left alive on an idle screen re-renders the whole Work tree forever to animate nothing — `unref`s it so `q` never waits on a decoration, and restarts from zero each time it wakes, which lets a test assert on the first frame without holding the clock.
-
-**A settled queue reports itself in the footer**, on the row §14.3 established. Raised when the queue *empties*, not per job: a batch of twenty reporting twenty times would hide the footer's keys for the whole run, and what the user left the terminal to find out is whether it all passed. One job reports in full — verdict, elapsed, finding count, run directory — because that is the case where the evidence has a single address to name; a batch reports a tally by verdict, worst first, or a batch that found criticals reads as `4 passed`. Verdict first and the path last, since `StatusBar` cuts from the end and a narrow terminal should lose the address before the answer. `flashTone` is only ever set with the message, so the two cannot describe different events.
-
-### 14.5 Rehydrating the last recorded run
-
-*Satisfies R11.10.*
-
-Every field of `SkillRow` but one was a pure function of the session's queue event stream, so relaunching against a skill with four recorded runs rendered an empty rail, an empty findings list, an empty artefact list and a `y` that refused. `loadSkillStatuses` was the single launch-time read, and it fed the skill-list glyph alone — which is what made the empty rail beside a red `!` read as a bug rather than as a blank slate.
-
-**The sidecar, not the ledger.** R8.2 makes the sidecar the evidence and the ledger a queryable index of it; the screen already knows which skill is selected, so no cross-skill query is needed; and `src/tui/**` may not open the ledger at all. Same reasoning `skillgantry fix` records, and the same resolution rule: the greatest run id in `index.ndjson`, never the `latest` symlink, which is absent mid-write. `newestRunId()` in `views.ts` is that rule's one expression, called by both `loadSkillStatuses` and `loadLastRun`.
-
-**Lazily, per selected skill.** One index read plus at most five `stage.json` reads, on selection. Eagerly at launch over 54 skills is 270 reads to fill four rows on screen. It matches the SKILL.md and artefact panes, which already load on selection, and re-uses their effect's shape.
-
-**The reducer holds the precedence rule, not the effect.** The read is async, so an `r` pressed while it is in flight must not have its live run clobbered by a response that resolves after `run:start`. `run:start` sets `activeRunId` and `runDir` together, so `set-last-run` refusing a row where either is set is both R11.10's precedence rule and that race guard, in one condition evaluated at dispatch time rather than at read time. `status` is left alone: `set-statuses` already owns it from the same index.
-
-**The Log pane replays per skill, not through the buffer.** `state.log` is one session-wide ring buffer while everything above is per-skill, so seeding it is ambiguous the moment one skill runs and another is selected. Leaving the pane unreplayed and naming the run's directory instead was worse: four panes had loaded and the fifth named a path, which reads as a pane that failed. So the buffer is not used. `SkillRow` carries `recordedLog` and a `rehydrated` flag; `logLines(state, skill)` in `rows.ts` resolves which of the two the pane shows, and `run:start` clears both, which is where the live buffer takes the pane back. Because recorded lines never enter `state.log`, a skill that has not run this session cannot display whichever skill did — and R11.4 is untouched, since no new path runs from the ring buffer into React.
-
-`logLines` and `logDropped` sit beside `outputWindow` for its reason: the pane renders against those lines and the key handler clamps against their count, so a second derivation is how `j` comes to stop short of the end. The replay carries the tool-id prefix the pump writes, so a recorded frame and a live one read identically; it is capped at `LOG_CAPACITY` keeping the newest and reporting the rest through the footnote R11.5 already spends a row on; and the two streams are ordered stdout-then-stderr per tool rather than merged, because the pipeline writes them as two files and their true interleaving is not on disk. The empty case now means the run's tools wrote no log at all, and still names the directory.
-
-Read-only throughout. The pipeline stays the only writer under `runs/`, which is the constraint R11.10 shares with R12.6 and for the same reason: a screen that answers for a run must not rewrite that run's evidence.
-
-### 14.6 The Work screen overhaul
-
-*Satisfies R11.11–R11.15.*
-
-Derived from D20–D23. §14.3 through §14.5 each extended this screen in place; this is the pass over the assembled frame, and every gap it closes was visible only with all four extensions on screen at once.
-
-The same screen idle, with a finding selected and the card at its `compact` tier — §14's frame is the other state, not a second claim about this one:
-
-```
-SkillGantry 18 skills · 0/2 running
-┌─ Skills 7/18 · 1 marked ─┐┌────────────────────────────────────────┐
-│ ▸ ● declawed   ✓ marked  ││  Validate  Evaluate  Security  Opt  Rel│
-│   ○ gap-analysis         ││  failed·3  passed    failed·1  ·    ·  │
-│   × spec-lint    1 open  │├────────────────────────────────────────┤
-│   ○ ui-lab               ││ 1 Log 2 Findings 4 3 Issues 7 4 Art 5 S│
-│  rows 3–8 of 18 · j/k    ││▸high  prompt-injection  SKILL.md:58 sk…│
-└──────────────────────────┘│ │ Instruction block interpolates       │
-┌─ Overview  every repo ───┐│ │ untrusted issue text verbatim.       │
-│ validate ▕███████░░░▏ 89%││ │ injection.untrusted-interpolation    │
-│ evaluate ▕███░░░░░░░▏ 29%││ │ [o] open report   [y] copy prompt    │
-│ security ▕██░░░░░░░░▏ 21%││ medium excessive-permissions SKILL.md:3│
-└──────────────────────────┘└────────────────────────────────────────┘
-┌─ Queue  1 marked · idle ───────────────────────────────────────────┐
-│ ▸ ○ ready  declawed  validate,evaluate,security                    │
-└────────────────────────────────────────────────────────────────────┘
-j/k move · space mark · r run · x cancel · y copy · ? help · q quit
-```
-
-**Three zones, and the keys belong to them** (R11.11). `FOCUSES` is `['skills', 'work', 'queue']`: the rail and the output pane are one zone, because `h`/`l` and `j`/`k` already tell them apart inside it, and a stop that only disambiguates keys which were never ambiguous is paid for on every cycle. `h`/`l` no longer fire globally — the rail describes the *selected* skill, so a user moving down the list was moving the rail with it and nothing on screen said so. `space` was already zone-aware, so it needs only its zone renamed; `markedStages` and `r`'s reading of it are untouched. One `focused` flag lights both boxes of the merged zone, which is what makes it visible.
-
-**A titled boxed panel draws its own top border** (R11.12's funding). `Panel` emits `┌─ Skills 7/18 · 1 marked ─────┐` as one row and passes `borderTop={false}` beneath it, so a titled panel costs a border row and a title row where it used to cost both plus a body row. `SkillList` and `QueuePanel` both stop spending that row, but only `QueuePanel` is on the frame's vertical path — `SkillList` sits in the *left* column, beside the rail, so its row is left-column slack. `BOXED_CHROME` drops 11 → 10, and the card is funded by that slack plus the row `outputHeight` gains, which is why the chrome change is neither cosmetic nor optional.
-
-The title row's furniture is five cells: `┌`, `─`, a space, the label, a space, `┐`, measured through `string-width` rather than counted in code units, since a CJK title is two cells per unit. The constraint that follows: **a titled boxed panel must be given an explicit width.** The title row and the box below it are two independent renders, and a one-cell mismatch puts the `┐` a column off the `│` under it — a torn corner rather than a layout bug. Every titled call site is therefore passed `layout.columns`, and `PanelProps` makes `width` required whenever `title` is set so the compiler catches the next one. `bare` chrome keeps the title as a body row, having no border to embed it in.
-
-**The Overview card is sized by rows, not by columns** (R11.12). `layoutFor` gains `overview: 'full' | 'compact' | 'none'` and picks the largest tier leaving `SKILL_LIST_MIN` rows in the list. `full` is six rows: one bar per gate stage, the issue summary, the slowest stage's median, and the dashboard link. `compact` is the bars alone. Both the bar's cell count and the label's width are derived from the width, and the label shortens first — `sec` still names the stage, while a two-cell bar shows no proportion at all; reserving a constant instead cut off the percentage at a 22-cell column, which is the one number the bar exists to quantify. Rows and not a width band because the card competes for the left column's height: a 200×20 terminal has cells to spare and nothing to give. `standard` only; `narrow` stacks the list above the rail and has no column for a card. `overviewRows(stats, tier, width)` and `bar(pct, cells)` are pure and sit in `rows.ts` beside `dashboardRows`, so every tier boundary is asserted against `layoutFor` rather than at a named terminal size — a later change to what the chrome costs would move the boundary and break a test that was describing arithmetic rather than a rule. The card's data is one unfiltered `views.dashboard({})`, read at launch and on `:refresh`; `0` goes to the Dashboard screen rather than becoming a sixth entry in §14.2's precedence order.
-
-**A finding carries its stage and its tool** (R11.14). `SkillRow.findings` becomes `FindingRow[]` — `{ finding: RawFinding; stage: Stage; toolId: string }` — both fields already in hand where the reducer appends them, in `event.stage` and `event.result.toolRuns[].toolId`, so no core contract moves. That is what retires §14.3's reason for having no per-finding cursor. `findingRows(state, skill, width)` emits a flat row list *including the selected row's detail* and `outputWindow` windows that list, so the expansion is simply more rows and the pane and the key clamp keep sharing one derivation — the `j`-stops-short failure §14 and §14.5 have each paid for once. The cursor indexes findings while the window counts rendered rows, which is why the tab supplies a `cursor` row for the window to contain rather than an anchor to sit at: clamping the cursor against the row count walks it past the last finding, and `anchor: 'top'` cannot keep it in view. Log, Artefacts and SKILL.md keep their scroll semantics and `outputOffset` stays `null` for them.
-
-The detail names the message, the rule class, the native rule id, `ToolRunRecord.artefactDir`, and the tool's suppression justification when there is one — R6.10's rationale at the screen: the normalised record holds six fields, so the SARIF `properties` that explain and remediate a finding reach no surface at all. The screen's job is to reach that evidence, not restate it, so `o` opens the directory through **`openPath` on `GantryViews`**. The directory rather than a file, because native artefact names belong to the adapter and a screen naming `findings.sarif` would be guessing at four tools' conventions, while `artefactDir` is recorded per tool run and always exists. On `GantryViews` rather than a new port because it is already the terminal interface's one injected dependency and already carries writes in `actOnIssue` and `applyConfig`; a port at all because `src/tui/**` may not spawn. `y` copies the prompt for the stage that produced the selected finding (R11.9 as amended). No key applies a change to the skill: R11.14 restates R6.10 here precisely so a per-finding action row cannot quietly acquire a fixer, which is what the study proposed and D21 refused.
-
-**Issues on the output pane triages; the screen acts** (R11.13). `PANELS` becomes `log, findings, issues, artefacts, skill` on `1`–`5`, and the guard reading `'1'`–`'4'` is the single place that changes. `S` cycles the scope over the selected skill, its repo, and every registered repo, resolving onto `IssueFilter`'s existing `skillId`, `repoId` and unfiltered forms — no ledger change. The Issues screen's row building moves to `issueRows()` in `rows.ts` and both surfaces render through it, because one issue rendered two ways by two modules is the divergence `tokens.ts` records from when five modules owned severity colour. The tab binds no state transition: `o` on this pane already means "open the report", and one pane whose key means two things across two of its own tabs is a keymap that cannot be learned.
-
-**Colour for state; the terminal's own for surfaces** (R11.15). `tokens.ts` takes D23's hex — `ACCENT` `#0070f3`, passed `#00c853`, failed `#ee0000`, errored and degraded `#f5a623`, skipped and idle `#555555`, critical and high `#ee0000`, medium `#f5a623`, low and info `#888888` — and chalk downsamples where there is no truecolour. No body foreground and no background is ever set, which is why the screen reads on a light theme and what the study's own `#ededed` body text would have broken. A selected row is `inverse` over text `padCells`-padded to the pane's inner width: reverse video swaps the inherited pair rather than replacing it, and the padding is load-bearing, since Ink's `inverse` covers only the characters rendered and an unpadded short row highlights a stub instead of a band. `▸` stays beside it, because a monochrome terminal keeps the cursor when it loses the attribute.
-
-**Not adopted from the study, and why.** Applying a fix (D21: no tool reports the patch, so SkillGantry would author it, and R6.10 exists because the two findings that prompted it were unsafe to apply mechanically). Suppressing a finding (D21: a repo write, so §12's gate, an adapter-declared baseline path and shape, and an amendment to R8.15's authority clause — M8, not a footnote to a pane). The rail's per-column left border rule (a cell per column to say what `underline` and `bold` already say). Deleting the sibling screens (D20: R11.3, and M6's settings editor is already palette-only). And the study's header, which adds an open-issue count and the repo name: cheap, probably right, and no requirement asks for it — recorded here rather than smuggled in through a diagram, because a frame drawn in a spec is read as a promise.
+Specified in [design-tui.md](design-tui.md), which holds §14 through §14.6 under their own numbers: the store and render discipline, the responsive layout and its row budget, Settings, the fix-prompt copy, the queue's progress reporting, run rehydration and the Work screen overhaul. It is a separate file because it is a fifth of this document and no engine change reads it.
 
 ## 15. Headless interface
 
@@ -1430,7 +1192,7 @@ skillgantry fix <skill> [--stage <stage>] [--run <id>] [--json]
 skillgantry [--concurrency <n>]                    # no subcommand: the TUI
 ```
 
-A skill is named by `<repoId>/<name>`, by a bare name when that is unambiguous, or by the `name` its frontmatter declares — which is what a repo-root skill is usually called, since its id comes from the directory. There is no `--repo` filter: revision 2 listed one, nothing required it, and the selector already disambiguates.
+A skill is named by `<repoId>/<name>`, by a bare name when that is unambiguous, or by the `name` its frontmatter declares — which is what a repo-root skill is usually called, since its id comes from the directory. There is no `--repo` filter; the selector already disambiguates.
 
 `--concurrency` belongs to the root action alone, because it sizes the worker pool for a session and a headless `run` executes one skill. Root `--version` and `release --version` are distinct options on distinct commands; commander only keeps them apart under `enablePositionalOptions`, without which the root swallows the argument before the subcommand is reached.
 
@@ -1442,7 +1204,7 @@ Every launch, headless or not, first scans for an unresolved mutation record and
 
 **Its exit code answers "is there a prompt on stdout", not "did the skill pass"** — `0` when one was produced, `1` when the run resolved and nothing in scope carried a finding. This is a deliberate divergence from R12.2's meaning for `run`: reusing that meaning would make a clean skill and a failed lookup indistinguishable. An unknown skill, run id or stage rejects and reaches the top-level handler like every other command's errors.
 
-**Suppression reaches the headless surface additively.** `run --json` carries `ToolRunRecord` on `tool:done`, so each suppressed finding simply gains one optional key: no new event, no version bump. `RunDelta` is deliberately not extended — a `suppressed` counter would mean editing six files kept in step for a number the stage summary already puts on the rail during the run and the Issues screen already answers after it. `fix` gains one exit case: a run whose findings are all suppressed exits `1` saying so, rather than `0` with an empty table, and `--json` reports `findings` (actionable) and `suppressed` as siblings.
+**Suppression reaches the headless surface additively.** `run --json` carries `ToolRunRecord` on `tool:done`, so each suppressed finding gains one optional key: no new event, no version bump. `RunDelta` is deliberately not extended — a `suppressed` counter would keep six files in step for a number the stage summary already puts on the rail and the Issues screen answers afterwards. `fix` gains one exit case: a run whose findings are all suppressed exits `1` saying so rather than `0` with an empty table, and `--json` reports `findings` (actionable) and `suppressed` as siblings.
 
 **It resolves the run from the sidecar, not the ledger.** The default is the greatest run id in `index.ndjson` — not the `latest` symlink, which is absent mid-write, and not `runs.sidecar_path`, because R8.2 makes the sidecar the evidence, the command already names its skill so no cross-skill query is needed, and a run whose ledger row failed still has complete evidence on disk. When the prompt file is absent but that stage's `stage.json` carries findings, `fix` rebuilds it in memory and marks it `onDisk: false`; it never writes, so the pipeline stays the only writer and runs recorded before §9.4 existed are answerable without rewriting their evidence.
 
@@ -1518,7 +1280,7 @@ Fixture capture is a scripted, repeatable step tied to the pinned tool versions,
 | R8 ledger and issues | 10 |
 | R9 release | 12.4 |
 | R10 mutation safety | 12.1, 12.2, 12.3 |
-| R11 terminal interface | 14, 14.1, 14.2, 14.3, 14.5, 14.6 |
+| R11 terminal interface | [design-tui.md](design-tui.md) 14, 14.1, 14.2, 14.3, 14.5, 14.6 |
 | R12 headless | 15 |
 | R13 quality and distribution | 2, 16 |
 

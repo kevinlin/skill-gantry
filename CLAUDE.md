@@ -42,7 +42,7 @@ Design §15 is the CLI surface: six subcommands plus a root action, all built by
 Precedence, highest first:
 
 1. [requirements.md](docs/specs/requirements.md) — numbered `R*` requirements, each tracing to a `D*` decision. Code comments and commit messages cite these ids. Its § Milestone ownership is the single authority for which milestone owns which requirement; `design.md` deliberately carries no second copy.
-2. [design.md](docs/specs/design.md) — every contract in the system. Read the section that owns a contract before changing it; the map below says which section that is.
+2. [design.md](docs/specs/design.md) — every contract in the system, with §14's terminal interface split into [design-tui.md](docs/specs/design-tui.md) under its own section numbers. Read the section that owns a contract before changing it; the map below says which section that is.
 3. The code.
 4. The plans — a record of intent, never a contract. Each ends with a "Deviations found while implementing" section, and shipped plans are compacted to hold the why, not the how.
 
@@ -88,7 +88,7 @@ The seams no single file reveals:
 | run lifecycle, events, cancellation phases | §11 |
 | sandbox, dirty override, journalled apply, release state machine | §12 |
 | retirement | §13 |
-| a screen, the row budget, render discipline | §14, §14.1 |
+| a screen, the row budget, render discipline | design-tui.md §14, §14.1 |
 | a CLI flag or exit code | §15 |
 
 Two of those bite hardest because the change looks local. Extending the rule-class map is a migration, not an edit: bump `RULE_CLASS_MAP_VERSION` and reclassify live issues, or every issue filed under the old class is orphaned (R8.14). And outcome classification is an ordered table where a schema-valid parse beats the exit code, so a scanner exiting 1 with a clean report has *passed*.

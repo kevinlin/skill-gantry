@@ -60,7 +60,14 @@ describe('R13.7 traceability', () => {
 
   it('has a design section claiming every requirement, and claims none that does not exist', async () => {
     const requirements = await readFile('docs/specs/requirements.md', 'utf8')
-    const design = await readFile('docs/specs/design.md', 'utf8')
+    // The design layer is two files: §14 was split into design-tui.md when
+    // design.md passed 1600 lines. Both are read and their labels unioned, so
+    // where a section lives cannot change whether its requirement is claimed.
+    const design = (
+      await Promise.all(
+        ['docs/specs/design.md', 'docs/specs/design-tui.md'].map((path) => readFile(path, 'utf8')),
+      )
+    ).join('\n')
     const ids = declaredIds(requirements)
 
     const claimed = new Set<string>()
