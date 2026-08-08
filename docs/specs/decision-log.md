@@ -286,3 +286,30 @@ promptfoo evaluates prompts declared in a per-project `promptfooconfig.yaml`. It
 *Consequence:* evaluate has exactly one tool, skill-up. D8's pick-one policy is unchanged and is enforced by `AdapterStageExecutor.plan()`, which rejects a selection of more than one tool for a `pick-one` stage regardless of how many candidates exist.
 
 *Reversible:* if a per-skill promptfoo config convention emerges in the skills ecosystem, the tool returns as a catalogue entry plus an adapter, and nothing else about the design has to move.
+
+## 11. The Work screen overhaul
+
+**Date:** 2026-08-09. Refines D13. Supersedes nothing.
+**Input:** a design study of the assembled screen — `Skill Gantry TUI.dc.html` and `uploads/DESIGN.md` in a Claude Design project, built over screenshots of the shipped M6 screens.
+
+D13's screen shipped across M2 and M6 and then took four extensions in place: the fix prompt, the settings editor, the run rehydration, the suppression mark. What it never took was one pass over the assembled frame, and the study made three gaps visible that no single extension would have — a Findings pane that lists what is wrong and offers no way to act on it, statistics reachable only by leaving the screen, and a keymap where two of the movement keys ignore the focus the other one respects.
+
+**D20. The daily loop is served on Work, additively. The sibling screens stay.**
+Work gains an Overview card sized by what the terminal has left, an Issues tab on the output pane with a scope cycle, `0` to the Dashboard, and finding-level detail. Dashboard, Issues, Tools and Settings remain top-level screens, so R11.3 is untouched.
+*Why:* the study's "one screen, one journey" is right about the daily loop and wrong about everything else. M6 shipped an editable Settings under R11.7 and R11.8 whose only route is the palette already; demoting the screens would bury it further. And folding Issues into a tab *instead of* the screen would put the ledger's audit surface behind a scope cycle on a pane that also has to show a streaming log.
+*Rejected:* replacing the screens (amends R11.3 and hides the editor M6 had just built); a reskin alone (leaves the Findings pane a flat unactionable list, which is the study's actual finding); the Dashboard as an overlay modal (a sixth entry in §14.2's fixed precedence order, for a screen R11.3 requires to exist anyway, when `esc` already returns to Work).
+
+**D21. Findings become finding-level, and read-only.**
+A per-finding cursor, inline detail for the selected row, and two actions: `o` opens the tool's own report through the host, `y` copies the fix prompt of the stage that produced the selected finding. Suppressing a finding is deferred to M8. Applying a fix is refused.
+*Why:* the study's `f` narrows `allowed-tools: Bash(*)` to two named entries, which no tool reports — SkillGantry would be authoring the patch. R6.10 forbids exactly that, and it was written because both findings in run `019fcd9e` were unsafe to apply mechanically. Routing the finding to an optimise tool instead is not available either: SkillOpt and SkillHone are both unpublished (§10, [plan-m3.md](plan-m3.md)), so the stage has no adapter. Suppression is a different refusal: it writes the user's repo, so it belongs behind §12's sandbox, diff and journal, it needs every adapter manifest to declare its baseline file's path *and* entry shape, and R8.15 currently names that file the authority SkillGantry only reads. An amendment of that size carried inside a screen specification is how it becomes a footnote to a pane.
+*Rejected:* a per-finding fix prompt (§9.4 writes one prompt per stage; a per-finding one is a new artefact and a change to R6.10, for a gain the stage prompt already delivers); leaving `y` on the rail (the finding now carries its own stage, so the rail is a worse answer to the same question).
+
+**D22. Three focus zones, and every movement key scoped to one.**
+Skills, work — the rail and the output pane together — and queue, cycled by `Tab`. `j`/`k`, `h`/`l` and `space` all act on the focused zone only.
+*Why:* `h`/`l` fired in every zone, so a user moving down the skill list moved the rail at the same time without a mode saying so, and the rail describes the *selected* skill: moving both at once is how you lose track of which stage you are reading. Merging `stages` and `output` into one zone costs nothing, because `h`/`l` and `j`/`k` already tell the rail and the pane apart inside it — a stop whose only job is to disambiguate two keys that were never ambiguous is a stop the user pays for on every cycle.
+*Rejected:* two zones with a read-only queue (R11.6 requires per-job cancellation, and picking a job needs a cursor; reaching it through the selected skill is ambiguous the moment one skill is enqueued twice); a `Tab` that skips the queue while it is empty (no dead stop, but the destination then depends on state, so the user cannot predict it without looking).
+
+**D23. The study's palette for state, the terminal's own for surfaces.**
+Hex for the accent and every state colour. Body foreground and all backgrounds left unset. A selected row is reverse video over text padded to the pane's width.
+*Why:* SkillGantry has never painted a background, which is the whole reason it reads on a light terminal; adopting the study's `#ededed` body text would make it unreadable there, and its `#1a1a1a` fills would read as blobs. Reverse video swaps the terminal's own two colours, so it is theme-safe where a fill is not — which the study's own design system also says, in a Don't its mock contradicts. Padded first because Ink's `inverse` covers only the characters actually rendered, so an unpadded short row gets a stub of highlight instead of a band.
+*Rejected:* fully literal and dark-only (a documented "dark terminal required" constraint, for a tool that runs wherever the terminal is); keeping named ANSI (safe everywhere, and forfeits the one thing a study of the assembled screen was for).

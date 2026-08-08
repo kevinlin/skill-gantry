@@ -1173,25 +1173,26 @@ The cache still earns its place: the Issues and Dashboard screens filter depreca
 
 One store fed exclusively by core events; Ink components are pure functions of it. Commands flow back through `RunHandle` and `QueueHandle`.
 
+A run in flight, with the Log tab up and the terminal too short for §14.6's Overview card:
+
 ```
 SkillGantry 8 skills · 1/2 running
-┌────────────────────┐┌────────────────────────────────────────────────────────┐
-│ Skills 1/8 · 1 ma… ││  Validate  Evaluate  Security  Optimise  Release       │
-│ › ● declawed       ││  passed    failed    running   ·         ·             │
-│   ○ gap-analysis   │└────────────────────────────────────────────────────────┘
-│  *! spec-lint      ││ 1 Log  2 Findings  3 Artefacts  4 SKILL.md             │
-│   ○ zuhlke-slide…  ││ skillspector: scanning declawed/scripts/scan.py        │
-└────────────────────┘└────────────────────────────────────────────────────────┘
-┌──────────────────────────────────────────────────────────────────────────────┐
-│ Queue 1/2 running · 2 waiting · +1 more                                      │
-│ › ▶ running declawed validate,security                                       │
-└──────────────────────────────────────────────────────────────────────────────┘
-j/k move · space mark · r run · x cancel · ? help · q quit
+┌─ Skills 1/8 · 1 marked ──┐┌────────────────────────────────────────┐
+│ ▸ ◐ declawed             ││  Validate  Evaluate  Security  Opt  Rel│
+│   ○ gap-analysis         ││  passed    failed·2  running   ·    ·  │
+│  *! spec-lint            │├────────────────────────────────────────┤
+│   ○ zuhlke-slides        ││ 1 Log 2 Findings 2 3 Issues 3 4 Art 5 S│
+│  rows 1–4 of 8 · j/k     ││ skillspector: scanning scripts/scan.py │
+└──────────────────────────┘└────────────────────────────────────────┘
+┌─ Queue 1/2 running · 2 waiting · +1 more ──────────────────────────┐
+│ ▸ ▶ running  declawed  validate,security              0m 42s       │
+└────────────────────────────────────────────────────────────────────┘
+j/k move · space mark · r run · x cancel · y copy · ? help · q quit
 ```
 
 Render discipline, the whole mitigation for choosing Ink: `tool:output` chunks enter a per-tool-run ring buffer of 2000 lines held **outside** React. A 100 ms tick copies the visible window into state. Every other pane re-renders only on discrete state change. Log text never enters component state line by line.
 
-The output pane is a focus stop like the other three panels — the cycle is skills → stages → output → queue, in the order they sit on the screen — and `j`/`k` scroll whichever tab is up. `AppState.outputOffset` is the first visible row, or `null` for "wherever this tab naturally sits": the top of a findings, artefact or SKILL.md list, the newest line of the log. Null rather than a number because an offset pinned at the tail stops being the tail the moment the next line lands, so a log scrolled back to its newest line resumes following instead of freezing one line short. Scrolling the log reads the same flushed window R11.4 already puts in state and adds no path from the ring buffer into React. `outputWindow()` in `src/tui/rows.ts` is the one place the window is derived, because the pane renders against it and the key handler clamps against it — two derivations of that arithmetic is how `j` stops moving several rows before the end and every further press does nothing.
+The output pane shares a focus stop with the rail — the cycle is skills → work → queue, in the order they sit on the screen (§14.6, R11.11; it was four stops until the rail and the pane merged) — and `j`/`k` scroll whichever tab is up, except in Findings, where they move that pane's cursor. `AppState.outputOffset` is the first visible row, or `null` for "wherever this tab naturally sits": the top of a findings, artefact or SKILL.md list, the newest line of the log. Null rather than a number because an offset pinned at the tail stops being the tail the moment the next line lands, so a log scrolled back to its newest line resumes following instead of freezing one line short. Scrolling the log reads the same flushed window R11.4 already puts in state and adds no path from the ring buffer into React. `outputWindow()` in `src/tui/rows.ts` is the one place the window is derived, because the pane renders against it and the key handler clamps against it — two derivations of that arithmetic is how `j` stops moving several rows before the end and every further press does nothing.
 
 Screens: Work (above), Dashboard (ledger aggregates), Issues (cross-repo table with state transitions), Tools (install, pin, verify, doctor), Settings (repos, concurrency, credentials status). Vim-style movement, `?` for help, `:` for a command palette. The queue is a panel on Work, showing `QueueHandle.snapshot()` with per-job cancel.
 
@@ -1231,7 +1232,7 @@ Four rules keep a frame inside its budget, each learned from a row that overflow
 
 - **Every panel renders exactly the rows it was allocated.** An overflow count (`+5 more`) or a footnote (`4 earlier lines dropped`) is counted *against* that allocation, never appended below it. One extra row pushes the panel beneath it off the bottom.
 - **Text truncates, never wraps.** Content rows carry `wrap="truncate"`, and labels are cut with `truncate()`, which measures cells through `string-width` so a CJK skill name cannot overflow its column by its own width. `truncateMiddle()` is its head-elided twin, for paths whose basename is what identifies them.
-- **What the chrome costs is `layout.ts`'s to know, not each pane's.** `innerWidth(width, chrome)` is the single expression of `Panel`'s border and padding. Three panes each re-deriving `width - 4` meant a change to `Panel`'s padding would silently truncate every label to the wrong width, with nothing failing.
+- **What the chrome costs is `layout.ts`'s to know, not each pane's.** `innerWidth(width, chrome)` is the single expression of `Panel`'s border and padding. Three panes each re-deriving `width - 4` meant a change to `Panel`'s padding would silently truncate every label to the wrong width, with nothing failing. §14.6 moves a titled panel's heading into its top border, which takes `BOXED_CHROME` from 11 to 9 and makes an explicit width mandatory for such a panel — both are decisions of this module, for this rule's reason.
 - **The rail and the output pane share one horizontal rule** (`borderTop={false}`), because two adjacent boxes each drawing their own spent two rows on one seam.
 
 Every full-screen view obeys the budget, including the help screen: it renders through `Panel`, windows its binding list against `layout.rows`, and reports what it cut. Drawing its own fixed-size frame scrolled its own title away on a 50×14 terminal. The wizard is the one view sized independently — it is inline rather than full-screen — but its width is still a `layout.ts` decision (`setupWidth`), never a constant in the component.
@@ -1305,7 +1306,7 @@ Modal precedence is fixed and ordered by what a keystroke can destroy: the mutat
 
 `y` on the Work screen copies the §9.4 fix prompt for the **lifecycle rail's selected stage** — the vim yank verb, unbound before this. It sits in `useInput` after the Work-screen gate and before the `r` handler, so every modal above still wins its keystroke.
 
-The rail's stage and not a Findings-pane selection, because the pane has no per-finding cursor and `SkillRow.findings` accumulates across every stage of the run, so a finding on screen cannot be attributed to a stage at all. The rail already carries a selection moved by `h`/`l`, which also makes `y` work from any output tab. `StageCell` therefore gains a `findings` count, set from the `stage:done` event that already carries the whole `StageResult` — no event contract changes.
+The rail's stage and not a Findings-pane selection, because the pane has no per-finding cursor and `SkillRow.findings` accumulates across every stage of the run, so a finding on screen cannot be attributed to a stage at all. The rail already carries a selection moved by `h`/`l`, which also makes `y` work from any output tab. *(§14.6 retires that reasoning rather than the rail: `FindingRow` carries the stage its finding came from, which the reducer had in `event.stage` all along, so a selected finding answers the question better than the rail does and the rail becomes the fallback for when the pane holds no selection.)* `StageCell` therefore gains a `findings` count, set from the `stage:done` event that already carries the whole `StageResult` — no event contract changes.
 
 **The OSC 52 write lives in `src/tui/`.** The escape has to reach the terminal Ink currently owns — alternate screen, raw mode, the stream Ink was constructed with — and `src/cli/tui-command.ts` hands control away at `startTui` with no live handle on the keystroke. The lint rules ban `console` and `process.exit` in **core**, not stdout writes in the renderer; writing stdout is what the renderer is. Encoding is split into a pure `osc52.ts` so the byte shape is testable without a terminal, base64 over **UTF-8** explicitly — a non-ASCII character in a finding message corrupts a `binary` payload. It returns null above a size cap so the caller can never report a copy that did not happen. The write goes through `useStdout().stdout.write`, not Ink's `write()` helper from the same hook: that one writes above the app and forces a clear-and-re-render, flickering the frame for a sequence that renders nothing.
 
@@ -1346,6 +1347,50 @@ The ambiguity is real and the fix is to not use the buffer. `SkillRow` carries `
 `logLines` and `logDropped` sit beside `outputWindow` for its reason: the pane renders against those lines and the key handler clamps against their count, so a second derivation is how `j` comes to stop short of the end. The replay carries the tool-id prefix the pump writes, so a recorded frame and a live one read identically; it is capped at `LOG_CAPACITY` keeping the newest and reporting the rest through the footnote R11.5 already spends a row on; and the two streams are ordered stdout-then-stderr per tool rather than merged, because the pipeline writes them as two files and their true interleaving is not on disk. The empty case now means the run's tools wrote no log at all, and still names the directory.
 
 Read-only throughout. The pipeline stays the only writer under `runs/`, which is the constraint R11.10 shares with R12.6 and for the same reason: a screen that answers for a run must not rewrite that run's evidence.
+
+### 14.6 The Work screen overhaul
+
+*Satisfies R11.11–R11.15.*
+
+Derived from D20–D23. §14.3 through §14.5 each extended this screen in place; this is the pass over the assembled frame, and every gap it closes was visible only with all four extensions on screen at once.
+
+The same screen idle, with a finding selected and the card at its `compact` tier — §14's frame is the other state, not a second claim about this one:
+
+```
+SkillGantry 18 skills · 0/2 running
+┌─ Skills 7/18 · 1 marked ─┐┌────────────────────────────────────────┐
+│ ▸ ● declawed   ✓ marked  ││  Validate  Evaluate  Security  Opt  Rel│
+│   ○ gap-analysis         ││  failed·3  passed    failed·1  ·    ·  │
+│   × spec-lint    1 open  │├────────────────────────────────────────┤
+│   ○ ui-lab               ││ 1 Log 2 Findings 4 3 Issues 7 4 Art 5 S│
+│  rows 3–8 of 18 · j/k    ││▸high  prompt-injection  SKILL.md:58 sk…│
+└──────────────────────────┘│ │ Instruction block interpolates       │
+┌─ Overview  every repo ───┐│ │ untrusted issue text verbatim.       │
+│ validate ▕███████░░░▏ 89%││ │ injection.untrusted-interpolation    │
+│ evaluate ▕███░░░░░░░▏ 29%││ │ [o] open report   [y] copy prompt    │
+│ security ▕██░░░░░░░░▏ 21%││ medium excessive-permissions SKILL.md:3│
+└──────────────────────────┘└────────────────────────────────────────┘
+┌─ Queue  1 marked · idle ───────────────────────────────────────────┐
+│ ▸ ○ ready  declawed  validate,evaluate,security                    │
+└────────────────────────────────────────────────────────────────────┘
+j/k move · space mark · r run · x cancel · y copy · ? help · q quit
+```
+
+**Three zones, and the keys belong to them** (R11.11). `FOCUSES` becomes `['skills', 'work', 'queue']`: today's `stages` and `output` are one zone, because `h`/`l` and `j`/`k` already tell the rail and the pane apart inside it, and a stop that only disambiguates keys which were never ambiguous is paid for on every cycle. `h`/`l` stop firing globally — the rail describes the *selected* skill, so a user moving down the list was moving the rail with it and nothing on screen said so. `space` was already zone-aware (`focus === 'stages'` chose `toggle-stage-mark`), so it needs only its zone renamed; `markedStages` and `r`'s reading of it are untouched. One focused flag now lights two boxes, which is what makes the merged zone visible: `Panel` already takes `focused`, so the rail and the output pane are simply passed the same value.
+
+**A titled boxed panel draws its own top border** (R11.12's funding). `Panel` emits `┌─ Skills 7/18 · 1 marked ─────┐` as one row and passes `borderTop={false}` beneath it, so a titled panel costs a border row and a title row where it used to cost both plus a body row: `BOXED_CHROME` drops 11 → 9. Those two rows are what the Overview card is built from, which is why the chrome change is not cosmetic and is not optional. The constraint it introduces: **a titled boxed panel must be given an explicit width.** The title row and the box below it are two independent renders, and a mismatch of one cell puts the `┐` a column away from the `│` under it — visible as a torn corner rather than as a layout bug. `SkillList` and the card already take `skillListWidth`; `QueuePanel` is passed `layout.columns`. `bare` chrome keeps the title as a body row, since there is no border to embed it in, and the rail and the output pane pass no title at all and are unaffected.
+
+**The Overview card is sized by rows, not by columns** (R11.12). `layoutFor` gains `overview: 'full' | 'compact' | 'none'` and picks the largest tier that leaves `SKILL_LIST_MIN` rows in the list — `full` is three bars plus the issue summary, the medians and the dashboard link; `compact` is the three bars. Rows and not a width band because the card competes for the left column's height: a 200×20 terminal has cells to spare and nothing to give. It is `standard` only; `narrow` stacks the list above the rail and has no column to put a card in. `overviewRows(stats, tier, width)` and `bar(pct, cells)` are pure and sit in `rows.ts` beside `dashboardRows`, which is what lets every tier boundary be asserted without rendering Ink — and the assertions are over `layoutFor`, never at a named terminal size, because a later change to what the chrome costs would move the boundary and break a test that was describing arithmetic rather than a rule. The card's data is one unfiltered `views.dashboard({})`, read at launch and on `:refresh`; `0` goes to the Dashboard screen, which R11.3 requires to exist anyway, rather than to a sixth entry in §14.2's precedence order.
+
+**A finding carries its stage and its tool** (R11.14). `SkillRow.findings` becomes `FindingRow[]` — `{ finding: RawFinding; stage: Stage; toolId: string }` — and both new fields are already in hand where the reducer appends them, in `event.stage` and `event.result.toolRuns[].toolId`. No core contract moves. This is what retires §14.3's reason for having no per-finding cursor: the attribution it recorded as impossible was one field away the whole time. `findingRows(state, skill, width)` emits a flat row list *including the selected row's detail*, and `outputWindow` windows that list, so the expansion is simply more rows and the pane and the key clamp keep sharing one derivation — the `j`-stops-short failure §14 and §14.5 have each already paid for once. In this pane `j`/`k` move a cursor and the window follows it, as `SkillList` and Issues do; Log, Artefacts and SKILL.md keep their scroll semantics, and `outputOffset` stays `null` for them.
+
+The detail names the message, the rule class, the native rule id, the report its tool wrote, and the tool's suppression justification when there is one — because the normalised record holds six fields and the SARIF `properties` a scanner uses to explain and remediate a finding reach no surface at all (R6.10's rationale, at the screen). So the screen's job is to reach the report, not to restate it: `o` opens it through **`openPath` on `GantryViews`**. That port and not a new one because `GantryViews` is already the terminal interface's single injected port and already carries writes in `actOnIssue` and `applyConfig` — it is the TUI's port, not the ledger's — and it is a port at all because `src/tui/**` may not spawn. `y` copies the prompt for the stage that produced the selected finding (R11.9 as amended), falling back to the rail's stage when the Findings pane is not up. No key applies a change to the skill: R11.14 restates R6.10 at the screen precisely so a per-finding action row cannot quietly acquire a fixer, which is what the study proposed and D21 refused.
+
+**Issues on the output pane triages; the screen acts** (R11.13). `PANELS` becomes `log, findings, issues, artefacts, skill` on `1`–`5`, and the guard that reads `'1'`–`'4'` is the single place that changes. `S` cycles the scope over the selected skill, its repo, and every registered repo, which resolves onto `IssueFilter`'s existing `skillId`, `repoId` and unfiltered forms — no ledger change. The Issues screen's row building is extracted to `issueRows()` in `rows.ts` and both surfaces render through it, because one issue rendered two ways by two modules is the divergence `tokens.ts` records from when five modules owned severity colour. The tab binds no state transition: `o` on this pane already means "open the report", and one pane whose key means two things across two of its own tabs is a keymap that cannot be learned.
+
+**Colour for state; the terminal's own for surfaces** (R11.15). `tokens.ts` takes the study's hex — `ACCENT` `#0070f3`, passed `#00c853`, failed `#ee0000`, errored and degraded `#f5a623`, skipped and idle `#555555`, critical and high `#ee0000`, medium `#f5a623`, low and info `#888888` — and chalk downsamples for a terminal without truecolour. No body foreground and no background is ever set, which is why the screen reads on a light theme and is what the study's own `#ededed` body text would have broken. A selected row is `inverse` over text `padCells`-padded to the pane's inner width: reverse video swaps the inherited pair rather than replacing it, and the padding is not cosmetic — Ink's `inverse` covers only the characters rendered, so an unpadded short row highlights a stub instead of a band. `▸` stays beside it, because a monochrome terminal keeps the cursor when it loses the attribute.
+
+**Not adopted from the study, and why.** Applying a fix (D21: no tool reports the patch, so SkillGantry would author it, and R6.10 exists because the two findings that prompted it were unsafe to apply mechanically). Suppressing a finding (D21: a repo write, so §12's gate, an adapter-declared baseline path and shape, and an amendment to R8.15's authority clause — M8, not a footnote to a pane). The rail's per-column left border rule (a cell per column to say what `underline` and `bold` already say). Deleting the sibling screens (D20: R11.3, and M6's settings editor is already palette-only). And the study's header, which adds an open-issue count and the repo name: cheap, probably right, and no requirement asks for it — recorded here rather than smuggled in through a diagram, because a frame drawn in a spec is read as a promise.
 
 ## 15. Headless interface
 
@@ -1447,7 +1492,7 @@ Fixture capture is a scripted, repeatable step tied to the pinned tool versions,
 | R8 ledger and issues | 10 |
 | R9 release | 12.4 |
 | R10 mutation safety | 12.1, 12.2, 12.3 |
-| R11 terminal interface | 14 |
+| R11 terminal interface | 14, 14.1, 14.2, 14.3, 14.5, 14.6 |
 | R12 headless | 15 |
 | R13 quality and distribution | 2, 16 |
 
@@ -1461,6 +1506,7 @@ The mapping is checkable rather than asserted: every `*Satisfies …*` label in 
 | M4 | The three remaining selectable adapters and their parsers, the shared `v1alpha1` parser, the rule-class map and its versioned migration, fan-out policy, cross-tool merge |
 | M5 | `isolation`, `release`, `stages/mutation.ts` + `stages/release-stage.ts`, `ledger/gates.ts` + `ledger/lifecycle.ts`, retirement, the mutating-stage gate, the TUI review pane |
 | M6 | `ledger/stats.ts`, `ledger/issue-queries.ts`, Dashboard, Issues, Tools and Settings screens, the command palette, `tui/rows.ts`, the `GantryViews` port; then `config/edit.ts` (the pure transforms and `configChanges`), the setup screen, the inline value editor and the config confirmation pane |
+| M7 | `src/tui/` only, plus one `GantryViews` method: `tokens.ts` repalletted, `Panel`'s titled top border, three focus zones, the Overview card and its tiers in `layout.ts` and `rows.ts`, `FindingRow` and `findingRows()` with per-finding detail, `issueRows()` shared by the Issues tab and the Issues screen, and `openPath` |
 
 ## 18. What changed in revision 2
 
