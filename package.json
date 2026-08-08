@@ -1,6 +1,6 @@
 {
   "name": "skillgantry",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "type": "module",
   "bin": {
     "skillgantry": "./dist/cli/index.js"
