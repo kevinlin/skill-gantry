@@ -34,6 +34,7 @@ Which milestone owns which requirement is a separate question, answered only by 
 | [plan_m6-fix-prompts-for-stage-findings.md](plan_m6-fix-prompts-for-stage-findings.md) | M6 (extension) | Shipped | Coding-agent fix prompt per findings-bearing stage (R6.10, R11.9, R12.6): the builder in `stages`, the pipeline hook, `skillgantry fix`, and `y` on the Work screen |
 | [plan_m6-respect-skillspector-baseline.md](plan_m6-respect-skillspector-baseline.md) | M6 (extension) | Shipped | Honour a tool's own suppression file (R4.14, R4.15, R6.11, R8.15): conditional argv, `RawFinding.suppressed`, the ledger's derived suppression cache, and the Issues mark |
 | [plan-m7.md](plan-m7.md) | M7 | Shipped, compacted | Work screen overhaul (R11.11–R11.15, amended R11.9): the D23 palette, a titled panel border that funds the row budget, three focus zones, the Overview card and its height-driven tiers, a Findings cursor with inline evidence, the Issues tab, and `openPath` |
+| [plan-m8.md](plan-m8.md) | M8 | Designed, not started | Accept a finding from the terminal (R4.16, R8.16, R10.12, R11.16, R11.17, R12.7): a declarative baseline spec on the manifest, a narrow diff-confirm-recheck-rename write path, `s` on the Issues screen and the Findings pane, and the gate re-run the acceptance invalidates |
 
 ## Reviews (historical)
 
