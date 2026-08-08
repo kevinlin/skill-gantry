@@ -256,7 +256,8 @@ describe('rehydrating the last recorded run — R11.10', () => {
     await waitForFrame(ui, (frame) => frame.includes('excessive-permission'))
     expect(ui.lastFrame()).toContain('excessive-permission')
 
-    ui.stdin.send('3')
+    // Artefacts is key 4: Issues took 3 (R11.13).
+    ui.stdin.send('4')
     await waitForFrame(ui, (frame) => frame.includes('findings.sarif'))
     expect(ui.lastFrame()).toContain('findings.sarif')
     expect(ui.lastFrame()).toContain('run.json')

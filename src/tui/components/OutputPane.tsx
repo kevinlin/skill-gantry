@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { Box, Text } from 'ink'
 import { innerWidth, truncate, truncateMiddle } from '../layout.js'
-import { logDropped, logLines, outputWindow } from '../rows.js'
+import { issueRows, logDropped, logLines, outputWindow } from '../rows.js'
 import { PANELS, type AppState, type SkillRow } from '../store.js'
 import { ACCENT, SEVERITY_COLOUR, overflowNotice } from '../tokens.js'
 import { Panel } from './Panel.js'
@@ -9,6 +9,7 @@ import { Panel } from './Panel.js'
 const TITLE: Record<(typeof PANELS)[number], string> = {
   log: 'Log',
   findings: 'Findings',
+  issues: 'Issues',
   artefacts: 'Artefacts',
   skill: 'SKILL.md',
 }
@@ -44,18 +45,23 @@ export function OutputPane({
       // own horizontal rule spent two rows on one seam.
       borderTop={false}
     >
-      <Box>
+      {/* One truncating row rather than a flex row of boxes. Five tabs at a
+          two-cell gap are 54 cells, which a 50-column terminal cannot hold, and
+          a flex row overflows its container sideways instead of cutting —
+          §14.1's second rule broken by the one row that names every other. The
+          gap is one cell for the same reason: at that width all five names fit
+          whole, so the truncation below is a backstop rather than the norm. */}
+      <Text wrap="truncate">
         {PANELS.map((panel, index) => (
-          <Box key={panel} marginRight={2} flexShrink={0}>
-            <Text wrap="truncate" bold={state.panel === panel} dimColor={state.panel !== panel}>
-              {/* Spread rather than an explicit undefined, which
-                  exactOptionalPropertyTypes rejects for an optional prop. */}
-              <Text {...(state.panel === panel ? { color: ACCENT } : {})}>{index + 1}</Text>{' '}
-              {TITLE[panel]}
-            </Text>
-          </Box>
+          <Text key={panel} bold={state.panel === panel} dimColor={state.panel !== panel}>
+            {index === 0 ? '' : ' '}
+            {/* Spread rather than an explicit undefined, which
+                exactOptionalPropertyTypes rejects for an optional prop. */}
+            <Text {...(state.panel === panel ? { color: ACCENT } : {})}>{index + 1}</Text>{' '}
+            {TITLE[panel]}
+          </Text>
         ))}
-      </Box>
+      </Text>
       <Body
         state={state}
         skill={skill}
@@ -159,6 +165,28 @@ function Body({
             )}
           </Text>
         ))}
+        {notice}
+      </Box>
+    )
+  }
+
+  if (state.panel === 'issues') {
+    if (state.issues.length === 0) {
+      return (
+        <Text dimColor wrap="truncate">
+          no issues in this scope — S widens it
+        </Text>
+      )
+    }
+    return (
+      <Box flexDirection="column">
+        {issueRows(state.issues, state.selectedIssue, cols)
+          .slice(view.start, view.end)
+          .map((row) => (
+            <Text key={row.fingerprint} wrap="truncate" dimColor={row.suppressed}>
+              <Text color={SEVERITY_COLOUR[row.severity] ?? '#888888'}>{row.text}</Text>
+            </Text>
+          ))}
         {notice}
       </Box>
     )

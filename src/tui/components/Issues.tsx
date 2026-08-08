@@ -1,12 +1,6 @@
 import { Box, Text, useWindowSize } from 'ink'
-import {
-  innerWidth,
-  layoutFor,
-  screenBodyRows,
-  truncate,
-  truncateMiddle,
-  windowFor,
-} from '../layout.js'
+import { innerWidth, layoutFor, screenBodyRows, truncate, windowFor } from '../layout.js'
+import { issueRows } from '../rows.js'
 import type { AppState } from '../store.js'
 import { SEVERITY_COLOUR, overflowNotice } from '../tokens.js'
 import { Panel } from './Panel.js'
@@ -17,14 +11,6 @@ import { StatusBar } from './StatusBar.js'
 const HINTS =
   'j/k move · a ack · w wontfix · o reopen · f filter · : commands · esc work · q quit'
 
-/** Paired with the word, so the state survives a monochrome terminal. */
-const STATE_MARK: Record<string, string> = {
-  open: '●',
-  acknowledged: '◐',
-  wontfix: '×',
-  fixed: '○',
-}
-
 export function Issues({ state }: { state: AppState }): React.ReactElement {
   const { columns, rows } = useWindowSize()
   const layout = layoutFor(columns, rows)
@@ -34,16 +20,6 @@ export function Issues({ state }: { state: AppState }): React.ReactElement {
   const height = overflow ? Math.max(1, budget - 1) : budget
   const { start, end } = windowFor(state.issues.length, state.selectedIssue, height)
 
-  // Fixed left columns, path last: the path is the only field that can be
-  // arbitrarily long, so it is the only one that should absorb the truncation.
-  const severityWidth = 9
-  const stateWidth = 14
-  const skillWidth = Math.min(24, Math.max(10, Math.floor(cols * 0.22)))
-  // The rule class gets its own column rather than sharing the path's: the path
-  // is elided from the head so its basename survives, which ate the rule class
-  // when the two shared one field — and the rule class is what names the issue.
-  const ruleWidth = Math.min(18, Math.max(8, Math.floor(cols * 0.2)))
-  const pathWidth = Math.max(8, cols - severityWidth - stateWidth - skillWidth - ruleWidth - 4)
   const suppressedCount = state.issues.filter((row) => row.suppressed).length
 
   return (
@@ -67,48 +43,21 @@ export function Issues({ state }: { state: AppState }): React.ReactElement {
             no issues match this filter
           </Text>
         )}
-        {state.issues.slice(start, end).map((row, offset) => {
-          const index = start + offset
-          // The detectors that have not since reported a conclusive absence —
-          // R8.8's blockers, so "why is this still open" is on the row.
-          const blocked = row.blockedBy.length === 0 ? '' : ` ⟂ ${row.blockedBy.join(',')}`
-          // R8.15: marked, never hidden — the Issues screen is the audit
-          // surface. It rides the trailing field beside `blocked` rather than
-          // taking a row. Its width is reserved out of the path's rather than
-          // appended to it: `truncateMiddle` elides the head, so a mark simply
-          // concatenated on is what a long reason eats first. Glyph paired with
-          // the word, so a monochrome terminal loses nothing.
-          const mark = row.suppressed
-            ? truncate(
-                ` ⊘ suppressed${row.suppressionReason ? `: ${row.suppressionReason}` : ''}`,
-                Math.max(14, Math.floor(pathWidth * 0.6)),
-              )
-            : ''
-          return (
-            <Box key={row.fingerprint}>
-              <Text
-                wrap="truncate"
-                bold={index === state.selectedIssue}
-                dimColor={row.suppressed}
-              >
-                {index === state.selectedIssue ? '›' : ' '}{' '}
-                <Text color={SEVERITY_COLOUR[row.severity] ?? '#888888'}>
-                  {row.severity.padEnd(severityWidth)}
-                </Text>
-                <Text>{`${STATE_MARK[row.state] ?? '?'} ${row.state}`.padEnd(stateWidth)}</Text>
-                <Text>{truncate(row.skillId, skillWidth).padEnd(skillWidth)}</Text>
-                <Text>{truncate(row.ruleClass, ruleWidth).padEnd(ruleWidth)}</Text>
-                <Text dimColor>
-                  {truncateMiddle(
-                    `${row.relPath}${blocked}`,
-                    Math.max(4, pathWidth - mark.length),
-                  )}
-                  {mark}
-                </Text>
-              </Text>
-            </Box>
-          )
-        })}
+        {/* R11.13: one builder for this screen and the Work screen's Issues
+            tab. Two renderers of one issue is the divergence `tokens.ts`
+            already records from when five modules owned severity colour. */}
+        {issueRows(state.issues, state.selectedIssue, cols)
+          .slice(start, end)
+          .map((row) => (
+            <Text
+              key={row.fingerprint}
+              wrap="truncate"
+              bold={row.selected}
+              dimColor={row.suppressed}
+            >
+              <Text color={SEVERITY_COLOUR[row.severity] ?? '#888888'}>{row.text}</Text>
+            </Text>
+          ))}
         {overflow && (
           <Text dimColor wrap="truncate">
             {overflowNotice(start, end, state.issues.length, 'j/k moves')}

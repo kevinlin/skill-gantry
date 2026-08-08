@@ -231,18 +231,19 @@ describe('loadLastRun — R11.10', () => {
 })
 
 describe('output pane — R11.2', () => {
-  it('shows SKILL.md on panel 4', async () => {
+  it('shows SKILL.md on panel 5', async () => {
     const { skills } = await fixture()
     const { ui, queue } = harness(skills)
     await ui.settle()
-    ui.stdin.send('4')
+    ui.stdin.send('5')
     await ui.settle(60)
     expect(ui.lastFrame()).toContain('de-slop pass')
     ui.unmount()
     queue.close()
   })
 
-  it('shows artefacts on panel 3 once a run directory is known', async () => {
+  // Artefacts is key 4 and SKILL.md key 5: Issues took 3 (R11.13).
+  it('shows artefacts on panel 4 once a run directory is known', async () => {
     const { skills, runDir } = await fixture()
     const { ui, queue } = harness(skills)
     await ui.settle()
@@ -250,7 +251,7 @@ describe('output pane — R11.2', () => {
     const [jobId] = queue.enqueue([{ skill: skills[0]!, stages: ['security'] }])
     void jobId
     await ui.settle()
-    ui.stdin.send('3')
+    ui.stdin.send('4')
     await ui.settle(60)
     expect(ui.lastFrame()).toMatch(/no artefacts yet|run\.json/)
     void runDir
@@ -336,7 +337,7 @@ describe('output pane scrolling — §14', () => {
   it('scrolls SKILL.md once the pane holds the focus, and says so before it does', async () => {
     const { ui } = harness(await longSkill())
     await ui.settle(40)
-    ui.stdin.send('4')
+    ui.stdin.send('5')
     await ui.settle(40)
 
     // Cut, and saying which rows these are — the pane used to show the head of

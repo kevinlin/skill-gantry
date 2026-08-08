@@ -274,6 +274,36 @@ export function App({
     }
   }, [state.screen, state.statsFilter, state.issueFilter, state.reloads])
 
+  // R11.13's three scopes resolve onto `IssueFilter`'s existing shapes, so the
+  // ledger needs no change: a skill id, a repo id, or no filter at all. A second
+  // effect rather than a branch in the one above, because its dependencies are
+  // the tab's — the panel and the selected skill — and folding them into that
+  // list would re-query the Dashboard on every `j` in the skill list.
+  useEffect(() => {
+    if (state.screen !== 'work' || state.panel !== 'issues') return
+    const skill = selectedSkill(state)
+    if (!skill) return
+    const ref = byId.current.get(skill.skillId)
+    const filter =
+      state.issueScope === 'skill'
+        ? { skillId: skill.skillId }
+        : state.issueScope === 'repo' && ref
+          ? { repoId: ref.repo.id }
+          : {}
+    let live = true
+    void views.issues(filter).then(
+      (rows) => {
+        if (live) dispatch({ type: 'set-issues', rows })
+      },
+      (err: unknown) => {
+        if (live) dispatch({ type: 'view-error', message: (err as Error).message })
+      },
+    )
+    return () => {
+      live = false
+    }
+  }, [state.screen, state.panel, state.issueScope, state.selectedSkill, state.reloads, views])
+
   useInput((input, key) => {
     // Ink normalises a modified key onto the bare letter — `input` becomes
     // `keypress.name` when ctrl is held, and an alt-prefixed `\x1ba` has its
@@ -511,8 +541,16 @@ export function App({
       dispatch({ type: 'cycle-focus', delta: key.shift ? -1 : 1 })
       return
     }
-    if (plain && input >= '1' && input <= '4') {
+    if (plain && input >= '1' && input <= '5') {
       dispatch({ type: 'set-panel', panel: PANELS[Number(input) - 1]! })
+      return
+    }
+    // R11.13's scope cycle. The tab binds no state transition — `a`, `w` and `o`
+    // stay on the Issues screen, because `o` on this pane means "open the
+    // artefact directory" and one pane whose key means two things across two of
+    // its own tabs is a keymap that cannot be learned.
+    if (plain && input === 'S' && state.panel === 'issues') {
+      dispatch({ type: 'cycle-issue-scope' })
       return
     }
     if ((plain && input === 'j') || key.downArrow) {

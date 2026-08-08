@@ -1,6 +1,6 @@
 import { basename } from 'node:path'
-import type { ScalarField } from '../core/index.js'
-import { truncate } from './layout.js'
+import type { IssueRow, ScalarField } from '../core/index.js'
+import { truncate, truncateMiddle } from './layout.js'
 import { OUTCOME_COLOUR, SEVERITY_COLOUR } from './tokens.js'
 import type { AppState, SkillRow } from './store.js'
 
@@ -44,6 +44,8 @@ function outputTab(
       return { total: logLines(state, skill).length, anchor: 'bottom' }
     case 'findings':
       return { total: skill?.findings.length ?? 0, anchor: 'top' }
+    case 'issues':
+      return { total: state.issues.length, anchor: 'top' }
     case 'artefacts':
       return { total: state.artefacts.length, anchor: 'top' }
     case 'skill':
@@ -345,4 +347,81 @@ export function settingsRows(state: AppState, width: number): ScreenRow[] {
     ...(current ? { dim: true } : { colour: 'yellow' }),
   })
   return rows
+}
+
+export interface IssueRowView {
+  text: string
+  severity: string
+  suppressed: boolean
+  /** A flag rather than the caller re-reading the cursor glyph out of `text`,
+      which breaks the moment the glyph changes. */
+  selected: boolean
+  fingerprint: string
+}
+
+/** Paired with the word, so the state survives a monochrome terminal. */
+const STATE_MARK: Record<string, string> = {
+  open: '●',
+  acknowledged: '◐',
+  wontfix: '×',
+  fixed: '○',
+}
+
+/**
+ * One issue, one row, built once for both the Issues screen and the Work
+ * screen's Issues tab (R11.13). Two renderers is the divergence this module
+ * already records from when five of them owned severity colour and `low` read
+ * gray on two screens and cyan on a third.
+ *
+ * Fixed left columns and the path last, because the path is the only field that
+ * can be arbitrarily long and so the only one that should absorb the
+ * truncation. The rule class gets its own column rather than sharing the
+ * path's: the path is elided from the *head* so its basename survives, which
+ * ate the rule class when the two shared one field — and the rule class is what
+ * names the issue.
+ */
+export function issueRows(
+  rows: readonly IssueRow[],
+  selected: number,
+  width: number,
+): IssueRowView[] {
+  const severityWidth = 9
+  const stateWidth = 14
+  const skillWidth = Math.min(24, Math.max(10, Math.floor(width * 0.22)))
+  const ruleWidth = Math.min(18, Math.max(8, Math.floor(width * 0.2)))
+  const pathWidth = Math.max(
+    8,
+    width - severityWidth - stateWidth - skillWidth - ruleWidth - 4,
+  )
+
+  return rows.map((row, index) => {
+    // R8.8's blockers: the detectors that have not since reported a conclusive
+    // absence, so "why is this still open" is on the row.
+    const blocked = row.blockedBy.length === 0 ? '' : ` ⟂ ${row.blockedBy.join(',')}`
+    // R8.15: marked, never hidden. Its width is reserved out of the path's
+    // rather than appended to it — `truncateMiddle` elides the head, so a mark
+    // simply concatenated on is what a long reason eats first.
+    const mark = row.suppressed
+      ? truncate(
+          ` ⊘ suppressed${row.suppressionReason ? `: ${row.suppressionReason}` : ''}`,
+          Math.max(14, Math.floor(pathWidth * 0.6)),
+        )
+      : ''
+    const cursor = index === selected ? '▸' : ' '
+    const text =
+      `${cursor} ` +
+      row.severity.padEnd(severityWidth) +
+      `${STATE_MARK[row.state] ?? '?'} ${row.state}`.padEnd(stateWidth) +
+      truncate(row.skillId, skillWidth).padEnd(skillWidth) +
+      truncate(row.ruleClass, ruleWidth).padEnd(ruleWidth) +
+      truncateMiddle(`${row.relPath}${blocked}`, Math.max(4, pathWidth - mark.length)) +
+      mark
+    return {
+      text: truncate(text, width),
+      severity: row.severity,
+      suppressed: row.suppressed,
+      selected: index === selected,
+      fingerprint: row.fingerprint,
+    }
+  })
 }

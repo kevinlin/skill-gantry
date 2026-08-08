@@ -25,7 +25,7 @@ import { humanMs } from './rows.js'
 import { jobVerdict } from './tokens.js'
 import type { LastRun, SettingsView } from './views.js'
 
-export const PANELS = ['log', 'findings', 'artefacts', 'skill'] as const
+export const PANELS = ['log', 'findings', 'issues', 'artefacts', 'skill'] as const
 export type Panel = (typeof PANELS)[number]
 
 // `setup` is a screen so `PALETTE_COMMANDS` picks it up from this list rather
@@ -170,6 +170,13 @@ export interface AppState {
   statsFilter: StatsFilter
   issues: IssueRow[]
   issueFilter: IssueFilter
+  /**
+   * R11.13. Which issues the Work screen's tab is showing. Held separately from
+   * `issueFilter`, which the Issues *screen* owns: one field driven by two
+   * screens with different scoping vocabularies is how the tab comes to
+   * re-filter the screen behind the user's back.
+   */
+  issueScope: 'skill' | 'repo' | 'all'
   selectedIssue: number
   tools: DoctorReport | null
   settings: SettingsView | null
@@ -266,6 +273,7 @@ export type Action =
   | { type: 'set-issues'; rows: IssueRow[] }
   | { type: 'select-issue'; delta: number }
   | { type: 'set-issue-filter'; filter: IssueFilter }
+  | { type: 'cycle-issue-scope' }
   | { type: 'set-tools'; report: DoctorReport }
   | { type: 'set-settings'; view: SettingsView }
   | { type: 'settings-cursor'; delta: number; count: number }
@@ -335,6 +343,7 @@ export function initialState(skills: readonly SkillRef[], concurrency: number): 
     statsFilter: {},
     issues: [],
     issueFilter: {},
+    issueScope: 'skill',
     selectedIssue: 0,
     tools: null,
     settings: null,
@@ -671,6 +680,10 @@ export function reducer(state: AppState, action: Action): AppState {
       }
     case 'set-issue-filter':
       return { ...state, issueFilter: action.filter, selectedIssue: 0, screenOffset: 0 }
+    case 'cycle-issue-scope': {
+      const next = { skill: 'repo', repo: 'all', all: 'skill' } as const
+      return { ...state, issueScope: next[state.issueScope], selectedIssue: 0 }
+    }
     case 'set-tools':
       return { ...state, tools: action.report, viewError: null }
     case 'set-settings':
