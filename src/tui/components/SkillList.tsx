@@ -76,7 +76,7 @@ export function SkillList({
           <Text key={skill.skillId} wrap="truncate" bold={index === selected}>
             {index === selected ? '›' : ' '}
             {marked.includes(skill.skillId) ? '*' : ' '}
-            <Text color={OUTCOME_COLOUR[skill.status] ?? 'gray'}>
+            <Text color={OUTCOME_COLOUR[skill.status] ?? '#555555'}>
               {skill.status === 'running'
                 ? TURNING[tick % TURNING.length]
                 : MARK[skill.status]}

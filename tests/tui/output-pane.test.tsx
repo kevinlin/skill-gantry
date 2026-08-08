@@ -344,9 +344,7 @@ describe('output pane scrolling — §14', () => {
     expect(ui.lastFrame()).toContain('rows 1–')
     expect(ui.lastFrame()).toContain('tab focuses this pane')
 
-    // skills → stages → output.
-    ui.stdin.send('\t')
-    await ui.settle(20)
+    // skills → work, which is the rail and this pane together (R11.11).
     ui.stdin.send('\t')
     await ui.settle(20)
     expect(ui.lastFrame()).toContain('j/k scrolls')

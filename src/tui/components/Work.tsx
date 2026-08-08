@@ -127,7 +127,7 @@ function SideBySide({ state, layout }: { state: AppState; layout: Layout }): Rea
           skill={skill}
           selected={state.selectedStage}
           marked={state.markedStages}
-          focused={state.focus === 'stages'}
+          focused={state.focus === 'work'}
           labels={layout.stageLabels}
           chrome={layout.chrome}
         />
@@ -137,7 +137,7 @@ function SideBySide({ state, layout }: { state: AppState; layout: Layout }): Rea
           height={layout.outputHeight}
           width={rightWidth}
           chrome={layout.chrome}
-          focused={state.focus === 'output'}
+          focused={state.focus === 'work'}
         />
       </Box>
     </Box>
@@ -162,7 +162,7 @@ function Stacked({ state, layout }: { state: AppState; layout: Layout }): React.
         skill={skill}
         selected={state.selectedStage}
         marked={state.markedStages}
-        focused={state.focus === 'stages'}
+        focused={state.focus === 'work'}
         labels={layout.stageLabels}
         chrome={layout.chrome}
       />
@@ -172,7 +172,7 @@ function Stacked({ state, layout }: { state: AppState; layout: Layout }): React.
         height={layout.outputHeight}
         width={layout.columns}
         chrome={layout.chrome}
-        focused={state.focus === 'output'}
+        focused={state.focus === 'work'}
       />
     </Box>
   )

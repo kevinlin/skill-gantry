@@ -98,9 +98,8 @@ describe('queue panel — R5.10, R11.6', () => {
     ])
     await ui.settle(40)
 
-    // Focus the queue — skills → stages → output → queue — then move to the
-    // second job and cancel it.
-    ui.stdin.send('\t')
+    // Focus the queue — skills → work → queue (R11.11) — then move to the
+    // second job and cancel it. `x` is inert outside this zone.
     ui.stdin.send('\t')
     ui.stdin.send('\t')
     await ui.settle()

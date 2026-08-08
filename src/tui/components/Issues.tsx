@@ -92,7 +92,7 @@ export function Issues({ state }: { state: AppState }): React.ReactElement {
                 dimColor={row.suppressed}
               >
                 {index === state.selectedIssue ? '›' : ' '}{' '}
-                <Text color={SEVERITY_COLOUR[row.severity] ?? 'gray'}>
+                <Text color={SEVERITY_COLOUR[row.severity] ?? '#888888'}>
                   {row.severity.padEnd(severityWidth)}
                 </Text>
                 <Text>{`${STATE_MARK[row.state] ?? '?'} ${row.state}`.padEnd(stateWidth)}</Text>

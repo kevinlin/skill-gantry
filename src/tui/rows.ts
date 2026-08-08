@@ -150,7 +150,7 @@ export function dashboardRows(state: AppState, width: number): ScreenRow[] {
   if (stats.openBySeverity.length === 0) line('  none open')
   for (const row of stats.openBySeverity) {
     line(`  ${row.severity.padEnd(10)} ${row.count}`, {
-      colour: SEVERITY_COLOUR[row.severity] ?? 'gray',
+      colour: SEVERITY_COLOUR[row.severity] ?? '#888888',
     })
   }
   for (const row of stats.openByRuleClass) {
@@ -164,7 +164,7 @@ export function dashboardRows(state: AppState, width: number): ScreenRow[] {
       // Through the shared map rather than a ternary: the ternary painted
       // `skipped` the same yellow as `errored`, so a stage nobody ran read as a
       // stage that broke.
-      { colour: OUTCOME_COLOUR[row.outcome] ?? 'gray' },
+      { colour: OUTCOME_COLOUR[row.outcome] ?? '#555555' },
     )
   }
   return rows
@@ -209,7 +209,7 @@ export function toolsRows(state: AppState, width: number): ScreenRow[] {
   if (report.tools.length === 0) line('  nothing locked yet — run the setup wizard', { dim: true })
   for (const tool of report.tools) {
     line(`  ${tool.toolId.padEnd(16)} ${tool.kind}${tool.detail ? `  ${tool.detail}` : ''}`, {
-      colour: DRIFT_COLOUR[tool.kind] ?? 'gray',
+      colour: DRIFT_COLOUR[tool.kind] ?? '#555555',
     })
   }
 

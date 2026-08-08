@@ -53,6 +53,10 @@ const stageResult = (findings: RawFinding[]): StageResult => ({
 
 /** The rail starts on Validate, so `l` twice lands on Security. */
 const toSecurity = async (ui: { stdin: { send(s: string): void }; settle(): Promise<void> }) => {
+  // The rail belongs to the work zone (R11.11), so `l` is inert until tab has
+  // moved out of the skill list.
+  ui.stdin.send('\t')
+  await ui.settle()
   ui.stdin.send('l')
   ui.stdin.send('l')
   await ui.settle()

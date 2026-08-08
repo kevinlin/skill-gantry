@@ -150,7 +150,7 @@ function Body({
             key={`${view.start + index}-${finding.path}-${finding.nativeRuleId}`}
             wrap="truncate"
           >
-            <Text color={SEVERITY_COLOUR[finding.severity] ?? 'red'}>{finding.severity}</Text>{' '}
+            <Text color={SEVERITY_COLOUR[finding.severity] ?? '#ee0000'}>{finding.severity}</Text>{' '}
             {truncate(
               // R8.15: the tool reported it and the skill's own suppression
               // file rules it out. One glyph on the existing row, no new row.

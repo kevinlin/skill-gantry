@@ -76,7 +76,7 @@ export function LifecycleRail({
               wrap="truncate"
               underline={index === selected}
               bold={index === selected}
-              {...(marked.includes(stage) ? { color: 'cyan' } : {})}
+              {...(marked.includes(stage) ? { color: ACCENT } : {})}
             >
               {marked.includes(stage) ? '*' : ' '}
               {name(stage)}

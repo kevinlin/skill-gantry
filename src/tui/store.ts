@@ -59,11 +59,16 @@ export const paletteMatches = (query: string): PaletteCommand[] => {
 }
 
 /**
- * In the order the panels sit on the screen, which is why `output` comes before
- * `queue` rather than being appended: tab reading top-to-bottom is the only
+ * In the order the zones sit on the screen, which is why `queue` comes last
+ * rather than being appended anywhere: tab reading top-to-bottom is the only
  * reason a user can predict where the next press lands.
+ *
+ * `work` is the rail and the output pane together (R11.11). They were two stops
+ * until §14.6, and separating them bought nothing: `h`/`l` move the rail and
+ * `j`/`k` move the pane, so the two were never ambiguous, and a stop whose only
+ * job is to disambiguate them is paid for on every cycle.
  */
-export const FOCUSES = ['skills', 'stages', 'output', 'queue'] as const
+export const FOCUSES = ['skills', 'work', 'queue'] as const
 export type Focus = (typeof FOCUSES)[number]
 
 export type SkillStatus = 'idle' | 'running' | 'passed' | 'failed' | 'errored'

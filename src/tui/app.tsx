@@ -120,7 +120,7 @@ function moveDown(
   delta: number,
 ): Action {
   if (state.focus === 'queue') return { type: 'select-job', delta }
-  if (state.focus !== 'output') return { type: 'select-skill', delta }
+  if (state.focus !== 'work') return { type: 'select-skill', delta }
   const view = outputWindow(state, skill, layout.outputHeight)
   return {
     type: 'scroll-output',
@@ -523,17 +523,19 @@ export function App({
       dispatch(moveDown(state, layout, current, -1))
       return
     }
-    if (plain && input === 'h') {
-      dispatch({ type: 'select-stage', delta: -1 })
-      return
-    }
-    if (plain && input === 'l') {
-      dispatch({ type: 'select-stage', delta: 1 })
+    // R11.11: the rail belongs to the work zone. It fired in every zone before,
+    // so moving down the skill list moved the rail with it and nothing on
+    // screen said so — and the rail describes the *selected* skill, so moving
+    // both at once is how a user loses track of which stage they are reading.
+    if (plain && (input === 'h' || input === 'l')) {
+      if (state.focus !== 'work') return
+      dispatch({ type: 'select-stage', delta: input === 'l' ? 1 : -1 })
       return
     }
     if (plain && input === ' ') {
+      if (state.focus === 'queue') return
       dispatch(
-        state.focus === 'stages' ? { type: 'toggle-stage-mark' } : { type: 'toggle-skill-mark' },
+        state.focus === 'work' ? { type: 'toggle-stage-mark' } : { type: 'toggle-skill-mark' },
       )
       return
     }
@@ -589,6 +591,8 @@ export function App({
       return
     }
     if (plain && input === 'x') {
+      // R11.11: the job cursor lives in the queue zone, so this is where it acts.
+      if (state.focus !== 'queue') return
       const job = state.jobs[state.selectedJob]
       if (job) void queue.cancelJob(job.jobId)
     }
