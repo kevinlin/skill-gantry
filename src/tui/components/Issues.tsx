@@ -52,6 +52,7 @@ export function Issues({ state }: { state: AppState }): React.ReactElement {
             <Text
               key={row.fingerprint}
               wrap="truncate"
+              inverse={row.selected}
               bold={row.selected}
               dimColor={row.suppressed}
             >

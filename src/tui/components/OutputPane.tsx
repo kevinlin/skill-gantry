@@ -154,7 +154,7 @@ function Body({
         {findingRows(skill.findings, state.selectedFinding, cols)
           .slice(view.start, view.end)
           .map((row) => (
-            <Text key={row.key} wrap="truncate" dimColor={row.dim}>
+            <Text key={row.key} wrap="truncate" inverse={row.selected} dimColor={row.dim}>
               {row.severity === null ? (
                 row.text
               ) : (
@@ -180,7 +180,12 @@ function Body({
         {issueRows(state.issues, state.selectedIssue, cols)
           .slice(view.start, view.end)
           .map((row) => (
-            <Text key={row.fingerprint} wrap="truncate" dimColor={row.suppressed}>
+            <Text
+              key={row.fingerprint}
+              wrap="truncate"
+              inverse={row.selected}
+              dimColor={row.suppressed}
+            >
               <Text color={SEVERITY_COLOUR[row.severity] ?? '#888888'}>{row.text}</Text>
             </Text>
           ))}

@@ -1,5 +1,5 @@
 import { Text } from 'ink'
-import { innerWidth, truncate, windowFor } from '../layout.js'
+import { innerWidth, padCells, truncate, windowFor } from '../layout.js'
 import type { SkillRow, SkillStatus } from '../store.js'
 import { OUTCOME_COLOUR } from '../tokens.js'
 import { useTicker } from '../use-ticker.js'
@@ -71,17 +71,26 @@ export function SkillList({
       {skills.slice(start, end).map((skill, offset) => {
         const index = start + offset
         return (
-          // Cursor glyph plus weight, not reverse video: an inverse block only
-          // covers the label, so a short name left the highlight ragged.
-          <Text key={skill.skillId} wrap="truncate" bold={index === selected}>
-            {index === selected ? '›' : ' '}
+          // Reverse video over a padded label, not bold alone. The earlier note
+          // here said an inverse block "only covers the label, so a short name
+          // left the highlight ragged" — true, and `padCells` is the fix rather
+          // than a reason to go without (R11.15).
+          <Text
+            key={skill.skillId}
+            wrap="truncate"
+            inverse={index === selected}
+            bold={index === selected}
+          >
+            {index === selected ? '▸' : ' '}
             {marked.includes(skill.skillId) ? '*' : ' '}
             <Text color={OUTCOME_COLOUR[skill.status] ?? '#555555'}>
               {skill.status === 'running'
                 ? TURNING[tick % TURNING.length]
                 : MARK[skill.status]}
             </Text>{' '}
-            {truncate(skill.label, labelWidth)}
+            {index === selected
+              ? padCells(truncate(skill.label, labelWidth), labelWidth)
+              : truncate(skill.label, labelWidth)}
           </Text>
         )
       })}

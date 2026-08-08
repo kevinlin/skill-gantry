@@ -180,7 +180,7 @@ export function Setup({
             <Text dimColor>1 minimal · 2 recommended · 3 everything · space toggles</Text>
             {CATALOGUE.map((spec, index) => (
               <Text key={spec.id}>
-                {index === cursor ? '›' : ' '}
+                {index === cursor ? '▸' : ' '}
                 {state.selected.includes(spec.id) ? '*' : ' '} {spec.displayName}{' '}
                 <Text dimColor>({spec.stage ?? 'release gate'})</Text>
               </Text>

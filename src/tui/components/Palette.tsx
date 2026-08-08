@@ -35,7 +35,7 @@ export function Palette({
         return (
           <Box key={command.id}>
             <Text wrap="truncate" bold={index === palette.selected}>
-              {index === palette.selected ? '›' : ' '} <Text color={ACCENT}>{command.id}</Text>{' '}
+              {index === palette.selected ? '▸' : ' '} <Text color={ACCENT}>{command.id}</Text>{' '}
               <Text dimColor>{truncate(command.label, cols - command.id.length - 4)}</Text>
             </Text>
           </Box>

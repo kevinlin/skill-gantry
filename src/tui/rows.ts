@@ -1,6 +1,6 @@
 import { basename } from 'node:path'
 import type { DashboardStats, IssueRow, ScalarField } from '../core/index.js'
-import { truncate, truncateMiddle, windowFor } from './layout.js'
+import { padCells, truncate, truncateMiddle, windowFor } from './layout.js'
 import { ACCENT, OUTCOME_COLOUR, SEVERITY_COLOUR } from './tokens.js'
 import type { AppState, FindingRow, SkillRow } from './store.js'
 
@@ -291,7 +291,7 @@ export function settingsRows(state: AppState, width: number): ScreenRow[] {
   // Actionable rows alone take the cursor, so `j` never stops on a heading.
   let actionable = 0
   const action = (text: string, act: SettingsAction, extra: Omit<ScreenRow, 'text'> = {}): void => {
-    const marker = actionable === state.settingsCursor ? '›' : ' '
+    const marker = actionable === state.settingsCursor ? '▸' : ' '
     actionable += 1
     rows.push({ text: truncate(`${marker} ${text}`, width), action: act, ...extra })
   }
@@ -443,7 +443,10 @@ export function issueRows(
       truncateMiddle(`${row.relPath}${blocked}`, Math.max(4, pathWidth - mark.length)) +
       mark
     return {
-      text: truncate(text, width),
+      // Padded only when selected: reverse video covers the characters
+      // rendered, so a short selected row highlights a stub instead of a band
+      // (R11.15). An unselected row has no attribute to stretch.
+      text: index === selected ? padCells(truncate(text, width), width) : truncate(text, width),
       severity: row.severity,
       suppressed: row.suppressed,
       selected: index === selected,
@@ -457,6 +460,7 @@ export interface FindingRowView {
   /** Set on a summary row, null on a detail row, which carries no state. */
   severity: string | null
   dim: boolean
+  selected: boolean
   key: string
 }
 
@@ -483,15 +487,14 @@ export function findingRows(
     const chosen = index === selected
     const suppressed = finding.suppressed !== undefined
     const location = finding.line === undefined ? finding.path : `${finding.path}:${finding.line}`
+    const summary = `${chosen ? '▸' : ' '} ${finding.severity.padEnd(9)}${
+      suppressed ? '⊘ ' : ''
+    }${finding.ruleClass}  ${location}  ${row.toolId}`
     out.push({
-      text: truncate(
-        `${chosen ? '▸' : ' '} ${finding.severity.padEnd(9)}${suppressed ? '⊘ ' : ''}${
-          finding.ruleClass
-        }  ${location}  ${row.toolId}`,
-        width,
-      ),
+      text: chosen ? padCells(truncate(summary, width), width) : truncate(summary, width),
       severity: finding.severity,
       dim: suppressed,
+      selected: chosen,
       key: `${index}-summary`,
     })
     if (!chosen) return
@@ -511,6 +514,7 @@ export function findingRows(
         text: truncate(line, width),
         severity: null,
         dim: true,
+        selected: false,
         key: `${index}-detail-${offset}`,
       })
     })

@@ -88,7 +88,7 @@ export function QueuePanel({
         return (
           <Box key={job.jobId}>
             <Text wrap="truncate" bold={index === selected}>
-              {index === selected ? '›' : ' '}{' '}
+              {index === selected ? '▸' : ' '}{' '}
               <Text color={verdict.colour}>
                 {MARK[job.state]} {padCells(verdict.label, VERDICT_WIDTH)}
               </Text>{' '}
