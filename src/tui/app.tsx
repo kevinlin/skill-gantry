@@ -262,7 +262,9 @@ export function App({
     if (state.pending) return
     const fail = (err: unknown): void =>
       dispatch({ type: 'view-error', message: (err as Error).message })
-    if (state.screen === 'dashboard') {
+    // The Overview card lives on Work (R11.12), so the stats it renders have
+    // to load there too — the card is a read of the same dashboard query.
+    if (state.screen === 'dashboard' || state.screen === 'work') {
       void views
         .dashboard(state.statsFilter)
         .then((stats) => dispatch({ type: 'set-dashboard', stats }), fail)
@@ -546,6 +548,12 @@ export function App({
     if (state.screen !== 'work') return
     if (key.tab) {
       dispatch({ type: 'cycle-focus', delta: key.shift ? -1 : 1 })
+      return
+    }
+    // R11.12's way out of the card. The existing screen, not a modal: R11.3
+    // requires the screen to exist and `esc` already returns to Work.
+    if (plain && input === '0') {
+      dispatch({ type: 'set-screen', screen: 'dashboard' })
       return
     }
     if (plain && input >= '1' && input <= '5') {

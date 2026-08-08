@@ -1,7 +1,7 @@
 import { basename } from 'node:path'
-import type { IssueRow, ScalarField } from '../core/index.js'
+import type { DashboardStats, IssueRow, ScalarField } from '../core/index.js'
 import { truncate, truncateMiddle, windowFor } from './layout.js'
-import { OUTCOME_COLOUR, SEVERITY_COLOUR } from './tokens.js'
+import { ACCENT, OUTCOME_COLOUR, SEVERITY_COLOUR } from './tokens.js'
 import type { AppState, FindingRow, SkillRow } from './store.js'
 
 export type SettingsAction =
@@ -516,4 +516,79 @@ export function findingRows(
     })
   })
   return out
+}
+
+/**
+ * A proportional bar in the `DESIGN.md` §8 glyphs. Rounded rather than floored
+ * so a rate just under a tenth still shows one cell — a 9% pass rate rendering
+ * as an empty bar reads as "no runs", which is a different fact.
+ */
+export function bar(rate: number, cells: number): string {
+  const filled = Math.round(Math.max(0, Math.min(1, rate)) * cells)
+  return `▕${'█'.repeat(filled)}${'░'.repeat(cells - filled)}▏`
+}
+
+/**
+ * The Overview card's body, as the same flat `ScreenRow` list `dashboardRows`
+ * emits, so §14.1's first rule holds by construction: the component renders
+ * exactly the rows its tier was allocated. `layoutFor` chose the tier; this
+ * only fills it.
+ */
+export function overviewRows(
+  stats: DashboardStats | null,
+  tier: 'full' | 'compact',
+  width: number,
+): ScreenRow[] {
+  const rows: ScreenRow[] = []
+  const line = (text: string, extra: Omit<ScreenRow, 'text'> = {}): void => {
+    rows.push({ text: truncate(text, width), ...extra })
+  }
+  if (stats === null) {
+    line('loading…', { dim: true })
+    return rows
+  }
+  if (stats.runs === 0) {
+    line('no runs recorded yet', { dim: true })
+    return rows
+  }
+
+  // Both derived from the width, and derived so the row *fits* it: the row is
+  // `label · bar · pct`, which is `labelWidth + cells + 8` cells, and reserving
+  // a constant instead cut the percentage off at a 22-cell list column — the one
+  // number the bar exists to quantify. The label shortens before the bar does,
+  // for the reason the rail's does: `sec` still names the stage, a two-cell bar
+  // no longer shows a proportion.
+  const labelWidth = width >= 24 ? 8 : 3
+  const cells = Math.max(4, Math.min(10, width - labelWidth - 8))
+  for (const row of stats.stagePassRates) {
+    line(
+      `${row.stage.slice(0, labelWidth).padEnd(labelWidth)} ${bar(row.rate, cells)} ${pct(
+        row.rate,
+      ).padStart(4)}`,
+      {
+        // A literal fallback, not `colour: undefined`: `exactOptionalPropertyTypes`
+        // rejects an explicit undefined for an optional prop, and an indexed read
+        // of the map is `string | undefined` under `noUncheckedIndexedAccess`.
+        colour:
+          OUTCOME_COLOUR[row.rate >= 0.6 ? 'passed' : row.rate >= 0.25 ? 'errored' : 'failed'] ??
+          '#555555',
+      },
+    )
+  }
+  if (tier === 'compact') return rows
+
+  line(
+    stats.openBySeverity.length === 0
+      ? 'no open issues'
+      : stats.openBySeverity.map((row) => `${row.count} ${row.severity}`).join(' · '),
+    { dim: true },
+  )
+  const slowest = [...stats.wallClock].sort((a, b) => (b.medianMs ?? 0) - (a.medianMs ?? 0))[0]
+  // `med` rather than `median`: the full word pushed the row past an 18-cell
+  // inner width and the duration — the datum — was what got cut.
+  line(slowest === undefined ? '' : `med ${slowest.stage} ${humanMs(slowest.medianMs)}`, {
+    dim: true,
+  })
+  line('0  full dashboard →', { colour: ACCENT })
+  return rows
 }

@@ -4,6 +4,7 @@ import { selectedSkill, type AppState } from '../store.js'
 import { Help } from './Help.js'
 import { LifecycleRail } from './LifecycleRail.js'
 import { OutputPane } from './OutputPane.js'
+import { Overview } from './Overview.js'
 import { QueuePanel } from './QueuePanel.js'
 import { ReviewPane } from './ReviewPane.js'
 import { SkillList } from './SkillList.js'
@@ -113,15 +114,27 @@ function SideBySide({ state, layout }: { state: AppState; layout: Layout }): Rea
   const rightWidth = layout.columns - layout.skillListWidth
   return (
     <Box>
-      <SkillList
-        skills={state.skills}
-        selected={state.selectedSkill}
-        marked={state.markedSkills}
-        focused={state.focus === 'skills'}
-        width={layout.skillListWidth}
-        height={layout.skillRows}
-        chrome={layout.chrome}
-      />
+      <Box flexDirection="column" width={layout.skillListWidth} flexShrink={0}>
+        <SkillList
+          skills={state.skills}
+          selected={state.selectedSkill}
+          marked={state.markedSkills}
+          focused={state.focus === 'skills'}
+          width={layout.skillListWidth}
+          height={layout.skillRows}
+          chrome={layout.chrome}
+        />
+        {/* R11.12: only when `layoutFor` found rows for it, and never in narrow
+            — the tier decision is the layout's, not this component's. */}
+        {layout.overview !== 'none' && (
+          <Overview
+            stats={state.dashboard}
+            tier={layout.overview}
+            width={layout.skillListWidth}
+            chrome={layout.chrome}
+          />
+        )}
+      </Box>
       <Box flexDirection="column" flexGrow={1}>
         <LifecycleRail
           skill={skill}

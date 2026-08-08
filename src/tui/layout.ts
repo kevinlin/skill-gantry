@@ -40,6 +40,16 @@ const BOXED_CHROME = 10
 const BARE_CHROME = 8
 
 /**
+ * Rows the skill list keeps whatever else wants them. Six because the list is
+ * the screen's primary navigation and a four-row list of 18 skills scrolls on
+ * every keypress; the card is a summary and can be absent.
+ */
+export const SKILL_LIST_MIN = 6
+
+/** Body rows each tier renders, before `Panel`'s two rows of chrome. */
+const OVERVIEW_ROWS = { full: 6, compact: 3, none: 0 } as const
+
+/**
  * Cells `Panel`'s boxed chrome takes out of a row: two border columns plus its
  * `paddingX={1}` on each side. It lives here rather than in each pane because
  * three components re-deriving `width - 4` meant a change to Panel's padding
@@ -95,6 +105,13 @@ export interface Layout {
   queueRows: number
   /** `Validate` vs `Val` — the rail is the first thing to overflow. */
   stageLabels: 'full' | 'short'
+  /**
+   * R11.12. Which tier of the Overview card fits, chosen from the rows left
+   * after `SKILL_LIST_MIN` — rows and not a width band, because the card
+   * competes for the left column's *height*: a 200x20 terminal has cells to
+   * spare and nothing to give.
+   */
+  overview: 'full' | 'compact' | 'none'
 }
 
 const clamp = (value: number, low: number, high: number): number =>
@@ -117,6 +134,7 @@ export function layoutFor(columns: number, rows: number): Layout {
       outputHeight: 0,
       queueRows: 0,
       stageLabels: 'short',
+      overview: 'none',
     }
   }
 
@@ -135,18 +153,30 @@ export function layoutFor(columns: number, rows: number): Layout {
   const skillRows = narrow ? clamp(Math.floor(budget / 3), 1, 6) : 0
   const outputHeight = Math.max(3, budget - skillRows)
 
+  // The left column is as tall as the right one defines, and the card takes its
+  // tier plus Panel's two rows out of that.
+  const leftColumn = narrow ? 0 : outputHeight + 2
+  const overview: Layout['overview'] = narrow
+    ? 'none'
+    : ((['full', 'compact'] as const).find(
+        (tier) => leftColumn - (OVERVIEW_ROWS[tier] + 2) >= SKILL_LIST_MIN,
+      ) ?? 'none')
+
   return {
     mode: narrow ? 'narrow' : 'standard',
     columns,
     rows,
     chrome: narrow ? 'bare' : 'boxed',
     skillListWidth,
-    skillRows: narrow ? skillRows : outputHeight + 2,
+    skillRows: narrow
+      ? skillRows
+      : leftColumn - (OVERVIEW_ROWS[overview] + (overview === 'none' ? 0 : 2)),
     outputHeight,
     queueRows,
     // Five full labels plus their gutters need 50 cells inside the rail's
     // border and padding; below that they shatter mid-word.
     stageLabels: (narrow ? columns : columns - skillListWidth) >= 54 ? 'full' : 'short',
+    overview,
   }
 }
 
