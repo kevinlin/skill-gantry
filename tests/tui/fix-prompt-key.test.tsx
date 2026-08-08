@@ -134,6 +134,26 @@ async function driveRun(
 
 const rowsOf = (frame: string): number => frame.split('\n').length
 
+/**
+ * A run whose `stage` produced one finding, with the rail left where it starts.
+ * `driveRun` emits only `stage:done`, which fills the rail's cell but not
+ * `SkillRow.findings` — and R11.9 as amended reads the *finding's* stage, so the
+ * Findings pane has to actually hold a row.
+ */
+async function harnessWithFinding(stage: 'security') {
+  const h = await harness({ findings: [FINDING], body: '# fix the security findings\n' })
+  const run = await driveRun(h, h.runDir, [FINDING])
+  run.events.push({
+    type: 'tool:done',
+    runId: 'run-declawed',
+    stage,
+    toolId: 'skillspector',
+    result: stageResult([FINDING]).toolRuns[0]!,
+  })
+  await h.ui.settle()
+  return { ...h, run }
+}
+
 describe('R11.9 the y binding', () => {
   it('emits the base64 of the file and names the path, without changing the row count', async () => {
     const body = '# Fix the security findings on declawed\n'
@@ -250,6 +270,32 @@ describe('R11.9 the y binding', () => {
     expect(h.ui.lastFrame()).toContain('? help')
 
     run.finish()
+    h.ui.unmount()
+    h.queue.close()
+  })
+
+  it('copies the stage that produced the selected finding, whatever the rail points at — R11.9 as amended', async () => {
+    // A run whose security stage found something while the rail sits on Validate.
+    // Before the amendment this reported "validate found nothing — no prompt".
+    const h = await harnessWithFinding('security')
+    h.ui.stdin.send('\t') // focus the work zone
+    await h.ui.settle()
+    h.ui.stdin.send('2') // Findings tab
+    await waitForFrame(h.ui, (frame) => frame.includes('excessive-permission'))
+    // The rail has not moved: Validate is still its selection.
+    expect(h.ui.lastFrame()).toContain('Validate')
+    h.ui.stdin.send('y')
+    await waitForFrame(h.ui, (frame) =>
+      /copied|no recorded run|found nothing|not written yet|too large/.test(frame),
+    )
+
+    expect(h.ui.lastFrame()).toContain('copied')
+    expect(h.ui.lastFrame()).toContain('fix-prompt.md')
+    expect(h.ui.frames.join('')).toContain(
+      Buffer.from('# fix the security findings\n', 'utf8').toString('base64'),
+    )
+
+    h.run.finish()
     h.ui.unmount()
     h.queue.close()
   })

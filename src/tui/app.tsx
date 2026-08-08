@@ -611,11 +611,16 @@ export function App({
       return
     }
     if (plain && input === 'y') {
-      // R11.9. The rail's stage, not a Findings-pane selection: the pane has no
-      // per-finding cursor and `SkillRow.findings` accumulates across every
-      // stage of the run, so a finding on screen cannot be attributed to one.
       if (!current) return
-      const stage = STAGE_ORDER[state.selectedStage] as Stage
+      // R11.9 as amended: the stage that produced the *selected finding* when the
+      // Findings pane holds one, and the rail's stage otherwise. §14.3 recorded
+      // that a finding "cannot be attributed to a stage at all" — `FindingRow`
+      // is that attribution, so a user acting on a finding no longer has to move
+      // the rail to the stage that found it. §9.4 still writes one prompt per
+      // stage, so what is copied is still a stage's.
+      const chosenFinding =
+        state.panel === 'findings' ? current.findings[state.selectedFinding] : undefined
+      const stage = chosenFinding?.stage ?? (STAGE_ORDER[state.selectedStage] as Stage)
       const flash = (message: string) => dispatch({ type: 'flash', message })
       if (current.runDir === null) {
         // R11.10 rehydrates a recorded run, so this branch now means the skill
