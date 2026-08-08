@@ -24,7 +24,7 @@ export function Palette({
   const { start, end } = windowFor(matches.length, palette.selected, height)
 
   return (
-    <Panel title={`:${palette.query}`} focused chrome={layout.chrome}>
+    <Panel title={`:${palette.query}`} focused chrome={layout.chrome} width={layout.columns}>
       {matches.length === 0 && (
         <Text dimColor wrap="truncate">
           no command matches

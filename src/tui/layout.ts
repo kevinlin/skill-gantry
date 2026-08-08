@@ -24,14 +24,19 @@ const WIDE_LIST_MAX = 34
 /**
  * Rows spent on chrome before any content, per layout.
  *
- * boxed — header, footer, the queue box's border and title, the rail box, and
- * the output pane's tab row plus the bottom border it shares with the rail.
+ * boxed — header, footer, the queue box's titled border and bottom edge, the
+ * rail box, and the output pane's tab row plus the bottom border it shares with
+ * the rail. It was 11 until §14.6 moved a titled panel's heading into its top
+ * border. Only Queue's heading was on this path: Skills sits in the *left*
+ * column, beside the rail rather than above the queue, so the row it stopped
+ * spending is left-column slack — which is what funds the Overview card — and
+ * not a row off the frame's height.
  * bare  — header, footer, one title row per panel, the rail's two rows, and the
  * output pane's tab row. Four bordered boxes cost 15 rows in a stacked column,
  * which left nothing for content in a 60x20 split, so narrow drops the borders
  * and separates panels by their titles instead.
  */
-const BOXED_CHROME = 11
+const BOXED_CHROME = 10
 const BARE_CHROME = 8
 
 /**

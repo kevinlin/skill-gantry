@@ -47,6 +47,7 @@ export function ConfirmPane({
       hint={`${changes.length} change${changes.length === 1 ? '' : 's'}`}
       focused
       chrome={layout.chrome}
+      width={layout.columns}
     >
       {shown.map((change, index) => (
         <Text key={`${start + index}`} wrap="truncate" color={COLOUR[change.kind]}>

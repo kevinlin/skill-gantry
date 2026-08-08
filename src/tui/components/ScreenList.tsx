@@ -32,7 +32,13 @@ export function ScreenList({
   const { start, end } = windowFor(rows.length, offset, height)
 
   return (
-    <Panel title={title} {...(hint === undefined ? {} : { hint })} focused chrome={layout.chrome}>
+    <Panel
+      title={title}
+      {...(hint === undefined ? {} : { hint })}
+      focused
+      chrome={layout.chrome}
+      width={layout.columns}
+    >
       {rows.slice(start, end).map((row, index) => (
         <Box key={`${start + index}`}>
           <Text

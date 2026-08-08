@@ -62,7 +62,7 @@ export function Help({ layout }: { layout: Layout }): React.ReactElement {
   const shown = KEYS.slice(0, overflow ? Math.max(1, budget - 1) : budget)
 
   return (
-    <Panel title="SkillGantry — keys" focused chrome={layout.chrome}>
+    <Panel title="SkillGantry — keys" focused chrome={layout.chrome} width={layout.columns}>
       {/* Keyed on both halves: `r` now names two bindings, one per screen, so
           the key alone is no longer unique. */}
       {shown.map(([key, description]) => (

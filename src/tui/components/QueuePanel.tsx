@@ -75,7 +75,7 @@ export function QueuePanel({
     .join(' · ')
 
   return (
-    <Panel title="Queue" hint={hint} focused={focused} chrome={chrome}>
+    <Panel title="Queue" hint={hint} focused={focused} chrome={chrome} width={width}>
       {jobs.length === 0 && (
         <Text wrap="truncate" dimColor>
           nothing queued — space marks a skill, r runs it

@@ -45,7 +45,7 @@ export function ReviewPane({
   }`
 
   return (
-    <Panel title={title} focused chrome={layout.chrome}>
+    <Panel title={title} focused chrome={layout.chrome} width={layout.columns}>
       <Text wrap="truncate" dimColor>
         {truncate(pending.scope.join('  '), cols)}
       </Text>

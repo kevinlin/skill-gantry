@@ -55,6 +55,7 @@ export function Issues({ state }: { state: AppState }): React.ReactElement {
         }`}
         focused
         chrome={layout.chrome}
+        width={columns}
       >
         {state.viewError !== null && (
           <Text color="red" wrap="truncate">
