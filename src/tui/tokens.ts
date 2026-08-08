@@ -6,49 +6,55 @@ import type { JobRecord } from '../core/index.js'
  * on the Dashboard but cyan in the findings pane, so one severity looked like
  * two depending on which screen the user read it from.
  *
- * Cyan is the focus accent — the focused panel's border, the selected output
- * tab, the palette's command ids, the cursor. No state may claim it except
- * `running`, which is the one state that is telling the user to look at it.
+ * Hex rather than named ANSI (D23): chalk downsamples for a terminal without
+ * truecolour, and a name resolves to whatever the user's theme decided it
+ * means, which is how `blue` becomes unreadable on one profile and fine on the
+ * next. No body foreground and no background is ever set — the terminal's own
+ * pair is what makes this screen read on a light theme (R11.15).
+ *
+ * The accent is the focus signal — the focused panel's border, the selected
+ * output tab, the palette's command ids, the cursor. No state may claim it
+ * except `running`, which is the one state telling the user to look at it.
  */
-export const ACCENT = 'cyan'
+export const ACCENT = '#0070f3'
 
 /**
  * Normalised severity, which is the only severity that reaches a screen: the
  * adapters map every tool's own vocabulary onto these five before a finding is
- * stored. `low` and `info` are gray rather than a colour of their own, because
- * a scanner reports far more of them than of anything else and colouring them
- * makes the two severities that fail a gate harder to find, not easier.
+ * stored. `low` and `info` share the dim grey rather than a colour of their
+ * own, because a scanner reports far more of them than of anything else and
+ * colouring them makes the two severities that fail a gate harder to find.
  */
 export const SEVERITY_COLOUR: Record<string, string> = {
-  critical: 'red',
-  high: 'red',
-  medium: 'yellow',
-  low: 'gray',
-  info: 'gray',
+  critical: '#ee0000',
+  high: '#ee0000',
+  medium: '#f5a623',
+  low: '#888888',
+  info: '#888888',
 }
 
 /**
  * Stage and run outcomes, plus the two non-outcomes a skill row can be in.
- * `degraded` shares `errored`'s yellow: both mean the run finished and its
+ * `degraded` shares `errored`'s amber: both mean the run finished and its
  * evidence is partial, which is one thing to a reader even though the reduction
  * distinguishes them.
  */
 export const OUTCOME_COLOUR: Record<string, string> = {
-  passed: 'green',
-  failed: 'red',
-  errored: 'yellow',
-  degraded: 'yellow',
-  skipped: 'gray',
+  passed: '#00c853',
+  failed: '#ee0000',
+  errored: '#f5a623',
+  degraded: '#f5a623',
+  skipped: '#555555',
   running: ACCENT,
-  idle: 'gray',
+  idle: '#555555',
 }
 
 export const JOB_COLOUR: Record<JobRecord['state'], string> = {
-  queued: 'gray',
+  queued: '#555555',
   running: ACCENT,
-  done: 'green',
-  failed: 'red',
-  cancelled: 'yellow',
+  done: '#00c853',
+  failed: '#ee0000',
+  cancelled: '#f5a623',
 }
 
 /**
