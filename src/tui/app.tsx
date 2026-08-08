@@ -584,6 +584,32 @@ export function App({
       )
       return
     }
+    // Gated on the Findings pane, so the Issues tab's `o` stays unbound: its
+    // state transitions live on the Issues screen, and one pane whose key means
+    // two things across two of its own tabs is a keymap nobody can learn (R11.13).
+    if (plain && input === 'o' && state.panel === 'findings' && state.focus === 'work') {
+      const chosen = current?.findings[state.selectedFinding]
+      if (!chosen) {
+        dispatch({ type: 'flash', message: 'no finding selected' })
+        return
+      }
+      const shown = truncateMiddle(
+        chosen.artefactDir,
+        Math.max(20, innerWidth(layout.columns, layout.chrome) - 12),
+      )
+      void views.openPath(chosen.artefactDir).then(
+        () => dispatch({ type: 'flash', message: `opened · ${shown}` }),
+        // Named, never swallowed: a viewer that is not installed is a thing the
+        // user can fix, and a silent `o` is one they cannot.
+        (err: unknown) =>
+          dispatch({
+            type: 'flash',
+            message: `${(err as Error).message} · ${shown}`,
+            tone: 'bad',
+          }),
+      )
+      return
+    }
     if (plain && input === 'y') {
       // R11.9. The rail's stage, not a Findings-pane selection: the pane has no
       // per-finding cursor and `SkillRow.findings` accumulates across every

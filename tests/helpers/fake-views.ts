@@ -56,13 +56,20 @@ export const emptySettings: SettingsView = {
 export interface FakeViews extends GantryViews {
   /** Every action the screens asked for, in order. */
   readonly actions: Array<[string, string]>
+  /** Paths the screens asked the host to open, in order. */
+  readonly opened: string[]
 }
 
 /** No sqlite, no spawn: the screens are pure functions of what this returns. */
 export function fakeViews(overrides: Partial<GantryViews> = {}): FakeViews {
   const actions: Array<[string, string]> = []
+  const opened: string[] = []
   return {
     actions,
+    opened,
+    openPath: async (path) => {
+      opened.push(path)
+    },
     dashboard: async () => emptyDashboard,
     provenances: async (): Promise<ProvenanceOption[]> => [],
     issues: async (): Promise<IssueRow[]> => [],

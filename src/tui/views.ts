@@ -244,4 +244,12 @@ export interface GantryViews {
   settings(): Promise<SettingsView>
   /** Validates the whole document and writes it once — the only write path. */
   applyConfig(next: GantryConfig): Promise<void>
+  /**
+   * Hands a path to the host's default viewer. On the port and not in the
+   * renderer because `src/tui/**` may not spawn — and on `GantryViews` rather
+   * than a second port because this interface is already the terminal
+   * interface's one injected dependency, and already carries writes in
+   * `actOnIssue` and `applyConfig`. It is the TUI's port, not the ledger's.
+   */
+  openPath(path: string): Promise<void>
 }

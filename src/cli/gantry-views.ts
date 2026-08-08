@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { getAdapter } from '../core/adapters/registry.js'
@@ -135,6 +136,28 @@ export function createGantryViews(deps: CliDeps): GantryViews {
       // `saveConfig` runs `configSchema.parse` before it writes, so an invalid
       // document never reaches disk even if a caller skipped staging validation.
       await saveConfig(deps.home, next)
+    },
+    openPath: async (path) => {
+      // Per-platform opener, detached and fully un-piped: the child outlives
+      // this call by design, and inheriting our stdio would let it write over
+      // the alternate screen Ink owns.
+      const command =
+        process.platform === 'darwin'
+          ? 'open'
+          : process.platform === 'win32'
+            ? 'explorer'
+            : 'xdg-open'
+      await new Promise<void>((resolve, reject) => {
+        const child = spawn(command, [path], { detached: true, stdio: 'ignore' })
+        child.once('error', reject)
+        // Resolved on spawn rather than on exit: `open` returns immediately on
+        // macOS but `xdg-open` can block for the lifetime of the viewer, and a
+        // promise the TUI awaits must not be held open by a file manager.
+        child.once('spawn', () => {
+          child.unref()
+          resolve()
+        })
+      })
     },
   }
 }
