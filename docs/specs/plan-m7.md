@@ -2431,7 +2431,32 @@ git commit -m "docs: catalogue plan-m7 and record its deviations"
 
 ## Deviations found while implementing
 
-*Filled in during Task 10. Empty until then.*
+Every one below came out of measuring a rendered frame instead of reasoning from the box model. The Self-Review predicted that for Tasks 2 and 9. `design.md` is amended in this branch for the four that contradict it.
+
+**1. `Panel`'s furniture is five cells, not six with a `+2` (Task 2).** The plan's `fill = width - used - furniture + 2` made the title row 41 cells wide in a 40-cell panel, so `wrap="truncate"` ate the `┐`. The row is `┌`, `─`, space, label, space, `┐`: five cells that are never the label, so `fill = width - used - 5`. The widths are also measured through `string-width` rather than `.length`: one code unit of disagreement is the torn corner the required `width` exists to prevent, and a CJK title is two cells per unit. §14.6 amended.
+
+**2. `BOXED_CHROME` is 10, not 9 (Task 2).** The plan's premise, "Skills and Queue each stopped spending a body row, and those two rows fund the card", is half right. Only `QueuePanel` is on the frame's vertical path; `SkillList` sits in the *left* column beside the rail, so its row is left-column slack, not a row off the frame's height. At 9 the frame rendered 25 rows into an 80×24 terminal. `layoutFor(80, 24).outputHeight` is therefore 12, not 13. The card is still funded — by the left column's slack plus the one row `outputHeight` gained. §14.1 and §14.6 amended.
+
+**3. The output pane's tab strip had to stop being a flex row (Task 4).** A fifth tab took the strip to 54 cells at a two-cell gap, and a flex row of `flexShrink={0}` boxes overflows its container sideways instead of cutting — §14.1's second rule broken by the one row that names every other. It is now a single `wrap="truncate"` row at a one-cell gap, which fits all five names whole at the 50-column floor.
+
+**4. The findings cursor and the findings *window* are two numbers (Task 6).** The plan clamped `selectedFinding` against `findingRows(...).length`, but that counts rendered rows (summaries plus the selected finding's detail), so the cursor ran past the last finding. It clamps against `findings.length`; the row count stays what `outputWindow` windows on. And `outputOffset: null` does not make the window follow the cursor: `anchor: 'top'` pins it at row 0, so a cursor on finding 11 of 12 sat below the pane. `outputTab` now returns a `cursor` row for the window to contain, resolved through the `windowFor` that `SkillList` and Issues already use. §14 amended.
+
+**5. `overviewRows`' bar arithmetic did not fit its column (Task 9).** `cells = max(6, min(10, width - 18))` reserved a constant that the 8-cell stage label then overran, so at 80×24, where the list column is 22 cells and 18 inside its border, the percentage was truncated away. The row is `labelWidth + cells + 8`, so both are derived from the width, and the label shortens before the bar does. `median` became `med` for the same reason: the full word pushed the duration off the row. §14.6 amended.
+
+**6. `ScreenRow.colour` needed a literal fallback, not an indexed read (Task 9).** The Self-Review said "`ScreenRow.colour` is `string | undefined` and `overviewRows` fills it from `OUTCOME_COLOUR`" — but it is `colour?: string`, and under `exactOptionalPropertyTypes` plus `noUncheckedIndexedAccess` an indexed read of the map is not assignable to it. `?? '#555555'`.
+
+**7. Two scope calls the plan left open.**
+
+- *Palette literals outside `tokens.ts`.* Task 1's Self-Review says it "changed the map, not its call sites", and ~40 named-ANSI literals remain at call sites (`green`, `red`, `yellow` on state tokens, which R11.15 permits). Three contradicted the committed palette directly and were fixed: `LifecycleRail`'s marked-stage `'cyan'`, which is the accent under another name, and the `?? 'gray'` fallbacks in `SkillList`, `Issues` and `rows.ts`. The rest are left as the plan decided.
+- *The cursor glyph.* Task 10 changed `›` → `▸` in the three lists it touched, and Step 10 notes "every other list is moving to it". `QueuePanel` sits on the Work screen beside the skill list, so two glyphs on one screen is the inconsistency Task 10 exists to remove; `Palette`, `Setup` and the Settings rows were moved with it.
+
+**8. Three of the plan's own test expectations were wrong. Each was corrected against what the code should do; none was widened to match what it did, which Task 2 Step 8 forbids by name.**
+
+- Task 4 asserted `⊘ suppressed: fixed paths` at width 100, where the mark's budget, a share of the path column unchanged from the shipped Issues screen, elides the reason. Asserted at 160 instead.
+- Task 9's `overviewRows` writes `0  full dashboard →` while its own assertion looked for `0 dashboard`. The row is right; the assertion was fixed, and a row-count assertion added so the tier's allocation is pinned.
+- Task 3's cases asserted `▸ Validate` on the lifecycle rail, which marks its selection with `underline` and `bold` — attributes a `debug: true` frame does not write. They assert on the `*` the mark key leaves on the rail's selected stage, which is what the frame can actually answer.
+
+**Not a deviation, recorded so it is not mistaken for one.** `tests/tui/work-screen.test.tsx`'s "never shows one skill's live output under another skill" failed once under full-suite parallel load and passed in isolation and on every rerun. Timing-sensitive, pre-existing, not caused by this milestone.
 
 ---
 
