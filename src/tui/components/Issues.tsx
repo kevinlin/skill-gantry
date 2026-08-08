@@ -2,7 +2,7 @@ import { Box, Text, useWindowSize } from 'ink'
 import { innerWidth, layoutFor, screenBodyRows, truncate, windowFor } from '../layout.js'
 import { issueRows } from '../rows.js'
 import type { AppState } from '../store.js'
-import { SEVERITY_COLOUR, overflowNotice } from '../tokens.js'
+import { SEVERITY_COLOUR, STATUS, overflowNotice } from '../tokens.js'
 import { Panel } from './Panel.js'
 import { StatusBar } from './StatusBar.js'
 
@@ -34,7 +34,7 @@ export function Issues({ state }: { state: AppState }): React.ReactElement {
         width={columns}
       >
         {state.viewError !== null && (
-          <Text color="red" wrap="truncate">
+          <Text color={STATUS.bad} wrap="truncate">
             {truncate(`ledger read failed: ${state.viewError}`, cols)}
           </Text>
         )}
@@ -56,7 +56,7 @@ export function Issues({ state }: { state: AppState }): React.ReactElement {
               bold={row.selected}
               dimColor={row.suppressed}
             >
-              <Text color={SEVERITY_COLOUR[row.severity] ?? '#888888'}>{row.text}</Text>
+              <Text color={SEVERITY_COLOUR[row.severity] ?? STATUS.secondary}>{row.text}</Text>
             </Text>
           ))}
         {overflow && (

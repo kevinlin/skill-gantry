@@ -1,13 +1,14 @@
 import { Box, Text } from 'ink'
 import type { ConfigChange } from '../../core/index.js'
 import { innerWidth, screenBodyRows, truncate, truncateMiddle, type Layout } from '../layout.js'
+import { STATUS } from '../tokens.js'
 import { Panel } from './Panel.js'
 
 const GLYPH: Record<ConfigChange['kind'], string> = { add: '+', remove: '-', change: '~' }
 const COLOUR: Record<ConfigChange['kind'], string> = {
-  add: 'green',
-  remove: 'red',
-  change: 'yellow',
+  add: STATUS.ok,
+  remove: STATUS.bad,
+  change: STATUS.warn,
 }
 
 /**

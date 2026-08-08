@@ -1,6 +1,7 @@
 import { Box, Text, useWindowSize } from 'ink'
 import { MIN_COLUMNS, MIN_ROWS, layoutFor, truncate, type Layout } from '../layout.js'
 import { selectedSkill, type AppState } from '../store.js'
+import { STATUS } from '../tokens.js'
 import { Help } from './Help.js'
 import { LifecycleRail } from './LifecycleRail.js'
 import { OutputPane } from './OutputPane.js'
@@ -44,7 +45,7 @@ export function Work({ state }: { state: AppState }): React.ReactElement {
   if (layout.mode === 'too-small') {
     return (
       <Box flexDirection="column">
-        <Text color="yellow">Terminal too small.</Text>
+        <Text color={STATUS.warn}>Terminal too small.</Text>
         <Text dimColor>
           SkillGantry needs {MIN_COLUMNS}×{MIN_ROWS}; this window is {columns}×{rows}.
         </Text>

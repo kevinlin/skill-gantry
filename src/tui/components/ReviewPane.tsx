@@ -1,10 +1,26 @@
 import { Box, Text } from 'ink'
 import { innerWidth, reviewDiffRows, truncate, type Layout } from '../layout.js'
 import type { PendingReview } from '../store.js'
+import { ACCENT, STATUS } from '../tokens.js'
 import { Panel } from './Panel.js'
 
+/**
+ * Diff gutters, through the shared vocabulary rather than the three ANSI names
+ * a diff conventionally uses: this is the pane whose `a` writes the user's repo,
+ * so an added line reading green in whatever the terminal profile calls green —
+ * beside a rail rendering `passed` as `#00c853` — is the one screen where a
+ * colour has to mean exactly what it means everywhere else. The hunk header
+ * takes `ACCENT` for the reason `Panel`'s focused border does: it is the mark
+ * saying where to look.
+ */
 const colour = (line: string): string | undefined =>
-  line.startsWith('+') ? 'green' : line.startsWith('-') ? 'red' : line.startsWith('@@') ? 'cyan' : undefined
+  line.startsWith('+')
+    ? STATUS.ok
+    : line.startsWith('-')
+      ? STATUS.bad
+      : line.startsWith('@@')
+        ? ACCENT
+        : undefined
 
 /**
  * R5.2 in the terminal: authorisation is confirmation of a displayed diff. Sized

@@ -1,7 +1,7 @@
 import { basename } from 'node:path'
 import type { DashboardStats, IssueRow, ScalarField } from '../core/index.js'
 import { padCells, truncate, truncateMiddle, windowFor } from './layout.js'
-import { ACCENT, OUTCOME_COLOUR, SEVERITY_COLOUR } from './tokens.js'
+import { ACCENT, OUTCOME_COLOUR, SEVERITY_COLOUR, STATUS } from './tokens.js'
 import type { AppState, FindingRow, SkillRow } from './store.js'
 
 export type SettingsAction =
@@ -138,7 +138,7 @@ export function dashboardRows(state: AppState, width: number): ScreenRow[] {
   }
 
   if (state.viewError !== null) {
-    line(`ledger read failed: ${state.viewError}`, { colour: 'red' })
+    line(`ledger read failed: ${state.viewError}`, { colour: STATUS.bad })
     return rows
   }
   const stats = state.dashboard
@@ -178,7 +178,7 @@ export function dashboardRows(state: AppState, width: number): ScreenRow[] {
   if (stats.openBySeverity.length === 0) line('  none open')
   for (const row of stats.openBySeverity) {
     line(`  ${row.severity.padEnd(10)} ${row.count}`, {
-      colour: SEVERITY_COLOUR[row.severity] ?? '#888888',
+      colour: SEVERITY_COLOUR[row.severity] ?? STATUS.secondary,
     })
   }
   for (const row of stats.openByRuleClass) {
@@ -192,19 +192,30 @@ export function dashboardRows(state: AppState, width: number): ScreenRow[] {
       // Through the shared map rather than a ternary: the ternary painted
       // `skipped` the same yellow as `errored`, so a stage nobody ran read as a
       // stage that broke.
-      { colour: OUTCOME_COLOUR[row.outcome] ?? '#555555' },
+      { colour: OUTCOME_COLOUR[row.outcome] ?? STATUS.muted },
     )
   }
   return rows
 }
 
+/**
+ * Doctor's drift kinds, mapped onto the three words `tokens.ts` owns rather
+ * than onto three colours of this module's own. Written in named ANSI it was a
+ * second severity vocabulary in the module a single vocabulary was extracted to
+ * end — and `red` here resolved to the theme's red while a `critical` finding
+ * one screen over resolved to `#ee0000`.
+ *
+ * A tool that is missing or unverifiable is broken; a pin that drifted, a tool
+ * left unlocked and an unverified integrity hash all still run but should not,
+ * which is the difference between `bad` and `warn`.
+ */
 const DRIFT_COLOUR: Record<string, string> = {
-  ok: 'green',
-  missing: 'red',
-  unverifiable: 'red',
-  'version-drift': 'yellow',
-  unlocked: 'yellow',
-  'integrity-unverified': 'yellow',
+  ok: STATUS.ok,
+  missing: STATUS.bad,
+  unverifiable: STATUS.bad,
+  'version-drift': STATUS.warn,
+  unlocked: STATUS.warn,
+  'integrity-unverified': STATUS.warn,
 }
 
 export function toolsRows(state: AppState, width: number): ScreenRow[] {
@@ -214,7 +225,7 @@ export function toolsRows(state: AppState, width: number): ScreenRow[] {
   }
 
   if (state.viewError !== null) {
-    line(`doctor failed: ${state.viewError}`, { colour: 'red' })
+    line(`doctor failed: ${state.viewError}`, { colour: STATUS.bad })
     return rows
   }
   const report = state.tools
@@ -229,7 +240,7 @@ export function toolsRows(state: AppState, width: number): ScreenRow[] {
       runtime.present
         ? `  ${runtime.runtime.padEnd(10)} ${runtime.version ?? ''}`
         : `  ${runtime.runtime.padEnd(10)} missing — ${runtime.installCommand}`,
-      { colour: runtime.present ? 'green' : 'red' },
+      { colour: runtime.present ? STATUS.ok : STATUS.bad },
     )
   }
 
@@ -237,7 +248,7 @@ export function toolsRows(state: AppState, width: number): ScreenRow[] {
   if (report.tools.length === 0) line('  nothing locked yet — run the setup wizard', { dim: true })
   for (const tool of report.tools) {
     line(`  ${tool.toolId.padEnd(16)} ${tool.kind}${tool.detail ? `  ${tool.detail}` : ''}`, {
-      colour: DRIFT_COLOUR[tool.kind] ?? '#555555',
+      colour: DRIFT_COLOUR[tool.kind] ?? STATUS.muted,
     })
   }
 
@@ -250,13 +261,13 @@ export function toolsRows(state: AppState, width: number): ScreenRow[] {
       // report call one condition by one name.
       line(
         `  ${drift.skillId.padEnd(20)} lifecycle-drift  file ${drift.file}, ledger ${drift.ledger}`,
-        { colour: 'yellow' },
+        { colour: STATUS.warn },
       )
     }
   }
 
   line(report.failed ? 'drift found' : 'no drift', {
-    colour: report.failed ? 'yellow' : 'green',
+    colour: report.failed ? STATUS.warn : STATUS.ok,
   })
   // The migration is explicit (R8.14), so this screen names the command and is
   // not itself a trigger. Stated unconditionally rather than only when pending:
@@ -272,7 +283,7 @@ export function settingsRows(state: AppState, width: number): ScreenRow[] {
   }
 
   if (state.viewError !== null) {
-    line(`config read failed: ${state.viewError}`, { colour: 'red' })
+    line(`config read failed: ${state.viewError}`, { colour: STATUS.bad })
     return rows
   }
   const view = state.settings
@@ -358,10 +369,10 @@ export function settingsRows(state: AppState, width: number): ScreenRow[] {
     // every file SkillGantry writes, and a screen is not an exception.
     line(
       `  ${credential.label.padEnd(16)} ${credential.satisfied ? 'ok' : 'missing'}  ${credential.detail}`,
-      { colour: credential.satisfied ? 'green' : 'yellow' },
+      { colour: credential.satisfied ? STATUS.ok : STATUS.warn },
     )
   }
-  for (const warning of view.envWarnings) line(`  ${warning}`, { colour: 'yellow' })
+  for (const warning of view.envWarnings) line(`  ${warning}`, { colour: STATUS.warn })
 
   line('Paths', { heading: true })
   line(`  home    ${view.home}`, { dim: true })
@@ -370,7 +381,7 @@ export function settingsRows(state: AppState, width: number): ScreenRow[] {
   line(`  rule map v${view.ruleMap.applied} applied, v${view.ruleMap.current} shipped`, {
     // Built conditionally rather than passing `colour: undefined`, which
     // `exactOptionalPropertyTypes` rejects.
-    ...(current ? { dim: true } : { colour: 'yellow' }),
+    ...(current ? { dim: true } : { colour: STATUS.warn }),
   })
   return rows
 }
@@ -575,7 +586,7 @@ export function overviewRows(
         // of the map is `string | undefined` under `noUncheckedIndexedAccess`.
         colour:
           OUTCOME_COLOUR[row.rate >= 0.6 ? 'passed' : row.rate >= 0.25 ? 'errored' : 'failed'] ??
-          '#555555',
+          STATUS.muted,
       },
     )
   }

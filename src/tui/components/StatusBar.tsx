@@ -3,16 +3,20 @@ import { Box, Text } from 'ink'
 import { VERSION } from '../../core/index.js'
 import { truncate } from '../layout.js'
 import type { FlashTone } from '../store.js'
+import { STATUS } from '../tokens.js'
 
 const LABEL = `v${VERSION}`
 
 /**
  * `info` is the dim the hints already render in, so the footer's resting state
- * is unchanged and only a verdict claims a colour. Green and red are the same
+ * is unchanged and only a verdict claims a colour. The two tones are the same
  * two `OUTCOME_COLOUR` gives a passed and a failed stage — a run that reports
  * `failed` in the rail must not report it in a different colour one row down.
+ * Spelled `'green'` and `'red'` that was exactly what happened: the rail
+ * resolved `#00c853` while this row resolved whatever the terminal profile
+ * called green, for one run, one row apart.
  */
-const TONE: Record<Exclude<FlashTone, 'info'>, string> = { good: 'green', bad: 'red' }
+const TONE: Record<Exclude<FlashTone, 'info'>, string> = { good: STATUS.ok, bad: STATUS.bad }
 
 /**
  * The one row every screen prints at the bottom: the keys on the left, the

@@ -1,7 +1,7 @@
 import { Text } from 'ink'
 import { innerWidth, padCells, truncate, windowFor } from '../layout.js'
 import type { SkillRow, SkillStatus } from '../store.js'
-import { OUTCOME_COLOUR } from '../tokens.js'
+import { OUTCOME_COLOUR, STATUS } from '../tokens.js'
 import { useTicker } from '../use-ticker.js'
 import { Panel } from './Panel.js'
 
@@ -83,7 +83,7 @@ export function SkillList({
           >
             {index === selected ? '▸' : ' '}
             {marked.includes(skill.skillId) ? '*' : ' '}
-            <Text color={OUTCOME_COLOUR[skill.status] ?? '#555555'}>
+            <Text color={OUTCOME_COLOUR[skill.status] ?? STATUS.muted}>
               {skill.status === 'running'
                 ? TURNING[tick % TURNING.length]
                 : MARK[skill.status]}

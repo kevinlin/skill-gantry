@@ -1,5 +1,6 @@
 import { Box, Text, useWindowSize } from 'ink'
 import { setupWidth, truncate } from '../layout.js'
+import { ACCENT, STATUS } from '../tokens.js'
 import {
   CATALOGUE,
   SETUP_ORDER,
@@ -39,7 +40,15 @@ export interface SetupProps {
   exitLabel?: string
 }
 
-/** Never colour alone: every state also differs in glyph and in weight. */
+/**
+ * Never colour alone: every state also differs in glyph and in weight.
+ *
+ * The step the user is on takes `ACCENT`, which is what §14 makes the focus
+ * signal everywhere else — a focused panel border, the selected output tab, the
+ * cursor. Written as `'cyan'` it was the one place in the interface where "look
+ * here" was a fourth colour, resolved by the terminal's profile rather than by
+ * this module.
+ */
 function StepRail({ current }: { current: SetupStateName }): React.ReactElement {
   const at = SETUP_ORDER.indexOf(current)
   return (
@@ -50,7 +59,7 @@ function StepRail({ current }: { current: SetupStateName }): React.ReactElement 
         return (
           <Box key={step} marginRight={1}>
             <Text
-              color={done ? 'green' : here ? 'cyan' : 'gray'}
+              color={done ? STATUS.ok : here ? ACCENT : STATUS.muted}
               bold={here}
               dimColor={!done && !here}
             >
@@ -78,13 +87,13 @@ function RepoStep({
       <Text>
         <Text dimColor>credentials </Text>
         {state.credentials?.present ? (
-          <Text color="green">~/.skillgantry/.env found</Text>
+          <Text color={STATUS.ok}>~/.skillgantry/.env found</Text>
         ) : (
-          <Text color="yellow">no .env yet</Text>
+          <Text color={STATUS.warn}>no .env yet</Text>
         )}
       </Text>
       {(state.credentials?.warnings ?? []).map((warning) => (
-        <Text key={warning} color="yellow">
+        <Text key={warning} color={STATUS.warn}>
           {'  '}
           {warning}
         </Text>
@@ -114,13 +123,13 @@ function Verdict({ inspection }: { inspection: RepoInspection }): React.ReactEle
       <Text>
         {'          '}
         {!isDirectory ? (
-          <Text color="red">error: no such directory</Text>
+          <Text color={STATUS.bad}>error: no such directory</Text>
         ) : alreadyRegistered ? (
-          <Text color="red">error: already registered</Text>
+          <Text color={STATUS.bad}>error: already registered</Text>
         ) : skillCount === 0 ? (
-          <Text color="yellow">warning: no skills found here — enter registers it anyway</Text>
+          <Text color={STATUS.warn}>warning: no skills found here — enter registers it anyway</Text>
         ) : (
-          <Text color="green">
+          <Text color={STATUS.ok}>
             {skillCount} skill{skillCount === 1 ? '' : 's'} found
           </Text>
         )}
@@ -144,11 +153,15 @@ export function Setup({
   const width = setupWidth(columns)
 
   return (
+    // `single` and not `round`: the wizard is the one frame in the interface
+    // `Panel` does not draw, and its `╭╮` corners were the only ones that did
+    // not match the `┌┐` of every panel the session opens onto — visible the
+    // moment §14.2 renders this same component as a screen inside that session.
     <Box
       flexDirection="column"
       width={width}
-      borderStyle="round"
-      borderColor="cyan"
+      borderStyle="single"
+      borderColor={ACCENT}
       paddingX={1}
     >
       <Box>
@@ -162,15 +175,15 @@ export function Setup({
         {state.state === 'probe-runtimes' &&
           state.runtimes.map((runtime) => (
             <Text key={runtime.runtime}>
-              <Text color={runtime.present ? 'green' : 'yellow'}>
+              <Text color={runtime.present ? STATUS.ok : STATUS.warn}>
                 {runtime.present ? '●' : '×'}
               </Text>{' '}
               {runtime.runtime}{' '}
               {runtime.present ? (
-                <Text color="green">{runtime.version}</Text>
+                <Text color={STATUS.ok}>{runtime.version}</Text>
               ) : (
                 // R3.7: shown, never run.
-                <Text color="yellow">missing — install with: {runtime.installCommand}</Text>
+                <Text color={STATUS.warn}>missing — install with: {runtime.installCommand}</Text>
               )}
             </Text>
           ))}
@@ -193,7 +206,7 @@ export function Setup({
             <Text key={id}>
               {MARK[state.installed[id] ?? 'pending']} {id}
               {state.installed[id] === 'failed' ? (
-                <Text color="red"> failed — {state.errors[id]}</Text>
+                <Text color={STATUS.bad}> failed — {state.errors[id]}</Text>
               ) : null}
             </Text>
           ))}
@@ -201,7 +214,7 @@ export function Setup({
         {onRepo && <RepoStep state={state} draftPath={draftPath} inspection={inspection} />}
 
         {state.state === 'done' && (
-          <Text color="green">
+          <Text color={STATUS.ok}>
             Toolchain verified.{' '}
             {state.repoPath === null
               ? 'No repo registered — add one from Settings.'
@@ -213,12 +226,12 @@ export function Setup({
       </Box>
 
       {missing.length > 0 && (
-        <Text color="yellow">
+        <Text color={STATUS.warn}>
           {missing.length} runtime{missing.length === 1 ? '' : 's'} missing for this selection —
           install them and press p
         </Text>
       )}
-      {error !== null && <Text color="red">{error}</Text>}
+      {error !== null && <Text color={STATUS.bad}>{error}</Text>}
       <Box marginTop={1}>
         {/* Truncated, not wrapped, for §14.1's reason: a footer that wraps to
             two rows makes the frame one row taller than the terminal, which a

@@ -19,6 +19,37 @@ import type { JobRecord } from '../core/index.js'
 export const ACCENT = '#0070f3'
 
 /**
+ * The four words the rest of the screen actually means when it says a colour:
+ * this thing is fine, this thing wants attention, this thing is broken, this
+ * thing is inert. Every map below is written in terms of them, so a hex appears
+ * once in this file and nowhere else in `src/tui`.
+ *
+ * It exists because the alternative was already running: fifteen call sites
+ * across `Setup`, `Issues`, `Settings`, `Work`, `StatusBar` and `rows.ts` said
+ * `color="red"` and `colour: 'yellow'` while this module said `#ee0000` and
+ * `#f5a623`. A name resolves to whatever the user's terminal theme decided it
+ * means (D23), so the setup wizard's failed install and the Tools screen's
+ * missing tool — one condition — were rendered by two different reds, one of
+ * them whatever the profile chose. `toolsRows` had gone the whole way and grown
+ * `DRIFT_COLOUR`, a second severity vocabulary in the vocabulary this module
+ * was extracted to end.
+ *
+ * `ok`/`warn`/`bad` carry the same three hexes as `passed`/`errored`/`failed`
+ * deliberately, not incidentally: a tool that failed to install and a stage
+ * that failed are one thing to a reader, and giving them separate values is how
+ * they drift apart. `secondary` is severity `low`'s grey, for text that is
+ * legible but not being pointed at; `muted` is the dim of something switched
+ * off — a skipped stage, an unfocused border.
+ */
+export const STATUS = {
+  ok: '#00c853',
+  warn: '#f5a623',
+  bad: '#ee0000',
+  secondary: '#888888',
+  muted: '#555555',
+} as const
+
+/**
  * Normalised severity, which is the only severity that reaches a screen: the
  * adapters map every tool's own vocabulary onto these five before a finding is
  * stored. `low` and `info` share the dim grey rather than a colour of their
@@ -26,11 +57,11 @@ export const ACCENT = '#0070f3'
  * colouring them makes the two severities that fail a gate harder to find.
  */
 export const SEVERITY_COLOUR: Record<string, string> = {
-  critical: '#ee0000',
-  high: '#ee0000',
-  medium: '#f5a623',
-  low: '#888888',
-  info: '#888888',
+  critical: STATUS.bad,
+  high: STATUS.bad,
+  medium: STATUS.warn,
+  low: STATUS.secondary,
+  info: STATUS.secondary,
 }
 
 /**
@@ -40,21 +71,21 @@ export const SEVERITY_COLOUR: Record<string, string> = {
  * distinguishes them.
  */
 export const OUTCOME_COLOUR: Record<string, string> = {
-  passed: '#00c853',
-  failed: '#ee0000',
-  errored: '#f5a623',
-  degraded: '#f5a623',
-  skipped: '#555555',
+  passed: STATUS.ok,
+  failed: STATUS.bad,
+  errored: STATUS.warn,
+  degraded: STATUS.warn,
+  skipped: STATUS.muted,
   running: ACCENT,
-  idle: '#555555',
+  idle: STATUS.muted,
 }
 
 export const JOB_COLOUR: Record<JobRecord['state'], string> = {
-  queued: '#555555',
+  queued: STATUS.muted,
   running: ACCENT,
-  done: '#00c853',
-  failed: '#ee0000',
-  cancelled: '#f5a623',
+  done: STATUS.ok,
+  failed: STATUS.bad,
+  cancelled: STATUS.warn,
 }
 
 /**

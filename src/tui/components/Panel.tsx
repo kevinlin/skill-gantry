@@ -1,6 +1,6 @@
 import { Box, Text } from 'ink'
 import stringWidth from 'string-width'
-import { ACCENT } from '../tokens.js'
+import { ACCENT, STATUS } from '../tokens.js'
 import { truncate } from '../layout.js'
 
 interface PanelCommon {
@@ -68,7 +68,7 @@ export function Panel(props: PanelProps): React.ReactElement {
     )
   }
 
-  const borderColour = focused ? ACCENT : '#555555'
+  const borderColour = focused ? ACCENT : STATUS.muted
   // `┌─ title hint ───┐` is `┌`, `─`, a space, the label, a space, the run of
   // `─`, and `┐` — five cells that are never the label, so the fill is whatever
   // the label did not take. Floored at 0 rather than 1: a floor of one made a

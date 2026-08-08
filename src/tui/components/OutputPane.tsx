@@ -3,7 +3,7 @@ import { Box, Text } from 'ink'
 import { innerWidth, truncate, truncateMiddle } from '../layout.js'
 import { findingRows, issueRows, logDropped, logLines, outputWindow } from '../rows.js'
 import { PANELS, type AppState, type SkillRow } from '../store.js'
-import { ACCENT, SEVERITY_COLOUR, overflowNotice } from '../tokens.js'
+import { ACCENT, SEVERITY_COLOUR, STATUS, overflowNotice } from '../tokens.js'
 import { Panel } from './Panel.js'
 
 const TITLE: Record<(typeof PANELS)[number], string> = {
@@ -158,7 +158,11 @@ function Body({
               {row.severity === null ? (
                 row.text
               ) : (
-                <Text color={SEVERITY_COLOUR[row.severity] ?? '#ee0000'}>{row.text}</Text>
+                // `secondary`, the fallback the Issues tab twenty lines down and
+                // the Issues screen both use. Spelled `#ee0000` here, one
+                // unrecognised severity read as critical in this pane and as
+                // grey in the next — from one `SEVERITY_COLOUR` lookup.
+                <Text color={SEVERITY_COLOUR[row.severity] ?? STATUS.secondary}>{row.text}</Text>
               )}
             </Text>
           ))}
@@ -186,7 +190,7 @@ function Body({
               inverse={row.selected}
               dimColor={row.suppressed}
             >
-              <Text color={SEVERITY_COLOUR[row.severity] ?? '#888888'}>{row.text}</Text>
+              <Text color={SEVERITY_COLOUR[row.severity] ?? STATUS.secondary}>{row.text}</Text>
             </Text>
           ))}
         {notice}

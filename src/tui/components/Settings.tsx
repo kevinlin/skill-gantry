@@ -4,6 +4,7 @@ import { configChanges } from '../../core/index.js'
 import { innerWidth, layoutFor, truncate } from '../layout.js'
 import { settingsRows } from '../rows.js'
 import type { Action, AppState } from '../store.js'
+import { STATUS } from '../tokens.js'
 import { ScreenList } from './ScreenList.js'
 import { StatusBar } from './StatusBar.js'
 
@@ -43,7 +44,7 @@ export function Settings({
         reserve={editing === null ? 0 : 1}
       />
       {editing !== null && (
-        <Text wrap="truncate" {...(editing.error === null ? {} : { color: 'red' })}>
+        <Text wrap="truncate" {...(editing.error === null ? {} : { color: STATUS.bad })}>
           {truncate(
             `${editing.field} [${editing.current}] → ${editing.buffer}█${
               editing.error === null ? '  enter stages · esc cancels' : `  ${editing.error}`
