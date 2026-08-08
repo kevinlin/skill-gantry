@@ -151,17 +151,19 @@ function Body({
     if (!skill || skill.findings.length === 0) return <Text dimColor>no findings</Text>
     return (
       <Box flexDirection="column">
-        {skill.findings.slice(view.start, view.end).map((finding, index) => (
+        {skill.findings.slice(view.start, view.end).map((row, index) => (
           <Text
-            key={`${view.start + index}-${finding.path}-${finding.nativeRuleId}`}
+            key={`${view.start + index}-${row.finding.path}-${row.finding.nativeRuleId}`}
             wrap="truncate"
           >
-            <Text color={SEVERITY_COLOUR[finding.severity] ?? '#ee0000'}>{finding.severity}</Text>{' '}
+            <Text color={SEVERITY_COLOUR[row.finding.severity] ?? '#ee0000'}>
+              {row.finding.severity}
+            </Text>{' '}
             {truncate(
               // R8.15: the tool reported it and the skill's own suppression
               // file rules it out. One glyph on the existing row, no new row.
-              `${finding.suppressed ? '⊘ ' : ''}${finding.ruleClass} ${finding.path} ${finding.message}`,
-              cols - finding.severity.length - 1,
+              `${row.finding.suppressed ? '⊘ ' : ''}${row.finding.ruleClass} ${row.finding.path} ${row.finding.message}`,
+              cols - row.finding.severity.length - 1,
             )}
           </Text>
         ))}

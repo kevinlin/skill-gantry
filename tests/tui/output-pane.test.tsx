@@ -167,7 +167,17 @@ describe('loadLastRun — R11.10', () => {
         stage: 'security',
         outcome: 'failed',
         summary: '1 finding',
-        findings: [FINDING],
+        // R11.14: a rehydrated finding carries its stage, tool and artefact
+        // directory, exactly as a live one does — otherwise it is the one kind
+        // the Findings pane cannot open the evidence for.
+        findings: [
+          {
+            finding: FINDING,
+            stage: 'security',
+            toolId: 'skillspector',
+            artefactDir: '/tmp/x',
+          },
+        ],
       },
     ])
   })

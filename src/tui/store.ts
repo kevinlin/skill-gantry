@@ -73,6 +73,21 @@ export type Focus = (typeof FOCUSES)[number]
 
 export type SkillStatus = 'idle' | 'running' | 'passed' | 'failed' | 'errored'
 
+/**
+ * A finding plus where it came from. §14.3 recorded that a finding on screen
+ * "cannot be attributed to a stage at all" — but the reducer had `event.stage`
+ * and `event.result` in hand the whole time, so the attribution was one field
+ * away and the Findings pane went without a cursor for it. No core contract
+ * moves: `tool:done` already carries all four values.
+ */
+export interface FindingRow {
+  finding: RawFinding
+  stage: Stage
+  toolId: string
+  /** `ToolRunRecord.artefactDir` — the evidence `o` opens (R11.14). */
+  artefactDir: string
+}
+
 export interface StageCell {
   outcome: StageOutcome | null
   running: boolean
@@ -94,7 +109,7 @@ export interface SkillRow {
   activeRunId: string | null
   runDir: string | null
   stages: Record<Stage, StageCell>
-  findings: RawFinding[]
+  findings: FindingRow[]
   /**
    * True while this row's state came off disk rather than out of the session's
    * event stream. It is what lets the Log pane show *this* skill's recorded
@@ -460,9 +475,22 @@ function onRunEvent(state: AppState, jobId: string, event: RunEvent): AppState {
       )
     case 'tool:done':
       return withSkill(state, skillId, (row) =>
-        withStage({ ...row, findings: [...row.findings, ...event.result.findings] }, event.stage, {
-          summary: event.result.summary,
-        }),
+        withStage(
+          {
+            ...row,
+            findings: [
+              ...row.findings,
+              ...event.result.findings.map((finding) => ({
+                finding,
+                stage: event.stage,
+                toolId: event.result.toolId,
+                artefactDir: event.result.artefactDir,
+              })),
+            ],
+          },
+          event.stage,
+          { summary: event.result.summary },
+        ),
       )
     case 'stage:done':
       return withSkill(state, skillId, (row) =>

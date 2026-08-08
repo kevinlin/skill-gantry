@@ -14,7 +14,6 @@ import {
   type IssueFilter,
   type IssueRow,
   type ProvenanceOption,
-  type RawFinding,
   type SkillRef,
   type Stage,
   type StageOutcome,
@@ -22,6 +21,7 @@ import {
   type StatsFilter,
 } from '../core/index.js'
 import { LOG_CAPACITY } from './log-buffer.js'
+import type { FindingRow } from './store.js'
 
 export async function loadSkillMd(dir: string): Promise<string> {
   try {
@@ -96,7 +96,12 @@ export interface LastRunStage {
   stage: Stage
   outcome: StageOutcome
   summary: string
-  findings: RawFinding[]
+  /**
+   * Attributed the way a live run's are (R11.14). Flattening `toolRuns` into
+   * bare findings here would make a rehydrated finding the one kind the
+   * Findings pane could not open the evidence for.
+   */
+  findings: FindingRow[]
 }
 
 export interface LastRun {
@@ -164,7 +169,14 @@ export async function loadLastRun(workspacePath: string): Promise<LastRun | null
       // The tool summaries, where a live run's cell shows the tool ids it
       // started with — the same row saying what it now knows.
       summary: result.toolRuns.map((run) => run.summary).join(', '),
-      findings: result.toolRuns.flatMap((run) => run.findings),
+      findings: result.toolRuns.flatMap((run) =>
+        run.findings.map((finding) => ({
+          finding,
+          stage,
+          toolId: run.toolId,
+          artefactDir: run.artefactDir,
+        })),
+      ),
     })
   }
   // Newest kept, oldest dropped, reported — the ring buffer's own policy, so a
