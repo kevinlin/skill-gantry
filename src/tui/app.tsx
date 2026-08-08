@@ -121,6 +121,13 @@ function moveDown(
 ): Action {
   if (state.focus === 'queue') return { type: 'select-job', delta }
   if (state.focus !== 'work') return { type: 'select-skill', delta }
+  // A list of things to act on takes a cursor, not a scroll offset — the same
+  // shape SkillList and Issues already have. The other three tabs still scroll.
+  if (state.panel === 'findings') {
+    // The finding count, not the rendered row count: the cursor indexes
+    // findings, and `outputWindow` is what counts the detail rows.
+    return { type: 'select-finding' as const, delta, total: skill?.findings.length ?? 0 }
+  }
   const view = outputWindow(state, skill, layout.outputHeight)
   return {
     type: 'scroll-output',

@@ -1,8 +1,8 @@
 import { basename } from 'node:path'
 import type { IssueRow, ScalarField } from '../core/index.js'
-import { truncate, truncateMiddle } from './layout.js'
+import { truncate, truncateMiddle, windowFor } from './layout.js'
 import { OUTCOME_COLOUR, SEVERITY_COLOUR } from './tokens.js'
-import type { AppState, SkillRow } from './store.js'
+import type { AppState, FindingRow, SkillRow } from './store.js'
 
 export type SettingsAction =
   | { kind: 'edit-scalar'; field: ScalarField; current: string }
@@ -37,13 +37,33 @@ export const logDropped = (state: AppState, skill: SkillRow | undefined): number
 function outputTab(
   state: AppState,
   skill: SkillRow | undefined,
-): { total: number; anchor: 'top' | 'bottom' } {
+): {
+  total: number
+  anchor: 'top' | 'bottom'
+  /**
+   * The row the window must contain, for a tab driven by a cursor rather than a
+   * scroll offset. `anchor` cannot express it: `top` pins the window at row 0,
+   * so a cursor on finding 11 of 12 sat below a pane showing rows 1–10.
+   */
+  cursor?: number
+} {
   switch (state.panel) {
     case 'log':
       // The newest line, because a log is read from its end.
       return { total: logLines(state, skill).length, anchor: 'bottom' }
     case 'findings':
-      return { total: skill?.findings.length ?? 0, anchor: 'top' }
+      // The detail rows count towards the *window*: the pane renders them, so
+      // they are rows the allocation has to hold. They are not what the cursor
+      // clamps on — `selectedFinding` indexes findings, and clamping a finding
+      // index against a row count is how it walks past the last finding.
+      //
+      // Only the selected finding expands, so every earlier finding is exactly
+      // one row and its summary sits at row `selectedFinding`.
+      return {
+        total: findingRows(skill?.findings ?? [], state.selectedFinding, 200).length,
+        anchor: 'top',
+        cursor: state.selectedFinding,
+      }
     case 'issues':
       return { total: state.issues.length, anchor: 'top' }
     case 'artefacts':
@@ -81,13 +101,19 @@ export function outputWindow(
   skill: SkillRow | undefined,
   height: number,
 ): OutputWindow {
-  const { total, anchor } = outputTab(state, skill)
+  const { total, anchor, cursor } = outputTab(state, skill)
   const dropped = state.panel === 'log' && logDropped(state, skill) > 0
   const body = Math.max(1, height - (dropped ? 1 : 0))
   const overflow = total > body
   const rows = overflow ? Math.max(1, body - 1) : body
   const maxStart = Math.max(0, total - rows)
-  const start = Math.min(state.outputOffset ?? (anchor === 'bottom' ? maxStart : 0), maxStart)
+  const natural =
+    cursor === undefined
+      ? anchor === 'bottom'
+        ? maxStart
+        : 0
+      : windowFor(total, cursor, rows).start
+  const start = Math.min(state.outputOffset ?? natural, maxStart)
   return { start, end: Math.min(total, start + rows), total, rows, overflow, dropped, anchor }
 }
 
@@ -424,4 +450,70 @@ export function issueRows(
       fingerprint: row.fingerprint,
     }
   })
+}
+
+export interface FindingRowView {
+  text: string
+  /** Set on a summary row, null on a detail row, which carries no state. */
+  severity: string | null
+  dim: boolean
+  key: string
+}
+
+/**
+ * The Findings pane as a flat row list, detail included, so `outputWindow` can
+ * window it and the key handler can clamp against the same count. Expansion
+ * being *more rows* rather than a nested box is what keeps §14.1's first rule
+ * true by construction: the detail is counted against the allocation, so the
+ * list shrinks while a row is open instead of the panel below falling off.
+ *
+ * One derivation, for the reason `outputWindow` is one function: the pane
+ * renders against these rows and `j` clamps against their length, and two
+ * copies of that arithmetic is how `j` stops several rows short of the end and
+ * every further press does nothing.
+ */
+export function findingRows(
+  rows: readonly FindingRow[],
+  selected: number,
+  width: number,
+): FindingRowView[] {
+  const out: FindingRowView[] = []
+  rows.forEach((row, index) => {
+    const { finding } = row
+    const chosen = index === selected
+    const suppressed = finding.suppressed !== undefined
+    const location = finding.line === undefined ? finding.path : `${finding.path}:${finding.line}`
+    out.push({
+      text: truncate(
+        `${chosen ? '▸' : ' '} ${finding.severity.padEnd(9)}${suppressed ? '⊘ ' : ''}${
+          finding.ruleClass
+        }  ${location}  ${row.toolId}`,
+        width,
+      ),
+      severity: finding.severity,
+      dim: suppressed,
+      key: `${index}-summary`,
+    })
+    if (!chosen) return
+    // Indented under the row it belongs to, and truncated like every other
+    // content row: a wrapped message spends rows the budget already allocated.
+    const detail = [
+      `    ${finding.message}`,
+      `    ${finding.ruleClass} · ${finding.nativeRuleId} · ${row.stage} · ${row.toolId}`,
+      `    ${row.artefactDir}`,
+      ...(finding.suppressed === undefined
+        ? []
+        : [`    ⊘ suppressed: ${finding.suppressed.justification}`]),
+      '    [o] open evidence   [y] copy prompt   [r] rerun',
+    ]
+    detail.forEach((line, offset) => {
+      out.push({
+        text: truncate(line, width),
+        severity: null,
+        dim: true,
+        key: `${index}-detail-${offset}`,
+      })
+    })
+  })
+  return out
 }

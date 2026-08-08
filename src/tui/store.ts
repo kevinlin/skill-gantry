@@ -193,6 +193,13 @@ export interface AppState {
    */
   issueScope: 'skill' | 'repo' | 'all'
   selectedIssue: number
+  /**
+   * Which finding the Findings pane has selected (R11.14). A cursor rather than
+   * a scroll offset because this pane is a list of things to act on, which is
+   * what `SkillList` and Issues already are — `outputOffset` still scrolls the
+   * other three tabs.
+   */
+  selectedFinding: number
   tools: DoctorReport | null
   settings: SettingsView | null
   /**
@@ -289,6 +296,8 @@ export type Action =
   | { type: 'select-issue'; delta: number }
   | { type: 'set-issue-filter'; filter: IssueFilter }
   | { type: 'cycle-issue-scope' }
+  /** `total` is the caller's because the row count depends on the width. */
+  | { type: 'select-finding'; delta: number; total: number }
   | { type: 'set-tools'; report: DoctorReport }
   | { type: 'set-settings'; view: SettingsView }
   | { type: 'settings-cursor'; delta: number; count: number }
@@ -360,6 +369,7 @@ export function initialState(skills: readonly SkillRef[], concurrency: number): 
     issueFilter: {},
     issueScope: 'skill',
     selectedIssue: 0,
+    selectedFinding: 0,
     tools: null,
     settings: null,
     staged: null,
@@ -416,7 +426,13 @@ function onRunEvent(state: AppState, jobId: string, event: RunEvent): AppState {
       rehydrated: false,
       recordedLog: { lines: [], dropped: 0 },
     }))
-    return { ...next, runIndex: { ...next.runIndex, [event.runId]: event.skillId } }
+    // The cursor with the list it indexed into: the row cleared `findings`, so a
+    // cursor left at 4 points past the end of an empty pane (R11.14).
+    return {
+      ...next,
+      selectedFinding: 0,
+      runIndex: { ...next.runIndex, [event.runId]: event.skillId },
+    }
   }
 
   // Handled before the skillId guard below: a review pane is keyed by job and
@@ -588,8 +604,10 @@ export function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         selectedSkill: clamp(state.selectedSkill + action.delta, state.skills.length),
-        // Another skill's findings are another list; the offset was about this one.
+        // Another skill's findings are another list; the offset and the cursor
+        // were both about this one.
         outputOffset: null,
+        selectedFinding: 0,
       }
     case 'select-stage':
       return {
@@ -708,6 +726,13 @@ export function reducer(state: AppState, action: Action): AppState {
       }
     case 'set-issue-filter':
       return { ...state, issueFilter: action.filter, selectedIssue: 0, screenOffset: 0 }
+    case 'select-finding':
+      return {
+        ...state,
+        selectedFinding: clamp(state.selectedFinding + action.delta, action.total),
+        // The window follows the cursor, so a pinned offset would fight it.
+        outputOffset: null,
+      }
     case 'cycle-issue-scope': {
       const next = { skill: 'repo', repo: 'all', all: 'skill' } as const
       return { ...state, issueScope: next[state.issueScope], selectedIssue: 0 }

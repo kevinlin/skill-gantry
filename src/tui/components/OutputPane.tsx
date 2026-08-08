@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { Box, Text } from 'ink'
 import { innerWidth, truncate, truncateMiddle } from '../layout.js'
-import { issueRows, logDropped, logLines, outputWindow } from '../rows.js'
+import { findingRows, issueRows, logDropped, logLines, outputWindow } from '../rows.js'
 import { PANELS, type AppState, type SkillRow } from '../store.js'
 import { ACCENT, SEVERITY_COLOUR, overflowNotice } from '../tokens.js'
 import { Panel } from './Panel.js'
@@ -151,22 +151,17 @@ function Body({
     if (!skill || skill.findings.length === 0) return <Text dimColor>no findings</Text>
     return (
       <Box flexDirection="column">
-        {skill.findings.slice(view.start, view.end).map((row, index) => (
-          <Text
-            key={`${view.start + index}-${row.finding.path}-${row.finding.nativeRuleId}`}
-            wrap="truncate"
-          >
-            <Text color={SEVERITY_COLOUR[row.finding.severity] ?? '#ee0000'}>
-              {row.finding.severity}
-            </Text>{' '}
-            {truncate(
-              // R8.15: the tool reported it and the skill's own suppression
-              // file rules it out. One glyph on the existing row, no new row.
-              `${row.finding.suppressed ? '⊘ ' : ''}${row.finding.ruleClass} ${row.finding.path} ${row.finding.message}`,
-              cols - row.finding.severity.length - 1,
-            )}
-          </Text>
-        ))}
+        {findingRows(skill.findings, state.selectedFinding, cols)
+          .slice(view.start, view.end)
+          .map((row) => (
+            <Text key={row.key} wrap="truncate" dimColor={row.dim}>
+              {row.severity === null ? (
+                row.text
+              ) : (
+                <Text color={SEVERITY_COLOUR[row.severity] ?? '#ee0000'}>{row.text}</Text>
+              )}
+            </Text>
+          ))}
         {notice}
       </Box>
     )
