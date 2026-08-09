@@ -1004,6 +1004,17 @@ export function App({
       // passed against these bytes (R9.9), so running them in the same job would
       // release against a digest the ledger has not recorded a pass for.
       if (wanted.includes('release')) {
+        // Refused rather than resolved either way, because both resolutions are
+        // a lie about what the marks asked for. Running the gates in the same
+        // job would record their pass and then release against it in one breath,
+        // which is the retroactive authorisation R9.9 exists to refuse; dropping
+        // them silently — what this did — left a user marking `evaluate` to fix
+        // a failing gate, pressing `r`, and getting the release surface again
+        // with no word that `evaluate` had been discarded.
+        if (wanted.length > 1) {
+          flash('release runs on its own — unmark it, or unmark the other stages')
+          return
+        }
         const ids = chosen.filter((id): id is string => id !== undefined)
         if (ids.length > 0) beginRelease(ids)
         return

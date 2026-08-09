@@ -283,6 +283,69 @@ describe('R11.19 end to end through the Work screen', () => {
     ui.unmount()
     queue.close()
   })
+
+  /**
+   * Escaping used to leave `release` marked, so the next `r` reopened this pane
+   * over whatever stage the user had marked since — and the only way out was
+   * `space` on a rail column nothing on screen pointed at. Runs `019fe5b6` and
+   * `019fe5bb` are that loop: a user trying to re-run the failing `evaluate`
+   * gate got the release surface back, twice.
+   */
+  it('drops the release mark on escape, so another stage can be run', async () => {
+    const { queue, batches } = recordingQueue()
+    const ui = render(queue)
+    await ui.settle()
+    await markRelease(ui)
+
+    ui.stdin.send('r')
+    await ui.settle(40)
+    ui.stdin.send('')
+    await ui.settle()
+
+    // Back on the rail, mark evaluate and run it. Before the fix this reopened
+    // the release pane and evaluate was never enqueued.
+    ui.stdin.send('h')
+    ui.stdin.send('h')
+    ui.stdin.send('h')
+    await ui.settle()
+    ui.stdin.send(' ')
+    await ui.settle()
+    ui.stdin.send('r')
+    await ui.settle(40)
+
+    expect(batches).toHaveLength(1)
+    expect(batches[0]?.[0]?.stages).toEqual(['evaluate'])
+    expect(batches[0]?.[0]?.releaseTarget).toBeUndefined()
+    ui.unmount()
+    queue.close()
+  })
+
+  it('refuses to run release alongside another stage, and says which way out', async () => {
+    const { queue, batches } = recordingQueue()
+    const ui = render(queue)
+    await ui.settle()
+    // Evaluate and release both marked — R9.9 forbids one job, and silently
+    // dropping either half is what this refusal replaces.
+    ui.stdin.send('\t')
+    await ui.settle()
+    ui.stdin.send('l')
+    await ui.settle()
+    ui.stdin.send(' ')
+    await ui.settle()
+    for (let i = 0; i < 3; i += 1) ui.stdin.send('l')
+    await ui.settle()
+    ui.stdin.send(' ')
+    await ui.settle()
+
+    ui.stdin.send('r')
+    await ui.settle(40)
+
+    expect(batches).toHaveLength(0)
+    expect(ui.lastFrame()).toContain('release runs on its own')
+    expect(ui.lastFrame()).not.toContain('Release — declawed')
+    ui.unmount()
+    queue.close()
+  })
 })
 
 describe('R11.20 the rail refuses a stage with nothing behind it', () => {

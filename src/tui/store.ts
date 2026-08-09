@@ -1064,7 +1064,16 @@ export function reducer(state: AppState, action: Action): AppState {
         ? state
         : { ...state, release: { ...state.release, error: action.message } }
     case 'end-release':
-      return { ...state, release: null }
+      return {
+        ...state,
+        release: null,
+        // The mark is the request, and closing the surface answers it however
+        // it ended. Leaving it set made `esc` a trap: the mark survived, so the
+        // next `r` reopened the release pane over whatever stage the user had
+        // marked since, and the only way out was a keystroke nothing on screen
+        // advertised. Skill marks are a separate axis and are left alone.
+        markedStages: state.markedStages.filter((stage) => stage !== 'release'),
+      }
     case 'end-suppress':
       return { ...state, suppress: null }
     case 'stage-remove-repo': {
