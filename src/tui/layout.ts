@@ -204,6 +204,24 @@ export function setupWidth(columns: number): number {
 }
 
 /**
+ * Rows the wizard spends around its body: two borders, the title, the step
+ * rail, the blank above the body, and the blank plus hint row below it.
+ */
+const SETUP_CHROME_ROWS = 8
+
+/**
+ * The wizard's one unbounded body is a list — the catalogue on `select-tools`,
+ * the selection on `install-and-verify` — and both grow with the catalogue. A
+ * sixth entry is what pushed the frame one row past a 50×14 terminal, so the
+ * budget is decided here for §14.1's third rule rather than in the component.
+ * `extras` is the conditional rows below the body — the missing-runtime warning
+ * and the error — which the component knows and this module cannot.
+ */
+export function setupBodyRows(rows: number, extras = 0): number {
+  return Math.max(1, rows - SETUP_CHROME_ROWS - extras)
+}
+
+/**
  * Tail truncation with a reserved ellipsis cell. Measured in cells rather than
  * code units, so a CJK skill name cannot overflow its column by its own width.
  */

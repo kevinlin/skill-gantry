@@ -12,6 +12,7 @@ import type { GantryConfig } from '../core/config/schema.js'
 import type { SkillRef, Stage } from '../core/types.js'
 import { runDoctor } from './doctor-command.js'
 import { runFix, type FixOptions } from './fix-command.js'
+import { runOptimise, type OptimiseOptions } from './optimise-command.js'
 import { runSuppress, type SuppressOptions } from './suppress-command.js'
 import { detectInterrupted, formatInterrupted, runRecover } from './recover-command.js'
 import { runRelease, type ReleaseOptions } from './release-command.js'
@@ -256,6 +257,18 @@ export function buildProgram(deps: CliDeps): GantryProgram {
       // skill pass" — reusing R12.2's meaning would make a clean skill and a
       // failed lookup indistinguishable.
       program.exitCode = await runFix(deps, selector, opts)
+    })
+
+  program
+    .command('optimise')
+    .description('print the coding-agent optimisation prompt for a skill')
+    .argument('<skill>', 'skill id or bare name')
+    .option('--json', 'emit one JSON document')
+    .action(async (selector: string, opts: OptimiseOptions) => {
+      // R12.8, sharing R12.6's meaning: the code answers "is there a prompt on
+      // stdout", not "did the skill pass". Reusing R12.2's meaning would make a
+      // clean skill and an uninstalled optimiser indistinguishable.
+      program.exitCode = await runOptimise(deps, selector, opts)
     })
 
   program

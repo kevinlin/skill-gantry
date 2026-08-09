@@ -1,5 +1,5 @@
 import { Box, Text, useWindowSize } from 'ink'
-import { setupWidth, truncate } from '../layout.js'
+import { setupBodyRows, setupWidth, truncate } from '../layout.js'
 import { ACCENT, STATUS } from '../tokens.js'
 import {
   CATALOGUE,
@@ -24,6 +24,23 @@ const STEPS: Record<SetupStateName, { title: string; short: string }> = {
 }
 
 const MARK: Record<string, string> = { pending: '·', installing: '◐', ok: '●', failed: '×' }
+
+/**
+ * The visible slice of a list that must keep `cursor` on screen, and how many
+ * rows it hid. The footnote costs one of the rows, per §14.1's first rule, so
+ * an overflowing list shows one fewer entry rather than one more row.
+ */
+function listWindow(
+  total: number,
+  cursor: number,
+  budget: number,
+): { from: number; to: number; hidden: number } {
+  const room = Math.max(1, budget)
+  if (total <= room) return { from: 0, to: total, hidden: 0 }
+  const shown = Math.max(1, room - 1)
+  const from = Math.min(Math.max(0, cursor - shown + 1), total - shown)
+  return { from, to: from + shown, hidden: total - shown }
+}
 
 export interface SetupProps {
   state: SetupState
@@ -149,8 +166,9 @@ export function Setup({
   const missing = missingRuntimesFor(state.selected, state.runtimes)
   const step = SETUP_ORDER.indexOf(state.state) + 1
   const onRepo = state.state === 'credentials-and-repo'
-  const { columns } = useWindowSize()
+  const { columns, rows } = useWindowSize()
   const width = setupWidth(columns)
+  const body = setupBodyRows(rows, (missing.length > 0 ? 1 : 0) + (error !== null ? 1 : 0))
 
   return (
     // `single` and not `round`: the wizard is the one frame in the interface
@@ -188,28 +206,56 @@ export function Setup({
             </Text>
           ))}
 
-        {state.state === 'select-tools' && (
-          <Box flexDirection="column">
-            <Text dimColor>1 minimal · 2 recommended · 3 everything · space toggles</Text>
-            {CATALOGUE.map((spec, index) => (
-              <Text key={spec.id}>
-                {index === cursor ? '▸' : ' '}
-                {state.selected.includes(spec.id) ? '*' : ' '} {spec.displayName}{' '}
-                <Text dimColor>({spec.stage ?? 'release gate'})</Text>
-              </Text>
-            ))}
-          </Box>
-        )}
+        {state.state === 'select-tools' &&
+          (() => {
+            // The hint row is spent out of the same allocation as the list, per
+            // §14.1's first rule, and so is the overflow footnote.
+            const window = listWindow(CATALOGUE.length, cursor, body - 1)
+            return (
+              <Box flexDirection="column">
+                <Text dimColor>1 minimal · 2 recommended · 3 everything · space toggles</Text>
+                {CATALOGUE.slice(window.from, window.to).map((spec, offset) => {
+                  const index = window.from + offset
+                  return (
+                    <Text key={spec.id}>
+                      {index === cursor ? '▸' : ' '}
+                      {state.selected.includes(spec.id) ? '*' : ' '} {spec.displayName}{' '}
+                      <Text dimColor>({spec.stage ?? 'release gate'})</Text>
+                    </Text>
+                  )
+                })}
+                {window.hidden > 0 && (
+                  <Text dimColor>
+                    {'  '}
+                    {window.hidden} more · j/k
+                  </Text>
+                )}
+              </Box>
+            )
+          })()}
 
         {state.state === 'install-and-verify' &&
-          state.selected.map((id) => (
-            <Text key={id}>
-              {MARK[state.installed[id] ?? 'pending']} {id}
-              {state.installed[id] === 'failed' ? (
-                <Text color={STATUS.bad}> failed — {state.errors[id]}</Text>
-              ) : null}
-            </Text>
-          ))}
+          (() => {
+            const window = listWindow(state.selected.length, state.selected.length - 1, body)
+            return (
+              <Box flexDirection="column">
+                {state.selected.slice(window.from, window.to).map((id) => (
+                  <Text key={id}>
+                    {MARK[state.installed[id] ?? 'pending']} {id}
+                    {state.installed[id] === 'failed' ? (
+                      <Text color={STATUS.bad}> failed — {state.errors[id]}</Text>
+                    ) : null}
+                  </Text>
+                ))}
+                {window.hidden > 0 && (
+                  <Text dimColor>
+                    {'  '}
+                    {window.hidden} more
+                  </Text>
+                )}
+              </Box>
+            )
+          })()}
 
         {onRepo && <RepoStep state={state} draftPath={draftPath} inspection={inspection} />}
 

@@ -8,6 +8,7 @@ import {
   setupReducer,
   stageToolsFor,
 } from '../../src/core/tools/setup.js'
+import { SKILLHONE_TOOL_ID, expandPreset } from '../../src/core/tools/catalogue.js'
 import type { RuntimeStatus } from '../../src/core/tools/runtimes.js'
 
 const probed: RuntimeStatus[] = [
@@ -96,6 +97,17 @@ describe('stageToolsFor', () => {
   it('never writes the release installer, which no stage selects', () => {
     const tools = stageToolsFor(['skills'], () => true)
     expect(Object.values(tools).flat()).not.toContain('skills')
+  })
+
+  it('offers SkillHone for install but never writes it into stageTools', () => {
+    const selected = expandPreset('recommended').map((spec) => spec.id)
+    expect(selected).toContain(SKILLHONE_TOOL_ID)
+    // `AdapterStageExecutor.plan()` throws `unknown tool: <id>` on an id the
+    // registry does not hold, which fails every run of that stage. `stage: null`
+    // is what keeps it out — asserted with the permissive predicate, so the
+    // guard holds even where the runnable filter would not have caught it.
+    const stageTools = stageToolsFor(selected, () => true)
+    expect(Object.values(stageTools).flat()).not.toContain(SKILLHONE_TOOL_ID)
   })
 })
 

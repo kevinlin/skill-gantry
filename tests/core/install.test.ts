@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { mkdtemp, stat } from 'node:fs/promises'
+import { mkdir, mkdtemp, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { installAndLock, installTool, toolRoot, verifyTool } from '../../src/core/tools/install.js'
 import { loadToolLock } from '../../src/core/config/config.js'
-import { CATALOGUE, catalogueEntry } from '../../src/core/tools/catalogue.js'
+import { CATALOGUE, SKILLHONE_TOOL_ID, catalogueEntry } from '../../src/core/tools/catalogue.js'
+import { defaultExec } from '../../src/core/tools/exec.js'
+import { verifyGitSkill } from '../../src/core/tools/git-skill.js'
 import { getAdapter } from '../../src/core/adapters/registry.js'
 
 const home = async (): Promise<string> => mkdtemp(join(tmpdir(), 'sg-tools-'))
@@ -83,7 +85,10 @@ describe('installTool against real indexes', () => {
   it('installs every catalogued tool into the tool root and verifies it', async () => {
     for (const spec of CATALOGUE) {
       const h = await home()
-      const entry = await installTool(h, spec)
+      // A `git-skill` install is the one kind that writes outside the tool root
+      // (R3.1's carve-out), so its link targets are redirected at a temp home —
+      // a test must not put symlinks in the machine's real runtime directories.
+      const entry = await installTool(h, spec, { userHome: await home() })
       expect(entry.bin.startsWith(toolRoot(h))).toBe(true)
       expect(entry.resolvedVersion.length).toBeGreaterThan(0)
       if (spec.install.kind === 'gh-release' && spec.install.integrity.kind !== 'none') {
@@ -107,4 +112,37 @@ describe('installTool against real indexes', () => {
     if (before === null) expect(after).toBeNull()
     else expect(after?.mtimeMs).toBe(before.mtimeMs)
   }, 300_000)
+
+  it('really clones SkillHone at the catalogued pin, links it, and verifies three facts', async () => {
+    const spec = catalogueEntry(SKILLHONE_TOOL_ID)!
+    if (spec.install.kind !== 'git-skill') throw new Error('skillhone is not a git-skill entry')
+
+    // Captured first, for the reason the uv case above records: asserting a
+    // path "does not exist" passes on a clean machine for a reason unrelated
+    // to R3.1's rule. What the rule forbids is our install writing there.
+    const site = join(process.env.HOME ?? '', '.local/lib')
+    const before = await stat(site).catch(() => null)
+
+    const h = await home()
+    const userHome = await home()
+    await mkdir(join(userHome, '.agents', 'skills'), { recursive: true })
+    const entry = await installTool(h, spec, { userHome })
+
+    expect(entry.installKind).toBe('git-skill')
+    expect(entry.resolvedVersion).toBe(spec.install.pin)
+    expect(entry.bin).toBe(join(toolRoot(h), SKILLHONE_TOOL_ID, '.venv', 'bin', 'python'))
+    expect(entry.links).toHaveLength(spec.install.skills.length)
+    await expect(
+      verifyGitSkill(
+        join(toolRoot(h), SKILLHONE_TOOL_ID),
+        entry.links ?? [],
+        entry.resolvedVersion,
+        defaultExec,
+      ),
+    ).resolves.toBe(spec.install.pin)
+
+    const after = await stat(site).catch(() => null)
+    if (before === null) expect(after).toBeNull()
+    else expect(after?.mtimeMs).toBe(before.mtimeMs)
+  }, 900_000)
 })

@@ -28,12 +28,16 @@ export const configSchema = z.object({
 export type GantryConfig = z.infer<typeof configSchema>
 
 export const toolLockEntrySchema = z.object({
-  installKind: z.enum(['uv-tool', 'npm-prefix', 'gh-release']),
+  // Additive: a lock written before `git-skill` existed still parses, so
+  // `toolLockSchema.version` stays at 1.
+  installKind: z.enum(['uv-tool', 'npm-prefix', 'gh-release', 'git-skill']),
   requestedPin: z.string(),
   resolvedVersion: z.string(),
   bin: z.string().min(1),
   /** 'n/a' when the package manager verified its own download, else 'sha256:…' or 'none'. */
   integrity: z.string().min(1).default('n/a'),
+  /** Absolute symlink paths a `git-skill` install created, so uninstall removes exactly them. */
+  links: z.array(z.string()).optional(),
   installedAt: z.string(),
   verifiedAt: z.string().nullable(),
 })
