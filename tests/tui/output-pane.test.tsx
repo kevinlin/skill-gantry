@@ -344,25 +344,29 @@ describe('output pane scrolling — §14', () => {
     return discoverSkills({ id: 'fx', path: root, name: 'fx', isGit: false })
   }
 
-  it('scrolls SKILL.md once the pane holds the focus, and says so before it does', async () => {
+  it('scrolls SKILL.md, and the recovery hint names whichever key is the way in', async () => {
     const { ui } = harness(await longSkill())
     await ui.settle(40)
+    // `5` selects the tab and brings focus with it (R11.11, rev 15), so the
+    // notice offers the key that works from here rather than the way back in.
     ui.stdin.send('5')
     await ui.settle(40)
 
     // Cut, and saying which rows these are — the pane used to show the head of
     // the file with nothing to say the rest existed.
     expect(ui.lastFrame()).toContain('rows 1–')
-    expect(ui.lastFrame()).toContain('tab focuses this pane')
-
-    // skills → work, which is the rail and this pane together (R11.11).
-    ui.stdin.send('\t')
-    await ui.settle(20)
     expect(ui.lastFrame()).toContain('j/k scrolls')
 
     ui.stdin.send('j')
     await ui.settle(20)
     expect(ui.lastFrame()).toContain('rows 2–')
+
+    // work → queue → skills, and the hint flips back to the way in.
+    ui.stdin.send('\t')
+    await ui.settle(20)
+    ui.stdin.send('\t')
+    await ui.settle(20)
+    expect(ui.lastFrame()).toContain('tab focuses this pane')
     ui.unmount()
   })
 })

@@ -671,15 +671,24 @@ export function App({
       dispatch({ type: 'set-screen', screen: 'dashboard' })
       return
     }
+    // R11.11, rev 15: the key moves focus to the pane it names rather than
+    // acting on it from another zone. Reading these as screen-level keys
+    // licensed exactly the action at a distance the zone rule forbids, and
+    // scoping them strictly would have cost a `tab` to reach a pane the key
+    // already names.
     if (plain && input >= '1' && input <= '5') {
       dispatch({ type: 'set-panel', panel: PANELS[Number(input) - 1]! })
+      dispatch({ type: 'set-focus', focus: 'work' })
       return
     }
     // R11.13's scope cycle. The tab binds no state transition — `a`, `w` and `o`
     // stay on the Issues screen, because `o` on this pane means "open the
     // artefact directory" and one pane whose key means two things across two of
     // its own tabs is a keymap that cannot be learned.
-    if (plain && input === 'S' && state.panel === 'issues') {
+    // Scoped to the zone that owns the pane, like `o` and `s` below (R11.11,
+    // rev 15): cycling the scope from the Log tab, or from the skill list,
+    // changes state nothing on screen reflects.
+    if (plain && input === 'S' && state.panel === 'issues' && state.focus === 'work') {
       dispatch({ type: 'cycle-issue-scope' })
       return
     }

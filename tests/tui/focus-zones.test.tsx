@@ -21,7 +21,7 @@ const skill = (id: string): SkillRef => ({
 
 const SKILLS = [skill('declawed'), skill('spec-lint')]
 
-function harness() {
+function harness(views = fakeViews()) {
   const queue = createQueue({
     concurrency: 2,
     startRun: (job) => fakeRun(`run-${job.skillId}`).handle,
@@ -32,7 +32,7 @@ function harness() {
       queue={queue}
       stages={['security']}
       concurrency={2}
-      views={fakeViews()}
+      views={views}
       intervalMs={20}
     />,
     { columns: 100, rows: 30 },
@@ -103,6 +103,55 @@ describe('R11.11 focus zones', () => {
     // The rail marks its selected stage with `*`, and the skill mark stands.
     expect(ui.lastFrame()).toContain('*Validate')
     expect(ui.lastFrame()).toMatch(/\*\s*[○◐●!×]\s*declawed/)
+    ui.unmount()
+    queue.close()
+  })
+
+  // R11.11, rev 15. Same observable as the two rail cases: `space` marks a
+  // stage in the work zone and a skill outside it, so what the mark lands on
+  // is the frame's answer to "which zone has focus".
+  it('focuses the output pane from the key that selects its view', async () => {
+    const { ui, queue } = harness()
+    await ui.settle()
+    ui.stdin.send('2')
+    await ui.settle()
+    ui.stdin.send(' ')
+    await ui.settle()
+    expect(ui.lastFrame()).toContain('*Validate')
+    expect(ui.lastFrame()).not.toMatch(/\*\s*[○◐●!×]\s*declawed/)
+    ui.unmount()
+    queue.close()
+  })
+
+  it('cycles the issue scope only from the work zone', async () => {
+    const filters: unknown[] = []
+    const views = fakeViews({
+      issues: async (filter) => {
+        filters.push(filter)
+        return []
+      },
+    })
+    const { ui, queue } = harness(views)
+    await ui.settle()
+    // `3` selects the Issues tab and brings focus with it, so the tab's effect
+    // runs once for the skill scope it starts on.
+    ui.stdin.send('3')
+    await ui.settle(60)
+    expect(filters).toEqual([{ skillId: 'declawed' }])
+
+    ui.stdin.send('\t')
+    await ui.settle()
+    ui.stdin.send('S')
+    await ui.settle(60)
+    expect(filters).toHaveLength(1)
+
+    ui.stdin.send('\t')
+    await ui.settle()
+    ui.stdin.send('\t')
+    await ui.settle()
+    ui.stdin.send('S')
+    await ui.settle(60)
+    expect(filters).toEqual([{ skillId: 'declawed' }, { repoId: 'fx' }])
     ui.unmount()
     queue.close()
   })
