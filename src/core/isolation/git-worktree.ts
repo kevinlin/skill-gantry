@@ -129,6 +129,18 @@ export function parseRawDiff(raw: string, binary: ReadonlySet<string>): ChangeEn
  * user to re-run the gates, which reproduced the same live digest and refused
  * again. Naming the uncommitted work is actionable; `--allow-dirty` is still
  * the way past it, and seeding then makes the two digests agree.
+ *
+ * `--ignored` for that same reason one class further out. Ignored files are the
+ * one kind git hides by default, so a candidate file the repo's `.gitignore`
+ * covers was absent from HEAD, absent from this report, never seeded, and
+ * therefore absent from the sandbox — while `candidateManifest` walks the live
+ * filesystem and counted it. That is §4.4's invariant broken by the strategy
+ * rather than by the manifest, and it made the release *structurally*
+ * impossible rather than merely refused: no re-run of the gates could ever
+ * produce agreement, because each side was reading a different set of files.
+ * Run `019fe590` failed exactly there, on a `.DS_Store`. Membership is still
+ * asked of the manifest below, so a path the candidate excludes — every
+ * `.DS_Store` now among them — is reported by git here and dropped anyway.
  */
 export async function dirtyPaths(
   repoPath: string,
@@ -137,10 +149,14 @@ export async function dirtyPaths(
   exec: Exec,
 ): Promise<string[]> {
   const pathspec = [...new Set([...scope, policy.root === '' ? '.' : policy.root])]
-  const { stdout } = await exec('git', ['status', '--porcelain=v1', '-z', '--', ...pathspec], {
-    cwd: repoPath,
-    timeoutMs: 60_000,
-  })
+  const { stdout } = await exec(
+    'git',
+    ['status', '--porcelain=v1', '-z', '--ignored', '--', ...pathspec],
+    {
+      cwd: repoPath,
+      timeoutMs: 60_000,
+    },
+  )
   const fields = nulFields(stdout)
   const inScope = new Set(scope)
   const paths: string[] = []
@@ -211,14 +227,23 @@ async function stageForDiff(
   exec: Exec,
   workRoot: string,
   scope: readonly string[],
+  // The seeded paths, which span the whole candidate and not just the scope.
+  // `git add -A` skips whatever the repo's `.gitignore` covers, so a seed made
+  // of ignored files staged nothing at all — and when the scope itself was
+  // clean, the commit below then failed with "nothing to commit" and took the
+  // sandbox open down with it. Forced here for the same reason the scope is.
+  seeded: readonly string[] = [],
 ): Promise<void> {
   await exec('git', ['add', '-A'], { cwd: workRoot, timeoutMs: 120_000 })
   const present: string[] = []
-  for (const relPath of scope) {
+  for (const relPath of [...scope, ...seeded]) {
     if (await pathExists(join(workRoot, relPath))) present.push(relPath)
   }
   if (present.length === 0) return
-  await exec('git', ['add', '-f', '--', ...present], { cwd: workRoot, timeoutMs: 120_000 })
+  await exec('git', ['add', '-f', '--', ...new Set(present)], {
+    cwd: workRoot,
+    timeoutMs: 120_000,
+  })
 }
 
 export async function openGitWorktreeSandbox(input: SandboxInput): Promise<MutationSandbox> {
@@ -275,12 +300,18 @@ export async function openGitWorktreeSandbox(input: SandboxInput): Promise<Mutat
     // worktree shares the object database with its parent repo — harmless,
     // as the commit is unreachable from any real ref once the worktree is
     // removed and is ordinary GC-eligible garbage, not a leak.
-    await stageForDiff(exec, workRoot, scope)
+    await stageForDiff(exec, workRoot, scope, dirty)
     // `--no-verify`: a worktree shares `.git/hooks` with its parent repo, so a
     // repo with a husky or pre-commit hook would either fail to open a sandbox
     // at all or have its seeded bytes rewritten by a formatter before the tool
     // ever saw them. This commit is throwaway bookkeeping, not the user's.
-    await exec('git', ['commit', '-q', '--no-verify', '-m', 'seed dirty scope'], {
+    //
+    // `--allow-empty` because git reports a path as dirty for reasons the copy
+    // above can reproduce exactly — a rename's other half, a mode change git
+    // records and the filesystem copy preserves — and an empty seed commit is
+    // harmless where a failed one aborts the sandbox open (§12.4 row 4) over
+    // bookkeeping the release never needed.
+    await exec('git', ['commit', '-q', '--no-verify', '--allow-empty', '-m', 'seed dirty scope'], {
       cwd: workRoot,
       timeoutMs: 120_000,
     })

@@ -24,6 +24,24 @@ const posix = (p: string): string => p.split(sep).join('/')
 export const WRITE_TEMP_NAME = '.skillgantry-write.tmp'
 
 /**
+ * Filesystem droppings no skill authored and no consumer should receive,
+ * matched by basename at any depth. This is the one basename rule, and it is
+ * narrow on purpose: these names are reserved by the operating system, so no
+ * legitimate skill file carries them — which is exactly what was untrue of
+ * revision 2's `snapshot-pre` directory match.
+ *
+ * They are excluded rather than tolerated because a candidate file that git
+ * ignores cannot be reproduced in a git sandbox from `git status` alone, so it
+ * made §4.4's "the bytes gated, snapshotted and packaged are the same set" a
+ * promise the git strategy could not keep: the digest counted a `.DS_Store` the
+ * worktree never had, R9.9 refused the release, and re-running the gates
+ * reproduced the same disagreement. Run `019fe590` is that refusal on disk.
+ * `git-worktree.ts` fixes the general case; this stops the commonest instance
+ * of it being a released byte.
+ */
+const NOISE_BASENAMES: ReadonlySet<string> = new Set(['.DS_Store', 'Thumbs.db'])
+
+/**
  * Exact owned paths, resolved against the candidate root. Deliberately not a
  * basename match: revision 2 excluded any directory called `snapshot-pre`,
  * which let a legitimately named skill directory change without invalidating
@@ -52,7 +70,7 @@ export async function candidateManifest(skill: SkillRef): Promise<CandidateManif
     for (const e of await readdir(dir, { withFileTypes: true })) {
       const abs = join(dir, e.name)
       const rel = posix(relative(skill.dir, abs))
-      if (excluded.has(rel) || isReleaseArchive(skill, rel)) continue
+      if (excluded.has(rel) || isReleaseArchive(skill, rel) || NOISE_BASENAMES.has(e.name)) continue
 
       if (e.isSymbolicLink()) {
         const target = await readlink(abs)

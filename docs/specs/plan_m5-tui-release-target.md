@@ -54,6 +54,28 @@ Tests: `tests/core/pipeline-plan-failure.test.ts`, `tests/tui/release-target.tes
 - **`tests/helpers/fake-views.ts` was silently incomplete.** `tsconfig.json` includes `src` only, so a `FakeViews` missing a `GantryViews` member is not a compile error — it would have failed at runtime as `views.planRelease is not a function`. Worth knowing before the next port method: the type says the fake is complete and nothing checks it.
 - **The `optimise` guard subsumed part of R4.11.** R4.11 requires an empty selection to be rejected "before the run starts", and until R11.20 the terminal had no way to honour that. The engine's row 0 is now defence in depth rather than the only line.
 
+## What the first real release found (rev 17)
+
+The surface worked on the first try — target `patch → 1.1.2`, notes, R10.3's override raised with its path named, sandbox opened, preconditions run. The release then failed on a second defect the original bug had been hiding, because no terminal release had ever got far enough to reach it. Runs `019fe58d` and `019fe590`:
+
+```
+validate/evaluate/security passed against sha256:299bb1…
+the candidate is now                      sha256:0f2851…
+```
+
+`declawed/.DS_Store` was gitignored. The candidate manifest walks the filesystem, so it counted the file and the gates digested it; the git worktree starts at HEAD and is seeded from `git status`, which hides ignored files, so the sandbox did not have it. R9.9 compared two different sets of files — and re-running the gates reproduced the same live digest and refused again. Not a refusal the user could act on: a release made structurally impossible. It was never TUI-specific; `skillgantry release` hits it identically, by construction, since the precondition check is shared.
+
+Nor was it one file: 51 `.DS_Store` files in that repo plus `__pycache__/` under two skill roots, so most skills in it could not be released.
+
+Two fixes, composed:
+
+- **`dirtyPaths` passes `--ignored`** (R10.2). The sandbox now reproduces the manifest rather than git's default view of it, which is what makes R9.9 satisfiable at all. Membership is still asked of the manifest, so a path the candidate excludes is reported by git and dropped.
+- **`.DS_Store` and `Thumbs.db` leave the candidate** (R2.9, §4.4). Without this the fix above would seed them into the worktree and ship them to consumers. R2.9's basename prohibition was written against revision 2's `snapshot-pre/` rule, which matched a name a real skill directory could carry; these two cannot be, so they earn the exception rather than merely surviving it.
+
+**Cost, accepted deliberately:** every skill's digest changes, so every gate run recorded before this is invalid under R9.9 and must be re-run before that skill can be released. Correct — the old digests counted bytes that were never part of the skill.
+
+**A third defect fell out.** `stageForDiff` staged only the scope, and `git add -A` skips ignored files, so a seed made entirely of non-scope paths staged nothing and the seed commit failed with "nothing to commit", taking the sandbox open down as a §12.4 row-4 abort. Pre-existing — an untracked candidate file outside the scope with a clean scope would have done it — but `--ignored` makes it the common case. It now force-adds the seeded paths, and the commit takes `--allow-empty`, because a failed one costs a sandbox where an empty one costs nothing.
+
 ## Flagged, not fixed
 
 - **`byId` is stale for every field, not just `version`.** `App` snapshots the `SkillRef`s it was rendered with and never refreshes, so `deprecated` and `name` can drift from `SKILL.md`, which R1.6 makes the authority. Only `release` reads `version`, so only `release` was fixed. A refresh on `run:done` would close it generally at the cost of re-walking every registered repo per run.
