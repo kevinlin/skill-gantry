@@ -699,7 +699,16 @@ export function overviewRows(
       },
     )
   }
-  if (tier === 'compact') return rows
+  // On every tier that renders, not the largest alone (R11.12, rev 15): the key
+  // has worked since M7 and this row was the only place it was advertised, so
+  // below 24 terminal rows nothing on screen named it. Bracketed, because the
+  // rows above open with counts — `2 low`, `med evaluate 26.5s` — and a bare
+  // leading digit in that column is read as one more of them.
+  const dashboardLink = (): void => line('[0] full dashboard →', { colour: ACCENT })
+  if (tier === 'compact') {
+    dashboardLink()
+    return rows
+  }
 
   line(
     stats.openBySeverity.length === 0
@@ -713,7 +722,7 @@ export function overviewRows(
   line(slowest === undefined ? '' : `med ${slowest.stage} ${humanMs(slowest.medianMs)}`, {
     dim: true,
   })
-  line('0  full dashboard →', { colour: ACCENT })
+  dashboardLink()
   return rows
 }
 

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { MIN_COLUMNS, MIN_ROWS, layoutFor, SKILL_LIST_MIN } from '../../src/tui/layout.js'
+import {
+  MIN_COLUMNS,
+  MIN_ROWS,
+  OVERVIEW_ROWS,
+  layoutFor,
+  SKILL_LIST_MIN,
+} from '../../src/tui/layout.js'
 import { bar, overviewRows } from '../../src/tui/rows.js'
 import { Work } from '../../src/tui/components/Work.js'
 import { initialState } from '../../src/tui/store.js'
@@ -39,15 +45,25 @@ describe('R11.12 Overview card', () => {
     expect(text).toContain('1 high')
     // The key first, then what it reaches: the card is where `0` is advertised,
     // because `HINTS` is already seven pairs and an eighth truncates `q quit`.
-    expect(text).toContain('0  full dashboard')
+    // Bracketed, so a digit in a column of counts reads as a key (R11.12, rev 15).
+    expect(text).toContain('[0] full dashboard')
     // Six rows exactly, which is what `OVERVIEW_ROWS.full` allocated it.
     expect(rows).toHaveLength(6)
   })
 
-  it('compact is the bars alone', () => {
+  it('compact is the bars and the way to the dashboard', () => {
     const rows = overviewRows(stats, 'compact', 28).map((row) => row.text)
-    expect(rows).toHaveLength(3)
-    expect(rows.join('\n')).not.toContain('dashboard')
+    expect(rows).toHaveLength(4)
+    // The key was on the largest tier alone, so below 24 terminal rows nothing
+    // on screen named it (R11.12, rev 15).
+    expect(rows.join('\n')).toContain('[0] full dashboard')
+  })
+
+  // Nothing pinned these together before: `compact` was 3 and the builder
+  // emitted 3 only because `GATE_STAGES` happens to be three long, so a tier
+  // allocated a row its builder never fills would have shipped unnoticed.
+  it.each(['full', 'compact'] as const)('allocates %s exactly the rows it emits', (tier) => {
+    expect(overviewRows(stats, tier, 28)).toHaveLength(OVERVIEW_ROWS[tier])
   })
 
   it('leaves the skill list at or above its minimum at every size', () => {
@@ -61,17 +77,34 @@ describe('R11.12 Overview card', () => {
   })
 
   it('returns the rows it gives up when the tier shrinks', () => {
-    // Same width, one row shorter at a tier boundary: the list must not lose
-    // rows to a card that just got smaller.
-    let previous: { rows: number; tier: string; skillRows: number } | null = null
-    for (let rows = MIN_ROWS; rows <= 60; rows += 1) {
+    // Walked *downward*, which is the direction the tier shrinks in. Upward it
+    // is monotone none → compact → full, so the earlier version of this loop
+    // never reached its assertion once — a test that described the rule and
+    // proved nothing.
+    // What the card costs the left column: its tier plus `Panel`'s own border
+    // and title rows, and nothing at all when it does not render.
+    const cost = {
+      full: OVERVIEW_ROWS.full + 2,
+      compact: OVERVIEW_ROWS.compact + 2,
+      none: 0,
+    } as const
+    let previous: { tier: keyof typeof cost; skillRows: number } | null = null
+    let boundaries = 0
+    for (let rows = 60; rows >= MIN_ROWS; rows -= 1) {
       const layout = layoutFor(110, rows)
       if (layout.mode !== 'standard') continue
-      if (previous && previous.tier !== layout.overview && layout.overview === 'none') {
-        expect(layout.skillRows).toBeGreaterThan(previous.skillRows)
+      if (previous !== null && previous.tier !== layout.overview) {
+        boundaries += 1
+        // The terminal lost one row on the way here, so the list keeps what the
+        // card gave up, less that one.
+        expect(layout.skillRows - previous.skillRows).toBe(
+          cost[previous.tier] - cost[layout.overview] - 1,
+        )
       }
-      previous = { rows, tier: layout.overview, skillRows: layout.skillRows }
+      previous = { tier: layout.overview, skillRows: layout.skillRows }
     }
+    // The loop has to actually cross both boundaries, or it is dead again.
+    expect(boundaries).toBe(2)
   })
 
   it('never shows the card in narrow, which has no column to put it in', () => {

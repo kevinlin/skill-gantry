@@ -47,7 +47,17 @@ const BARE_CHROME = 8
 export const SKILL_LIST_MIN = 6
 
 /** Body rows each tier renders, before `Panel`'s two rows of chrome. */
-const OVERVIEW_ROWS = { full: 6, compact: 3, none: 0 } as const
+/**
+ * Asserted against what `overviewRows` actually emits, because until R11.12's
+ * rev-15 amendment these agreed only by coincidence — `compact` was the three
+ * gate bars and `GATE_STAGES` happens to be three long. A tier allocated a row
+ * its builder never fills leaves a gap no frame assertion catches.
+ *
+ * `compact` is 4 rather than 3 because the dashboard key now rides both tiers.
+ * That moves exactly one boundary: at 21 terminal rows the card no longer fits
+ * and drops to `none`. Every other height from 14 to 40 is unchanged.
+ */
+export const OVERVIEW_ROWS = { full: 6, compact: 4, none: 0 } as const
 
 /**
  * Cells `Panel`'s boxed chrome takes out of a row: two border columns plus its
