@@ -16,34 +16,35 @@ import { Panel } from './Panel.js'
  * terminal, and the five it cut were the global keys at the bottom — a help
  * screen that hid `q`.
  */
-const KEYS: readonly (readonly [string, string])[] = [
+export const KEYS: readonly (readonly [string, string])[] = [
   ['j / k, ↓ / ↑', 'move or scroll in the focused panel, or a diff'],
   [':', 'command palette: any screen, refresh, quit'],
   ['esc', 'back to Work, or close what is open'],
   ['? / q', 'this help · quit'],
   ['tab, shift-tab', 'Work: focus skills → stages → output → queue'],
-  ['h / l', 'Work: move along the lifecycle rail'],
+  ['h / l, ← / →', 'Work: move along the lifecycle rail'],
   ['space', 'Work: mark the selected skill or stage'],
-  ['r', 'Work: run every marked skill and stage as one batch'],
-  ['x', 'Work: cancel the selected job'],
+  ['r / x', 'Work: run every marked skill and stage · cancel a job'],
   ['y', 'Work: copy the fix prompt for the selected stage'],
-  ['1 – 4', 'Work: Log, Findings, Artefacts, SKILL.md'],
+  ['s / S', 'Work: accept the finding · cycle the issue scope'],
+  ['enter', 'Findings, Issues: open the selection at full length'],
+  ['0', 'Work: the full Dashboard screen'],
+  ['1 – 5', 'Work: select an output tab, focusing the pane'],
   ['p / s', 'Dashboard: filter by provenance · by selected skill'],
-  ['a / w / o, f', 'Issues: acknowledge, wontfix, reopen · cycle filter'],
+  ['a / w / o, f, s', 'Issues: acknowledge, wontfix, reopen · filter · accept'],
   ['r', 'Tools: re-probe runtimes, re-verify every locked tool'],
-  ['e / d', 'Settings: edit the selected value · remove the repo'],
-  ['c', 'Settings: review the staged changes'],
+  ['e / d, c', 'Settings: edit · remove the repo · review staged changes'],
   [':setup', 'the setup wizard, inside the session'],
   ['a / d', 'Review, Confirm: apply · discard, once the diff is up'],
 ]
 
-const KEY_COLUMN = 16
+export const KEY_COLUMN = 16
 
 /**
  * Rows the help screen spends before its first binding: the panel's chrome and
  * title, the footnote, and the closing hint Work prints below it.
  */
-const CHROME_ROWS = { boxed: 5, bare: 3 } as const
+export const CHROME_ROWS = { boxed: 5, bare: 3 } as const
 
 /**
  * Sized from the layout like every other pane. Drawing its own frame at a fixed

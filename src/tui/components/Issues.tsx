@@ -26,9 +26,15 @@ export function Issues({ state }: { state: AppState }): React.ReactElement {
     <Box flexDirection="column" width={columns}>
       <Panel
         title="Issues"
+        // R11.18 advertised on the title row, which costs no body row. An
+        // action row under the selection would put the rendered row count out
+        // of step with `windowFor`'s issue count two lines below — the `j`
+        // stops short of the end failure — and §14.3 already refused to pay the
+        // budget permanently for a static hint. The footer is not an option
+        // either: it measures 83 cells and already truncates at 80.
         hint={`${state.issues.length} · ${state.issueFilter.state ?? 'every state'}${
           suppressedCount === 0 ? '' : ` · ${suppressedCount} suppressed`
-        }`}
+        } · enter details`}
         focused
         chrome={layout.chrome}
         width={columns}

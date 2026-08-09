@@ -519,7 +519,11 @@ export function findingRows(
       ...(finding.suppressed === undefined
         ? []
         : [`    ⊘ suppressed: ${finding.suppressed.justification}`]),
-      '    [o] open evidence   [y] copy prompt   [r] rerun',
+      // 70 cells with the indent, so it still fits the 76-cell inner width at
+      // §14.1's 80-column floor. The Work footer is at capacity — seven pairs
+      // and an eighth truncates `q quit` — which is why `enter` is advertised
+      // on this row rather than there.
+      '    [o] open evidence   [y] copy prompt   [r] rerun   [enter] details',
     ]
     detail.forEach((line, offset) => {
       out.push({
