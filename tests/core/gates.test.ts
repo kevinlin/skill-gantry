@@ -3,7 +3,7 @@ import { openLedger } from '../../src/core/ledger/db.js'
 import { latestGateOutcomes } from '../../src/core/ledger/gates.js'
 import { recordRun } from '../../src/core/ledger/record.js'
 import { workspacePath } from '../../src/core/discovery/discover.js'
-import type { SkillRef, Stage } from '../../src/core/types.js'
+import type { SkillRef, Stage, StageOutcome } from '../../src/core/types.js'
 
 const skill: SkillRef = {
   id: 'repo/sk',
@@ -22,7 +22,7 @@ const run = (
   ledger: ReturnType<typeof openLedger>,
   runId: string,
   digest: string,
-  stages: ReadonlyArray<[Stage, 'passed' | 'failed']>,
+  stages: ReadonlyArray<[Stage, StageOutcome]>,
 ): void => {
   recordRun(ledger, {
     skill,
@@ -36,7 +36,12 @@ const run = (
     provenanceJson: '{}',
     toolLockJson: '{}',
     sidecarPath: `/repo/sk-workspace/skillgantry/runs/${runId}`,
-    stages: stages.map(([stage, outcome]) => ({ stage, outcome, verdict: outcome, toolRuns: [] })),
+    stages: stages.map(([stage, outcome]) => ({
+      stage,
+      outcome,
+      verdict: outcome === 'failed' ? 'failed' : 'passed',
+      toolRuns: [],
+    })),
   })
 }
 
@@ -51,6 +56,35 @@ describe('latestGateOutcomes', () => {
     expect(byStage.get('security')?.runId).toBe('019000000000-b')
     // A stage never run has no row, which is what release refuses on.
     expect(byStage.has('evaluate')).toBe(false)
+  })
+
+  it('skips a stage that reached no verdict, keeping the last one that did', () => {
+    // Run 019fe59f passed all three gates; the user then re-ran evaluate and
+    // cancelled it 22s in. Without this rule the cancellation superseded the
+    // pass it never contradicted, and every release after refused
+    // `gate-not-passed` against bytes a completed gate had already cleared.
+    const ledger = openLedger(':memory:')
+    run(ledger, '019000000000-a', 'sha256:x', [['evaluate', 'passed']])
+    run(ledger, '019000000000-b', 'sha256:x', [['evaluate', 'errored']])
+    run(ledger, '019000000000-c', 'sha256:x', [['evaluate', 'skipped']])
+    expect(latestGateOutcomes(ledger.db, skill.id)).toMatchObject([
+      { stage: 'evaluate', outcome: 'passed', runId: '019000000000-a' },
+    ])
+  })
+
+  it('lets a degraded stage supersede, because some of its tools did reach a verdict', () => {
+    const ledger = openLedger(':memory:')
+    run(ledger, '019000000000-a', 'sha256:x', [['security', 'passed']])
+    run(ledger, '019000000000-b', 'sha256:x', [['security', 'degraded']])
+    expect(latestGateOutcomes(ledger.db, skill.id)).toMatchObject([
+      { stage: 'security', outcome: 'degraded', runId: '019000000000-b' },
+    ])
+  })
+
+  it('reports the stage missing when no run of it ever reached a verdict', () => {
+    const ledger = openLedger(':memory:')
+    run(ledger, '019000000000-a', 'sha256:x', [['validate', 'errored']])
+    expect(latestGateOutcomes(ledger.db, skill.id)).toEqual([])
   })
 
   it('ignores optimise and release, which are not gates', () => {

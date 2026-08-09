@@ -14,9 +14,26 @@ export interface GateOutcome {
 }
 
 /**
- * The most recent run per gate stage. Ordered by run id, not by timestamp:
- * UUIDv7 is ordered by claim, which is the same field `latest` uses, so two runs
- * finishing out of order still agree on which evidence is newer.
+ * §8.2's two outcomes that mean `ran == 0`: not one tool in the stage reached a
+ * verdict, so the stage says nothing about the skill. `degraded` is absent
+ * deliberately — some of its tools did run, and one of them may have failed.
+ */
+const NO_VERDICT: ReadonlySet<string> = new Set(['errored', 'skipped'])
+
+/**
+ * The most recent run per gate stage *that reached a verdict*. Ordered by run
+ * id, not by timestamp: UUIDv7 is ordered by claim, which is the same field
+ * `latest` uses, so two runs finishing out of order still agree on which
+ * evidence is newer.
+ *
+ * A stage that reached no verdict is stepped over rather than reported, for the
+ * reason §8.1 gives for keeping the same rows out of reconciliation: a crashed,
+ * cancelled or absent tool must not overwrite what a completed one established.
+ * Cancelling evaluate 22s into a re-run used to supersede the pass recorded
+ * against the same bytes minutes earlier, and §12.4 then refused every release
+ * after it (runs `019fe5af`–`019fe5c3`). Safe only because R9.9 binds the
+ * outcome to a digest: after the bytes move, the last verdict is against the
+ * old ones and the digest check refuses.
  */
 export function latestGateOutcomes(db: DatabaseSync, skillId: string): GateOutcome[] {
   const rows = db
@@ -38,7 +55,7 @@ export function latestGateOutcomes(db: DatabaseSync, skillId: string): GateOutco
 
   const seen = new Map<string, GateOutcome>()
   for (const row of rows) {
-    if (seen.has(row.stage)) continue
+    if (seen.has(row.stage) || NO_VERDICT.has(row.outcome)) continue
     seen.set(row.stage, {
       stage: row.stage as Stage,
       outcome: row.outcome,
