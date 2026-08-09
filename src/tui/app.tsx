@@ -2,6 +2,7 @@ import { useEffect, useReducer, useRef } from 'react'
 import { Box, useApp, useInput, useStdout, useWindowSize } from 'ink'
 import {
   DEFAULT_CONFIG,
+  GATE_STAGES,
   STAGE_ORDER,
   configChanges,
   fixPromptPathFor,
@@ -19,6 +20,7 @@ import { Dashboard } from './components/Dashboard.js'
 import { Issues } from './components/Issues.js'
 import { Palette } from './components/Palette.js'
 import { Settings } from './components/Settings.js'
+import { SuppressPane } from './components/SuppressPane.js'
 import { Setup } from './components/Setup.js'
 import { StatusBar } from './components/StatusBar.js'
 import { Tools } from './components/Tools.js'
@@ -33,7 +35,7 @@ import {
 } from './layout.js'
 import { osc52 } from './osc52.js'
 import { LogPump } from './log-buffer.js'
-import { outputWindow, settingsRows } from './rows.js'
+import { outputWindow, resumedGates, settingsRows } from './rows.js'
 import { useSetupSession } from './use-setup-session.js'
 import { PANELS, initialState, paletteMatches, reducer, selectedSkill } from './store.js'
 import type { Action, AppState, SkillRow } from './store.js'
@@ -138,6 +140,14 @@ function moveDown(
   }
 }
 
+/**
+ * What the reason editor opens holding. Dated because the Issues row renders it
+ * back months later as `⊘ suppressed: <reason>`, and "accepted" with no when is
+ * a note the maintainer cannot audit.
+ */
+const suppressionPrefill = (): string =>
+  `Accepted ${new Date().toISOString().slice(0, 10)} via SkillGantry`
+
 /** The palette above the same footer hint every screen prints. */
 function PaletteScreen({ state }: { state: AppState }): React.ReactElement {
   const { columns, rows } = useWindowSize()
@@ -185,6 +195,13 @@ export function App({
   const palette = useRef({ open: false, query: '' })
   /** The value editor's buffer, mirrored outside React for the same reason. */
   const editor = useRef({ open: false, buffer: '' })
+  /** The suppression reason's buffer, mirrored for that same reason again. */
+  const reasonRef = useRef('')
+  useEffect(() => {
+    // The reducer owns the buffer — a refused reason keeps the editor open
+    // holding it — so the ref follows state rather than the handler guessing.
+    reasonRef.current = state.suppress?.reason ?? ''
+  }, [state.suppress?.reason])
   useEffect(() => {
     // The reducer owns whether the editor is open — a refused value keeps it up
     // — so the ref follows state rather than the key handler guessing.
@@ -313,6 +330,58 @@ export function App({
     }
   }, [state.screen, state.panel, state.issueScope, state.selectedSkill, state.reloads, views])
 
+  // R11.16. The preview fires on the transition *out* of the reason editor,
+  // not on `begin-suppress`: the reason is part of the entry, so previewing
+  // before it is committed would stage a diff with the prefill in it and then
+  // have to redo the write.
+  useEffect(() => {
+    const slot = state.suppress
+    if (!slot || slot.editingReason || slot.diff !== '') return
+    void views
+      .planSuppression({ ...slot.request, reason: slot.reason })
+      .then((preview) => {
+        if (preview.alreadyPresent) {
+          dispatch({ type: 'suppress-error', message: `already suppressed in ${preview.label}` })
+          return
+        }
+        dispatch({
+          type: 'suppress-preview',
+          label: preview.label,
+          diff: preview.diff,
+          uncovered: preview.uncovered,
+          stages: current ? resumedGates(current.stages) : [...GATE_STAGES],
+        })
+      })
+      .catch((err: unknown) => dispatch({ type: 'suppress-error', message: (err as Error).message }))
+  }, [state.suppress?.request, state.suppress?.editingReason])
+
+  const closeSuppress = async (): Promise<void> => {
+    await views.discardSuppression().catch(() => undefined)
+    dispatch({ type: 'end-suppress' })
+  }
+
+  const applySuppression = (slot: NonNullable<AppState['suppress']>): void => {
+    void views
+      .applySuppression()
+      .then(() => {
+        const wanted =
+          slot.thenRun === 'gates' ? [...GATE_STAGES] : slot.thenRun === 'resume' ? slot.stages : []
+        const ref = current ? byId.current.get(current.skillId) : undefined
+        if (wanted.length > 0 && ref) queue.enqueue([{ skill: ref, stages: wanted }])
+        dispatch({ type: 'end-suppress' })
+        // R8.15: the file is the authority and the ledger a cache recomputed on
+        // conclusive tool runs, so the ⊘ mark appears only after the re-run.
+        // Without this line the user applies, sees the Issues screen unchanged,
+        // and concludes nothing happened.
+        dispatch({
+          type: 'flash',
+          message: `${slot.label} written · the mark appears after the re-run`,
+          tone: 'good',
+        })
+      })
+      .catch((err: unknown) => dispatch({ type: 'suppress-error', message: (err as Error).message }))
+  }
+
   useInput((input, key) => {
     // Ink normalises a modified key onto the bare letter — `input` becomes
     // `keypress.name` when ctrl is held, and an alt-prefixed `\x1ba` has its
@@ -338,8 +407,37 @@ export function App({
         dispatch({ type: 'scroll-review', delta: -1, viewport: reviewRows })
       return
     }
-    // Second in precedence, ordered by what a keystroke costs: the review's `a`
-    // writes the user's repo, this one writes ~/.skillgantry/config.json.
+    // Second in precedence, on that order's own principle — what a keystroke
+    // can destroy. This `a` writes the user's repo too, but one file it
+    // composed itself rather than whatever a tool left in the tree (§12.5).
+    if (state.suppress) {
+      const slot = state.suppress
+      if (slot.editingReason) {
+        // The buffer is seeded with the prefill and appended to, unlike the
+        // config editor's empty one: a prefill the first keystroke throws away
+        // is not a prefill.
+        if (key.return) dispatch({ type: 'commit-suppress-reason' })
+        else if (key.escape) void closeSuppress()
+        else if (key.backspace || key.delete) {
+          reasonRef.current = reasonRef.current.slice(0, -1)
+          dispatch({ type: 'suppress-reason', reason: reasonRef.current })
+        } else if (plain && input.length > 0) {
+          reasonRef.current += input
+          dispatch({ type: 'suppress-reason', reason: reasonRef.current })
+        }
+        return
+      }
+      if (plain && input === 'a') applySuppression(slot)
+      else if ((plain && input === 'd') || key.escape) void closeSuppress()
+      else if (plain && input === 't') dispatch({ type: 'cycle-then-run' })
+      else if ((plain && input === 'j') || key.downArrow)
+        dispatch({ type: 'scroll-suppress', delta: 1 })
+      else if ((plain && input === 'k') || key.upArrow)
+        dispatch({ type: 'scroll-suppress', delta: -1 })
+      return
+    }
+    // Third: the config confirmation writes ~/.skillgantry/config.json, which
+    // is SkillGantry's own file rather than the user's repo.
     if (state.confirm && state.staged !== null) {
       const staged = state.staged
       if (plain && input === 'a') {
@@ -496,7 +594,24 @@ export function App({
       else if (plain && input === 'a') act('acknowledge')
       else if (plain && input === 'w') act('wontfix')
       else if (plain && input === 'o') act('reopen')
-      else if (plain && input === 'f') {
+      // R11.16's second surface. `s` is free here — Dashboard's `s` is its
+      // skill filter and the Work screen's issue-scope cycle is uppercase `S`.
+      else if (plain && input === 's') {
+        if (row) {
+          dispatch({
+            type: 'begin-suppress',
+            request: {
+              kind: 'issue',
+              skillId: row.skillId,
+              fingerprint: row.fingerprint,
+              reason: '',
+            },
+            toolId: row.detectors.join(', '),
+            relPath: row.relPath,
+            reason: suppressionPrefill(),
+          })
+        }
+      } else if (plain && input === 'f') {
         const states: Array<IssueState | undefined> = [
           undefined,
           'open',
@@ -592,6 +707,30 @@ export function App({
       )
       return
     }
+    // R11.16's first surface, gated on the Findings pane exactly as `o` below
+    // is: the Issues *tab* binds no state-changing key (R11.13).
+    if (plain && input === 's' && state.panel === 'findings' && state.focus === 'work') {
+      const chosen = current?.findings[state.selectedFinding]
+      if (!chosen || !current) {
+        dispatch({ type: 'flash', message: 'no finding selected' })
+        return
+      }
+      dispatch({
+        type: 'begin-suppress',
+        request: {
+          kind: 'finding',
+          skillId: current.skillId,
+          toolId: chosen.toolId,
+          nativeRuleId: chosen.finding.nativeRuleId,
+          relPath: chosen.finding.path,
+          reason: '',
+        },
+        toolId: chosen.toolId,
+        relPath: chosen.finding.path,
+        reason: suppressionPrefill(),
+      })
+      return
+    }
     // Gated on the Findings pane, so the Issues tab's `o` stays unbound: its
     // state transitions live on the Issues screen, and one pane whose key means
     // two things across two of its own tabs is a keymap nobody can learn (R11.13).
@@ -685,6 +824,8 @@ export function App({
   // The review pane stays the first branch: it is the one screen that wins over
   // every modal, because `a` on it writes to the user's repo.
   if (state.pending) return <Work state={state} />
+  // Second, for the key handler's reason: its `a` writes the user's repo.
+  if (state.suppress) return <SuppressPane suppress={state.suppress} layout={layout} />
   if (state.confirm && state.staged !== null) {
     return (
       <ConfirmPane

@@ -19,6 +19,7 @@ import {
   type StageOutcome,
   type StageResult,
   type StatsFilter,
+  type SuppressionRequest,
 } from '../core/index.js'
 import { LOG_CAPACITY } from './log-buffer.js'
 import type { FindingRow } from './store.js'
@@ -252,4 +253,28 @@ export interface GantryViews {
    * `actOnIssue` and `applyConfig`. It is the TUI's port, not the ledger's.
    */
   openPath(path: string): Promise<void>
+  /**
+   * Stages the bytes and returns the diff. Nothing has reached the baseline
+   * yet — R10.12 puts the write behind a displayed diff, and this is the half
+   * that runs before the user has seen one. Rejects naming the tools when no
+   * detecting tool declares a baseline, so the pane never opens with nothing
+   * to confirm.
+   */
+  planSuppression(request: SuppressionRequest): Promise<SuppressionPreviewView>
+  /** Rechecks the preimage and renames. Rejects with `preimage-drift` on drift. */
+  applySuppression(): Promise<void>
+  /** Removes the staged temp file. Safe to call when nothing is staged. */
+  discardSuppression(): Promise<void>
+}
+
+/**
+ * Deliberately not `SuppressionPlan`, which carries absolute paths and a
+ * preimage hash that no component renders and React state has no business
+ * holding: the port keeps the plans between `plan` and `apply`.
+ */
+export interface SuppressionPreviewView {
+  label: string
+  diff: string
+  uncovered: string[]
+  alreadyPresent: boolean
 }

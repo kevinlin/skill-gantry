@@ -196,6 +196,8 @@ export interface AppState {
    * displacements against the review on screen rather than the whole session.
    */
   displacedReviews: number
+  /** R11.16's acceptance, awaiting its reason or its confirmation. */
+  suppress: SuppressSlot | null
   screen: Screen
   palette: { open: boolean; query: string; selected: number }
   /**
@@ -338,6 +340,24 @@ export type Action =
   | { type: 'scroll-screen'; delta: number; viewport: number }
   | { type: 'refresh-views' }
   | { type: 'view-error'; message: string }
+  // R11.16. The §14.2 editor's *shape* — buffer in state, refusal on commit,
+  // no per-keystroke write — reused rather than its actions: `begin-edit` is
+  // typed to `ScalarField`, the config document's vocabulary, and widening it
+  // would put two unrelated editors behind one action.
+  | { type: 'begin-suppress'; request: SuppressionRequest; toolId: string; relPath: string; reason: string }
+  | {
+      type: 'suppress-preview'
+      label: string
+      diff: string
+      uncovered: string[]
+      stages: readonly Stage[]
+    }
+  | { type: 'suppress-reason'; reason: string }
+  | { type: 'commit-suppress-reason' }
+  | { type: 'cycle-then-run' }
+  | { type: 'scroll-suppress'; delta: number }
+  | { type: 'suppress-error'; message: string }
+  | { type: 'end-suppress' }
   | { type: 'flash'; message: string; tone?: FlashTone }
   | { type: 'clear-flash' }
 
@@ -383,6 +403,7 @@ export function initialState(skills: readonly SkillRef[], concurrency: number): 
     help: false,
     pending: null,
     displacedReviews: 0,
+    suppress: null,
     screen: 'work',
     palette: { open: false, query: '', selected: 0 },
     dashboard: null,
@@ -789,6 +810,82 @@ export function reducer(state: AppState, action: Action): AppState {
         return { ...state, editing: { ...editing, error: (err as Error).message } }
       }
     }
+    // R11.16. Every case below returns the state untouched when no slot is
+    // open, so a stray keypress after the pane closes cannot resurrect one.
+    case 'begin-suppress':
+      return {
+        ...state,
+        suppress: {
+          request: action.request,
+          label: '',
+          toolId: action.toolId,
+          relPath: action.relPath,
+          diff: '',
+          offset: 0,
+          // Seeded, unlike the config editor's empty buffer: a prefill the
+          // first keystroke replaces is not a prefill.
+          reason: action.reason,
+          editingReason: true,
+          uncovered: [],
+          thenRun: 'resume',
+          stages: [],
+          error: null,
+        },
+      }
+    case 'suppress-preview':
+      return state.suppress === null
+        ? state
+        : {
+            ...state,
+            suppress: {
+              ...state.suppress,
+              label: action.label,
+              diff: action.diff,
+              uncovered: action.uncovered,
+              stages: action.stages,
+              // Every gate passed against the pre-write digest, so `resume`
+              // would enqueue nothing — which is not an offer.
+              thenRun: action.stages.length === 0 ? 'gates' : state.suppress.thenRun,
+              error: null,
+            },
+          }
+    case 'suppress-reason':
+      return state.suppress === null
+        ? state
+        : { ...state, suppress: { ...state.suppress, reason: action.reason, error: null } }
+    case 'commit-suppress-reason': {
+      const slot = state.suppress
+      if (slot === null) return state
+      // The editor stays open holding what the user typed, as `stage-edit`
+      // does: closing it on a rejection throws the half-fixed value away.
+      if (slot.reason.trim() === '') {
+        return { ...state, suppress: { ...slot, error: 'a suppression reason is required' } }
+      }
+      return { ...state, suppress: { ...slot, editingReason: false, error: null } }
+    }
+    case 'cycle-then-run': {
+      const slot = state.suppress
+      if (slot === null) return state
+      const next =
+        slot.thenRun === 'resume' ? 'gates' : slot.thenRun === 'gates' ? 'none' : 'resume'
+      return { ...state, suppress: { ...slot, thenRun: next } }
+    }
+    case 'scroll-suppress':
+      return state.suppress === null
+        ? state
+        : {
+            ...state,
+            suppress: {
+              ...state.suppress,
+              offset: Math.max(0, state.suppress.offset + action.delta),
+            },
+          }
+    case 'suppress-error':
+      return state.suppress === null
+        ? state
+        : { ...state, suppress: { ...state.suppress, error: action.message } }
+    case 'end-suppress':
+      return { ...state, suppress: null }
     case 'stage-remove-repo': {
       const base = state.staged ?? state.settings?.config
       return base ? { ...state, staged: withoutRepo(base, action.repoId) } : state

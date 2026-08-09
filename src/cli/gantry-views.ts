@@ -7,10 +7,16 @@ import { loadConfig, loadToolLock, saveConfig } from '../core/config/config.js'
 import { loadEnvFile } from '../core/config/env.js'
 import { discoverSkills } from '../core/discovery/discover.js'
 import { type Ledger, openLedger } from '../core/ledger/db.js'
-import { listIssues, setIssueState } from '../core/ledger/issue-queries.js'
+import { issueDetectionRules, listIssues, setIssueState } from '../core/ledger/issue-queries.js'
 import { readLifecycleCache } from '../core/ledger/lifecycle.js'
 import { appliedRuleMapVersion } from '../core/ledger/rule-map-migration.js'
 import { dashboard, provenanceOptions } from '../core/ledger/stats.js'
+import { previewSuppression } from '../core/suppress/target.js'
+import {
+  applySuppression,
+  discardSuppression,
+  type SuppressionPlan,
+} from '../core/suppress/write.js'
 import { doctor } from '../core/tools/doctor.js'
 import type { GantryViews, SettingsCredential, SettingsView } from '../tui/views.js'
 import { type CliDeps, discoverAll } from './run-command.js'
@@ -62,6 +68,12 @@ function credentialsOf(
 }
 
 export function createGantryViews(deps: CliDeps): GantryViews {
+  // Held between `planSuppression` and `applySuppression` rather than travelling
+  // through React state: a `SuppressionPlan` carries absolute paths and a
+  // preimage hash that no component renders, and the recheck those exist for
+  // has to run against the plan the diff was built from.
+  let staged: SuppressionPlan[] = []
+
   return {
     dashboard: async (filter) => withLedger(deps.dbPath, (ledger) => dashboard(ledger.db, filter)),
     provenances: async () => withLedger(deps.dbPath, (ledger) => provenanceOptions(ledger.db)),
@@ -136,6 +148,66 @@ export function createGantryViews(deps: CliDeps): GantryViews {
       // `saveConfig` runs `configSchema.parse` before it writes, so an invalid
       // document never reaches disk even if a caller skipped staging validation.
       await saveConfig(deps.home, next)
+    },
+    planSuppression: async (request) => {
+      const skills = await discoverAll(await loadConfig(deps.home))
+      const skill = skills.find((candidate) => candidate.id === request.skillId)
+      if (skill === undefined) throw new Error(`no skill ${request.skillId}`)
+
+      const { rules, stillReporting } =
+        request.kind === 'issue'
+          ? withLedger(deps.dbPath, (ledger) => {
+              const row = listIssues(ledger.db, { skillId: skill.id }).find(
+                (issue) => issue.fingerprint === request.fingerprint,
+              )
+              if (row === undefined) throw new Error(`no issue ${request.fingerprint}`)
+              return {
+                rules: issueDetectionRules(ledger.db, request.fingerprint),
+                stillReporting: row.blockedBy,
+              }
+            })
+          : {
+              rules: [
+                {
+                  toolId: request.toolId,
+                  nativeRuleId: request.nativeRuleId,
+                  relPath: request.relPath,
+                },
+              ],
+              stillReporting: [request.toolId],
+            }
+
+      const preview = await previewSuppression({
+        skill,
+        reason: request.reason,
+        rules,
+        stillReporting,
+      })
+      staged = preview.plans
+      // Rejected rather than returned empty: the pane must never open with
+      // nothing to confirm, and the refusal has to name the tool (R11.16).
+      if (preview.plans.length === 0) {
+        const named =
+          preview.uncovered.length > 0
+            ? `${preview.uncovered.join(', ')} declares no baseline`
+            : 'no detecting tool declares a baseline'
+        throw new Error(named)
+      }
+      const plan = preview.plans[0] as SuppressionPlan
+      return {
+        label: preview.plans.map((one) => one.label).join(', '),
+        diff: preview.plans.map((one) => one.diff).join('\n'),
+        uncovered: preview.uncovered,
+        alreadyPresent: preview.plans.every((one) => one.added === 0) && plan.alreadyPresent > 0,
+      }
+    },
+    applySuppression: async () => {
+      for (const plan of staged) await applySuppression(plan)
+      staged = []
+    },
+    discardSuppression: async () => {
+      for (const plan of staged) await discardSuppression(plan)
+      staged = []
     },
     openPath: async (path) => {
       // Per-platform opener, detached and fully un-piped: the child outlives

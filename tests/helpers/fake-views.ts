@@ -5,6 +5,7 @@ import type {
   DoctorReport,
   IssueRow,
   ProvenanceOption,
+  SuppressionRequest,
 } from '../../src/core/index.js'
 import type { GantryViews, SettingsView } from '../../src/tui/views.js'
 
@@ -58,15 +59,22 @@ export interface FakeViews extends GantryViews {
   readonly actions: Array<[string, string]>
   /** Paths the screens asked the host to open, in order. */
   readonly opened: string[]
+  /** Suppression requests the screens staged, and how each was resolved. */
+  readonly suppressions: SuppressionRequest[]
+  readonly suppressResolutions: Array<'apply' | 'discard'>
 }
 
 /** No sqlite, no spawn: the screens are pure functions of what this returns. */
 export function fakeViews(overrides: Partial<GantryViews> = {}): FakeViews {
   const actions: Array<[string, string]> = []
   const opened: string[] = []
+  const suppressions: SuppressionRequest[] = []
+  const suppressResolutions: Array<'apply' | 'discard'> = []
   return {
     actions,
     opened,
+    suppressions,
+    suppressResolutions,
     openPath: async (path) => {
       opened.push(path)
     },
@@ -80,6 +88,21 @@ export function fakeViews(overrides: Partial<GantryViews> = {}): FakeViews {
     tools: async () => emptyDoctor,
     settings: async () => emptySettings,
     applyConfig: async () => undefined,
+    planSuppression: async (request) => {
+      suppressions.push(request)
+      return {
+        label: 'declawed/.skillspector-baseline.yaml',
+        diff: '@@ -3,2 +3,6 @@\n rules:\n+- id: MP2\n',
+        uncovered: [],
+        alreadyPresent: false,
+      }
+    },
+    applySuppression: async () => {
+      suppressResolutions.push('apply')
+    },
+    discardSuppression: async () => {
+      suppressResolutions.push('discard')
+    },
     ...overrides,
   }
 }
