@@ -225,6 +225,46 @@ export function truncate(text: string, width: number): string {
 }
 
 /**
+ * Word wrap into cell-measured lines, for the one surface that must not
+ * truncate (R11.18). Every other pane in the tree cuts, because it is bound by
+ * an allocation; this exists so a finding's whole message can be read, and it
+ * lives here beside `truncate` because both answer the same question about
+ * cells rather than code units. A word longer than the width is hard-split
+ * rather than left to overflow — a 90-cell path with no space in it is the
+ * common case, not a hypothetical.
+ */
+export function wrapCells(text: string, width: number): string[] {
+  if (width <= 0) return []
+  const out: string[] = []
+  for (const paragraph of text.split('\n')) {
+    let line = ''
+    for (const word of paragraph.split(/\s+/).filter((part) => part.length > 0)) {
+      const candidate = line === '' ? word : `${line} ${word}`
+      if (stringWidth(candidate) <= width) {
+        line = candidate
+        continue
+      }
+      if (line !== '') out.push(line)
+      line = word
+      while (stringWidth(line) > width) {
+        let head = ''
+        let used = 0
+        for (const char of line) {
+          const cells = stringWidth(char)
+          if (used + cells > width) break
+          head += char
+          used += cells
+        }
+        out.push(head)
+        line = line.slice(head.length)
+      }
+    }
+    out.push(line)
+  }
+  return out
+}
+
+/**
  * Head-elided truncation, for paths whose basename is what identifies them.
  * Cell-measured like `truncate`, because artefact paths come from user repos
  * and a wide character would otherwise spill past the pane's right edge.

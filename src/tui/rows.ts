@@ -1,7 +1,7 @@
 import { basename } from 'node:path'
 import { GATE_STAGES } from '../core/index.js'
 import type { DashboardStats, IssueRow, ScalarField, Stage } from '../core/index.js'
-import { padCells, truncate, truncateMiddle, windowFor } from './layout.js'
+import { padCells, truncate, truncateMiddle, windowFor, wrapCells } from './layout.js'
 import { ACCENT, OUTCOME_COLOUR, SEVERITY_COLOUR, STATUS } from './tokens.js'
 import type { AppState, FindingRow, SkillRow, StageCell } from './store.js'
 
@@ -532,6 +532,110 @@ export function findingRows(
     })
   })
   return out
+}
+
+/**
+ * R11.18. The two bodies of the full-length view, as the flat `ScreenRow` list
+ * every other screen emits. Pure, so every row is assertable without Ink — the
+ * reason `overviewRows` and `issueRows` already sit here.
+ *
+ * These are the one place in the tree that wraps rather than truncates. Every
+ * pane is bound by an allocation, which is exactly what guarantees it cuts the
+ * message; this view exists because the sentence a scanner wrote is the field a
+ * maintainer needs whole, and it is not bound by one.
+ */
+export function findingDetailRows(row: FindingRow, width: number): ScreenRow[] {
+  const { finding } = row
+  const location = finding.line === undefined ? finding.path : `${finding.path}:${finding.line}`
+  const rows: ScreenRow[] = [
+    {
+      text: `${finding.severity}  ${finding.ruleClass}`,
+      heading: true,
+      colour: SEVERITY_COLOUR[finding.severity] ?? STATUS.secondary,
+    },
+    ...wrapCells(location, width).map((text) => ({ text })),
+    { text: `${row.stage} · ${row.toolId} · ${finding.nativeRuleId}`, dim: true },
+    { text: '' },
+    { text: 'Message', heading: true },
+    ...wrapCells(finding.message, width).map((text) => ({ text })),
+    { text: '' },
+    // The directory, not a report file: native artefact names belong to the
+    // adapter, and a screen naming `findings.sarif` would be guessing at four
+    // tools' conventions, while `artefactDir` is recorded per tool run.
+    { text: 'Evidence', heading: true },
+    ...wrapCells(row.artefactDir, width).map((text) => ({ text, dim: true })),
+  ]
+  if (finding.suppressed !== undefined) {
+    rows.push(
+      { text: '' },
+      { text: '⊘ Suppressed', heading: true },
+      ...wrapCells(finding.suppressed.justification, width).map((text) => ({ text, dim: true })),
+    )
+  }
+  return rows
+}
+
+export function issueDetailRows(row: IssueRow, width: number): ScreenRow[] {
+  const seen = row.lastSeenRun === null ? 'never seen in a run' : `last seen ${row.lastSeenRun}`
+  const rows: ScreenRow[] = [
+    {
+      text: `${row.severity}  ${row.ruleClass}`,
+      heading: true,
+      colour: SEVERITY_COLOUR[row.severity] ?? STATUS.secondary,
+    },
+    ...wrapCells(row.relPath, width).map((text) => ({ text })),
+    { text: `${row.skillId} · ${row.repoId}`, dim: true },
+    { text: '' },
+    { text: 'State', heading: true },
+    {
+      text: `${STATE_MARK[row.state] ?? '?'} ${row.state} · ${row.occurrenceCount} occurrence${
+        row.occurrenceCount === 1 ? '' : 's'
+      } · ${seen}`,
+    },
+    { text: `detected by ${row.detectors.join(', ')}`, dim: true },
+  ]
+  // R8.8's blockers spelled out rather than glyphed: the row has `⟂ a,b` and no
+  // space to say what it means, and "why is this still open" is the question
+  // this view exists to answer.
+  if (row.blockedBy.length > 0) {
+    rows.push(
+      ...wrapCells(
+        `open until ${row.blockedBy.join(', ')} report a conclusive absence`,
+        width,
+      ).map((text) => ({ text, dim: true })),
+    )
+  }
+  if (row.suppressed) {
+    rows.push(
+      { text: '' },
+      { text: '⊘ Suppressed', heading: true },
+      ...wrapCells(row.suppressionReason ?? 'no reason recorded', width).map((text) => ({
+        text,
+        dim: true,
+      })),
+    )
+  }
+  rows.push({ text: '' }, { text: `fingerprint ${row.fingerprint}`, dim: true })
+  return rows
+}
+
+/**
+ * The two above behind one call, so `DetailPane` renders a row list and never
+ * switches on the union — the same reason `ScreenList` takes rows rather than a
+ * screen. `app.tsx` calls it too, to clamp the scroll against the row count the
+ * pane will render, which is `outputWindow`'s rule: two derivations of that
+ * arithmetic is how `j` stops short of the end.
+ */
+export function detailRows(detail: NonNullable<AppState['detail']>, width: number): ScreenRow[] {
+  return detail.kind === 'finding'
+    ? findingDetailRows(detail.row, width)
+    : issueDetailRows(detail.row, width)
+}
+
+export function detailTitle(detail: NonNullable<AppState['detail']>): string {
+  return detail.kind === 'finding'
+    ? `Finding — ${detail.row.toolId}`
+    : `Issue — ${detail.row.skillId}`
 }
 
 /**

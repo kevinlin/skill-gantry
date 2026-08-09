@@ -17,6 +17,7 @@ import type {
 } from '../core/index.js'
 import { ConfirmPane } from './components/ConfirmPane.js'
 import { Dashboard } from './components/Dashboard.js'
+import { DetailPane } from './components/DetailPane.js'
 import { Issues } from './components/Issues.js'
 import { Palette } from './components/Palette.js'
 import { Settings } from './components/Settings.js'
@@ -35,10 +36,10 @@ import {
 } from './layout.js'
 import { osc52 } from './osc52.js'
 import { LogPump } from './log-buffer.js'
-import { outputWindow, resumedGates, settingsRows } from './rows.js'
+import { detailRows, outputWindow, resumedGates, settingsRows } from './rows.js'
 import { useSetupSession } from './use-setup-session.js'
 import { PANELS, initialState, paletteMatches, reducer, selectedSkill } from './store.js'
-import type { Action, AppState, SkillRow } from './store.js'
+import type { Action, AppState, FindingRow, FlashTone, SkillRow } from './store.js'
 import {
   type GantryViews,
   listArtefacts,
@@ -396,6 +397,78 @@ export function App({
       .catch((err: unknown) => dispatch({ type: 'suppress-error', message: (err as Error).message }))
   }
 
+  // R11.18 puts the same three finding actions on a second surface, so each is
+  // one function both call. Two copies of `o` is how the pane and the detail
+  // come to report a different path for one directory.
+  const flash = (message: string, tone?: FlashTone): void =>
+    dispatch({ type: 'flash', message, ...(tone === undefined ? {} : { tone }) })
+
+  const shortPath = (path: string): string =>
+    truncateMiddle(path, Math.max(20, innerWidth(layout.columns, layout.chrome) - 12))
+
+  const openEvidence = (artefactDir: string): void => {
+    const shown = shortPath(artefactDir)
+    void views.openPath(artefactDir).then(
+      () => flash(`opened · ${shown}`),
+      // Named, never swallowed: a viewer that is not installed is a thing the
+      // user can fix, and a silent `o` is one they cannot.
+      (err: unknown) => flash(`${(err as Error).message} · ${shown}`, 'bad'),
+    )
+  }
+
+  const beginSuppress = (skillId: string, chosen: FindingRow): void =>
+    dispatch({
+      type: 'begin-suppress',
+      request: {
+        kind: 'finding',
+        skillId,
+        toolId: chosen.toolId,
+        nativeRuleId: chosen.finding.nativeRuleId,
+        relPath: chosen.finding.path,
+        reason: '',
+      },
+      toolId: chosen.toolId,
+      relPath: chosen.finding.path,
+      reason: suppressionPrefill(),
+    })
+
+  const copyFixPrompt = (skill: SkillRow, stage: Stage): void => {
+    if (skill.runDir === null) {
+      // R11.10 rehydrates a recorded run, so this branch now means the skill
+      // has never run — where `skillgantry fix` would exit non-zero too.
+      flash(`no recorded run for ${skill.skillId} — press r`)
+      return
+    }
+    if (skill.stages[stage].findings === 0) {
+      flash(`${stage} found nothing — no prompt`)
+      return
+    }
+    const path = fixPromptPathFor(skill.runDir, stage)
+    // Cut in the middle so the basename — the part that tells the user which
+    // stage it is — survives the trim.
+    const shown = shortPath(path)
+    void readFixPrompt(path).then(
+      (body) => {
+        if (body === null) {
+          flash(`not written yet · ${shown}`)
+          return
+        }
+        const seq = osc52(body)
+        // Never claims a copy the terminal was never asked to make.
+        if (seq === null) {
+          flash(`too large to copy · ${shown}`)
+          return
+        }
+        // Not Ink's `write()` from the same hook: that writes *above* the app
+        // and forces a clear-and-re-render, flickering the frame for a
+        // sequence that renders nothing.
+        stdout.write(seq)
+        flash(`copied · ${shown}`)
+      },
+      (err: unknown) => flash(`${(err as Error).message} · ${shown}`),
+    )
+  }
+
   useInput((input, key) => {
     // Ink normalises a modified key onto the bare letter — `input` becomes
     // `keypress.name` when ctrl is held, and an alt-prefixed `\x1ba` has its
@@ -553,6 +626,38 @@ export function App({
       dispatch({ type: 'palette-open' })
       return
     }
+    // R11.18. Below the palette, because its keys destroy nothing — and the
+    // ordering is forced rather than merely consistent: `s` here opens the
+    // suppress pane, so a detail that outranked it would swallow the pane it
+    // had just summoned. Above the `esc` below, which would otherwise send a
+    // detail opened over the Issues screen to Work instead of closing it.
+    if (state.detail !== null) {
+      const detail = state.detail
+      if (key.escape) dispatch({ type: 'close-detail' })
+      else if ((plain && input === 'j') || key.downArrow || (plain && input === 'k') || key.upArrow) {
+        // Clamped against the rows the pane will actually render, at the width
+        // it will render them — `outputWindow`'s rule, for the same reason.
+        const rows = detailRows(detail, Math.max(8, innerWidth(layout.columns, layout.chrome)))
+        dispatch({
+          type: 'scroll-detail',
+          delta: (plain && input === 'k') || key.upArrow ? -1 : 1,
+          viewport: screenBodyRows(layout),
+          total: rows.length,
+        })
+      } else if (plain && input === 'o') {
+        if (detail.kind === 'finding') openEvidence(detail.row.artefactDir)
+        else flash('an issue has no artefact directory — open it from a finding')
+      } else if (plain && input === 'y') {
+        // The Issues screen is cross-repo and holds no rail, so a prompt is only
+        // answerable for a finding on the skill the Work screen has selected.
+        if (detail.kind === 'finding' && current) copyFixPrompt(current, detail.row.stage)
+        else flash('no recorded run here — copy the prompt from the Work screen')
+      } else if (plain && input === 's') {
+        if (detail.kind === 'finding' && current) beginSuppress(current.skillId, detail.row)
+        else if (detail.kind === 'issue') flash('accept it from the Issues screen')
+      }
+      return
+    }
     // esc anywhere but Work goes home, so a user who palette-jumped by mistake
     // is one keystroke from where they came from.
     if (key.escape && state.screen !== 'work') {
@@ -605,6 +710,9 @@ export function App({
       }
       if ((plain && input === 'j') || key.downArrow) dispatch({ type: 'select-issue', delta: 1 })
       else if ((plain && input === 'k') || key.upArrow) dispatch({ type: 'select-issue', delta: -1 })
+      // R11.18's third surface. The row truncates its path and elides its
+      // suppression reason to fit the fixed columns; this is where both are read.
+      else if (key.return && row) dispatch({ type: 'open-detail', detail: { kind: 'issue', row } })
       else if (plain && input === 'a') act('acknowledge')
       else if (plain && input === 'w') act('wontfix')
       else if (plain && input === 'o') act('reopen')
@@ -733,28 +841,30 @@ export function App({
       )
       return
     }
+    // R11.18's two Work surfaces. Read-only, so the Issues tab may bind it —
+    // R11.13 forbids that tab a state *transition*, which this is not.
+    if (key.return && state.focus === 'work') {
+      if (state.panel === 'findings') {
+        const chosen = current?.findings[state.selectedFinding]
+        if (chosen) dispatch({ type: 'open-detail', detail: { kind: 'finding', row: chosen } })
+        else flash('no finding selected')
+        return
+      }
+      if (state.panel === 'issues') {
+        const row = state.issues[state.selectedTabIssue]
+        if (row) dispatch({ type: 'open-detail', detail: { kind: 'issue', row } })
+        return
+      }
+    }
     // R11.16's first surface, gated on the Findings pane exactly as `o` below
     // is: the Issues *tab* binds no state-changing key (R11.13).
     if (plain && input === 's' && state.panel === 'findings' && state.focus === 'work') {
       const chosen = current?.findings[state.selectedFinding]
       if (!chosen || !current) {
-        dispatch({ type: 'flash', message: 'no finding selected' })
+        flash('no finding selected')
         return
       }
-      dispatch({
-        type: 'begin-suppress',
-        request: {
-          kind: 'finding',
-          skillId: current.skillId,
-          toolId: chosen.toolId,
-          nativeRuleId: chosen.finding.nativeRuleId,
-          relPath: chosen.finding.path,
-          reason: '',
-        },
-        toolId: chosen.toolId,
-        relPath: chosen.finding.path,
-        reason: suppressionPrefill(),
-      })
+      beginSuppress(current.skillId, chosen)
       return
     }
     // Gated on the Findings pane, so the Issues tab's `o` stays unbound: its
@@ -763,24 +873,10 @@ export function App({
     if (plain && input === 'o' && state.panel === 'findings' && state.focus === 'work') {
       const chosen = current?.findings[state.selectedFinding]
       if (!chosen) {
-        dispatch({ type: 'flash', message: 'no finding selected' })
+        flash('no finding selected')
         return
       }
-      const shown = truncateMiddle(
-        chosen.artefactDir,
-        Math.max(20, innerWidth(layout.columns, layout.chrome) - 12),
-      )
-      void views.openPath(chosen.artefactDir).then(
-        () => dispatch({ type: 'flash', message: `opened · ${shown}` }),
-        // Named, never swallowed: a viewer that is not installed is a thing the
-        // user can fix, and a silent `o` is one they cannot.
-        (err: unknown) =>
-          dispatch({
-            type: 'flash',
-            message: `${(err as Error).message} · ${shown}`,
-            tone: 'bad',
-          }),
-      )
+      openEvidence(chosen.artefactDir)
       return
     }
     if (plain && input === 'y') {
@@ -793,39 +889,7 @@ export function App({
       // stage, so what is copied is still a stage's.
       const chosenFinding =
         state.panel === 'findings' ? current.findings[state.selectedFinding] : undefined
-      const stage = chosenFinding?.stage ?? (STAGE_ORDER[state.selectedStage] as Stage)
-      const flash = (message: string) => dispatch({ type: 'flash', message })
-      if (current.runDir === null) {
-        // R11.10 rehydrates a recorded run, so this branch now means the skill
-        // has never run — where `skillgantry fix` would exit non-zero too.
-        flash(`no recorded run for ${current.skillId} — press r`)
-        return
-      }
-      if (current.stages[stage].findings === 0) {
-        flash(`${stage} found nothing — no prompt`)
-        return
-      }
-      const path = fixPromptPathFor(current.runDir, stage)
-      // Cut in the middle so the basename — the part that tells the user which
-      // stage it is — survives the trim.
-      const shown = truncateMiddle(path, Math.max(20, innerWidth(layout.columns, layout.chrome) - 12))
-      void readFixPrompt(path).then((body) => {
-        if (body === null) {
-          flash(`not written yet · ${shown}`)
-          return
-        }
-        const seq = osc52(body)
-        // Never claims a copy the terminal was never asked to make.
-        if (seq === null) {
-          flash(`too large to copy · ${shown}`)
-          return
-        }
-        // Not Ink's `write()` from the same hook: that writes *above* the app
-        // and forces a clear-and-re-render, flickering the frame for a
-        // sequence that renders nothing.
-        stdout.write(seq)
-        flash(`copied · ${shown}`)
-      }, (err: unknown) => flash(`${(err as Error).message} · ${shown}`))
+      copyFixPrompt(current, chosenFinding?.stage ?? (STAGE_ORDER[state.selectedStage] as Stage))
       return
     }
     if (plain && input === 'r') {
@@ -863,6 +927,9 @@ export function App({
     )
   }
   if (state.palette.open) return <PaletteScreen state={state} />
+  // R11.18: after the palette and the two write panes above, per §14.2's order
+  // — what a keystroke here can destroy is nothing.
+  if (state.detail !== null) return <DetailPane state={state} />
   switch (state.screen) {
     case 'dashboard':
       return <Dashboard state={state} dispatch={dispatch} />

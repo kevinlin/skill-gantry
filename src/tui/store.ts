@@ -262,6 +262,23 @@ export interface AppState {
    * list walk the offset into the hundreds.
    */
   screenRowCount: number
+  /**
+   * R11.18. The full-length view, holding the row itself and not an index into
+   * the list it came from: `run:start` clears `SkillRow.findings` and
+   * `set-issues` replaces `state.issues` wholesale, so an index would silently
+   * re-point at a different finding while the view was open — and the list it
+   * indexed is not on screen to contradict it. It carries no origin either,
+   * because opening it never changes `state.screen`: closing reveals whatever
+   * was already beneath, and a second record of which screen is up is a second
+   * thing that can be wrong.
+   */
+  detail: { kind: 'finding'; row: FindingRow } | { kind: 'issue'; row: IssueRow } | null
+  /**
+   * First visible row of the detail view. Its own rather than `screenOffset`,
+   * for the reason it holds no origin: the view sits over a screen that is
+   * still there, so sharing the offset would scroll what is underneath it.
+   */
+  detailOffset: number
   /** Set when the port rejected; cleared by the next successful load. */
   viewError: string | null
   /** Bumped by `refresh`, watched by the loading effect. */
@@ -348,6 +365,9 @@ export type Action =
   | { type: 'discard-staged' }
   | { type: 'set-screen-row-count'; count: number }
   | { type: 'scroll-screen'; delta: number; viewport: number }
+  | { type: 'open-detail'; detail: NonNullable<AppState['detail']> }
+  | { type: 'close-detail' }
+  | { type: 'scroll-detail'; delta: number; viewport: number; total: number }
   | { type: 'refresh-views' }
   | { type: 'view-error'; message: string }
   // R11.16. The §14.2 editor's *shape* — buffer in state, refusal on commit,
@@ -424,6 +444,8 @@ export function initialState(skills: readonly SkillRef[], concurrency: number): 
     issueScope: 'skill',
     selectedIssue: 0,
     selectedTabIssue: 0,
+    detail: null,
+    detailOffset: 0,
     selectedFinding: 0,
     tools: null,
     settings: null,
@@ -948,6 +970,19 @@ export function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         screenOffset: Math.min(maxOffset, Math.max(0, state.screenOffset + action.delta)),
+      }
+    }
+    // Opening always starts at the top: the view is a thing to read, and a
+    // second finding inheriting the first one's scroll opens mid-sentence.
+    case 'open-detail':
+      return { ...state, detail: action.detail, detailOffset: 0 }
+    case 'close-detail':
+      return { ...state, detail: null, detailOffset: 0 }
+    case 'scroll-detail': {
+      const maxOffset = Math.max(0, action.total - Math.max(1, action.viewport))
+      return {
+        ...state,
+        detailOffset: Math.min(maxOffset, Math.max(0, state.detailOffset + action.delta)),
       }
     }
     case 'refresh-views':
