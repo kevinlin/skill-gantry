@@ -16,13 +16,27 @@ export interface CandidateManifest {
 const posix = (p: string): string => p.split(sep).join('/')
 
 /**
+ * Where `src/core/suppress/write.ts` stages its bytes. Same-directory rename is
+ * the only portable atomic recipe, so the file lands inside the candidate root
+ * — and an exact SkillGantry-owned path is what R2.9 allows to be excluded.
+ * Release solved the same problem the same way for `<skillName>_*.zip`.
+ */
+export const WRITE_TEMP_NAME = '.skillgantry-write.tmp'
+
+/**
  * Exact owned paths, resolved against the candidate root. Deliberately not a
  * basename match: revision 2 excluded any directory called `snapshot-pre`,
  * which let a legitimately named skill directory change without invalidating
  * the gate evidence bound to its digest.
  */
 function excludedPaths(skill: SkillRef): Set<string> {
-  const owned = new Set<string>([posix(relative(skill.dir, skill.workspacePath)), '.git'])
+  const owned = new Set<string>([
+    posix(relative(skill.dir, skill.workspacePath)),
+    '.git',
+    // Unguarded by `rootSkill`, unlike `.gitignore` below: the suppression
+    // write happens in whichever candidate root holds the baseline.
+    WRITE_TEMP_NAME,
+  ])
   if (skill.rootSkill) owned.add('.gitignore')
   return owned
 }

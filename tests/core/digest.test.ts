@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { chmod, mkdir, symlink, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { WRITE_TEMP_NAME } from '../../src/core/discovery/candidate.js'
 import { digestSkill } from '../../src/core/discovery/digest.js'
 import { discoverSkills } from '../../src/core/discovery/discover.js'
 import type { RepoRef } from '../../src/core/types.js'
@@ -58,5 +59,16 @@ describe('digestSkill', () => {
     await unlink(join(root, 'a/alias.md'))
     await symlink('two.md', join(root, 'a/alias.md'))
     expect(await digestOf(root)).not.toBe(before)
+  })
+
+  // The suppression write stages its bytes beside the target so the rename is
+  // atomic (§12.5), which puts the temp file inside the candidate root. A run
+  // digesting mid-write must not hash it — R2.9 permits the exclusion because
+  // the path is exactly SkillGantry-owned.
+  it('excludes the suppression write temp file', async () => {
+    const root = await makeRepo({ files: { 'a/SKILL.md': SKILL_MD('a') } })
+    const before = await digestOf(root)
+    await writeFile(join(root, 'a', WRITE_TEMP_NAME), 'staged bytes')
+    expect(await digestOf(root)).toBe(before)
   })
 })

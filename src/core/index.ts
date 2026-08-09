@@ -12,6 +12,7 @@ export {
   migrateRuleMap,
   type RuleMapMigrationResult,
 } from './ledger/rule-map-migration.js'
+export { WRITE_TEMP_NAME } from './discovery/candidate.js'
 export { discoverSkills, workspacePath } from './discovery/discover.js'
 export {
   DEFAULT_CONFIG,
