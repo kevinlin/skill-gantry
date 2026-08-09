@@ -217,7 +217,16 @@ export interface AppState {
    * re-filter the screen behind the user's back.
    */
   issueScope: 'skill' | 'repo' | 'all'
+  /** Which issue the Issues *screen* has selected. */
   selectedIssue: number
+  /**
+   * Which issue the Work screen's tab has selected (R11.13, rev 15). Split from
+   * `selectedIssue` for the reason `issueScope` was split from `issueFilter`:
+   * the tab rendered the screen's cursor while windowing against its own scroll
+   * offset, so it drew a selection no key on the Work screen could move and,
+   * arriving from a screen left at row 30, drew none at all.
+   */
+  selectedTabIssue: number
   /**
    * Which finding the Findings pane has selected (R11.14). A cursor rather than
    * a scroll offset because this pane is a list of things to act on, which is
@@ -317,8 +326,9 @@ export type Action =
   | { type: 'set-dashboard'; stats: DashboardStats }
   | { type: 'set-provenances'; options: ProvenanceOption[] }
   | { type: 'set-stats-filter'; filter: StatsFilter }
-  | { type: 'set-issues'; rows: IssueRow[] }
+  | { type: 'set-issues'; rows: IssueRow[]; surface: 'screen' | 'tab' }
   | { type: 'select-issue'; delta: number }
+  | { type: 'select-tab-issue'; delta: number }
   | { type: 'set-issue-filter'; filter: IssueFilter }
   | { type: 'cycle-issue-scope' }
   /** `total` is the caller's because the row count depends on the width. */
@@ -413,6 +423,7 @@ export function initialState(skills: readonly SkillRef[], concurrency: number): 
     issueFilter: {},
     issueScope: 'skill',
     selectedIssue: 0,
+    selectedTabIssue: 0,
     selectedFinding: 0,
     tools: null,
     settings: null,
@@ -756,17 +767,31 @@ export function reducer(state: AppState, action: Action): AppState {
       // Replaced, not merged: a filter that keeps a stale skillId while the
       // user changes provenance answers a question nobody asked.
       return { ...state, statsFilter: action.filter, dashboard: null, screenOffset: 0 }
+    // The response carries the surface that asked for it, so it clamps that
+    // surface's cursor alone (R11.13, rev 15). One row set still serves both,
+    // so an untagged response landing on the other left a cursor pointing at an
+    // unrelated issue — clamped rather than reset, which is what hid it.
     case 'set-issues':
       return {
         ...state,
         issues: action.rows,
-        selectedIssue: clamp(state.selectedIssue, action.rows.length),
+        ...(action.surface === 'tab'
+          ? { selectedTabIssue: clamp(state.selectedTabIssue, action.rows.length) }
+          : { selectedIssue: clamp(state.selectedIssue, action.rows.length) }),
         viewError: null,
       }
     case 'select-issue':
       return {
         ...state,
         selectedIssue: clamp(state.selectedIssue + action.delta, state.issues.length),
+      }
+    case 'select-tab-issue':
+      return {
+        ...state,
+        selectedTabIssue: clamp(state.selectedTabIssue + action.delta, state.issues.length),
+        // The window follows the cursor, so a pinned offset would fight it —
+        // `select-finding`'s reason, for the pane's other cursored tab.
+        outputOffset: null,
       }
     case 'set-issue-filter':
       return { ...state, issueFilter: action.filter, selectedIssue: 0, screenOffset: 0 }
@@ -779,7 +804,7 @@ export function reducer(state: AppState, action: Action): AppState {
       }
     case 'cycle-issue-scope': {
       const next = { skill: 'repo', repo: 'all', all: 'skill' } as const
-      return { ...state, issueScope: next[state.issueScope], selectedIssue: 0 }
+      return { ...state, issueScope: next[state.issueScope], selectedTabIssue: 0, outputOffset: null }
     }
     case 'set-tools':
       return { ...state, tools: action.report, viewError: null }

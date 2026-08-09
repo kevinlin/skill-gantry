@@ -130,6 +130,10 @@ function moveDown(
     // findings, and `outputWindow` is what counts the detail rows.
     return { type: 'select-finding' as const, delta, total: skill?.findings.length ?? 0 }
   }
+  // The tab's own cursor, never the Issues screen's (R11.13, rev 15). It had
+  // fallen through to `scroll-output`, so the pane drew a `▸` at the screen's
+  // cursor that no key here could move, and the window did not follow it.
+  if (state.panel === 'issues') return { type: 'select-tab-issue', delta }
   const view = outputWindow(state, skill, layout.outputHeight)
   return {
     type: 'scroll-output',
@@ -277,26 +281,36 @@ export function App({
   // looking at is not queried, and `refresh` is what re-runs the one they are.
   useEffect(() => {
     if (state.pending) return
-    const fail = (err: unknown): void =>
-      dispatch({ type: 'view-error', message: (err as Error).message })
+    // `live` for the reason the tab's effect below has always had one: both
+    // effects write one `state.issues`, so a response in flight when the screen
+    // changes lands on whichever surface is up by then (R11.13, rev 15).
+    let live = true
+    const fail = (err: unknown): void => {
+      if (live) dispatch({ type: 'view-error', message: (err as Error).message })
+    }
     // The Overview card lives on Work (R11.12), so the stats it renders have
     // to load there too — the card is a read of the same dashboard query.
     if (state.screen === 'dashboard' || state.screen === 'work') {
       void views
         .dashboard(state.statsFilter)
-        .then((stats) => dispatch({ type: 'set-dashboard', stats }), fail)
+        .then((stats) => live && dispatch({ type: 'set-dashboard', stats }), fail)
       void views
         .provenances()
-        .then((options) => dispatch({ type: 'set-provenances', options }), fail)
+        .then((options) => live && dispatch({ type: 'set-provenances', options }), fail)
     }
     if (state.screen === 'issues') {
-      void views.issues(state.issueFilter).then((rows) => dispatch({ type: 'set-issues', rows }), fail)
+      void views
+        .issues(state.issueFilter)
+        .then((rows) => live && dispatch({ type: 'set-issues', rows, surface: 'screen' }), fail)
     }
     if (state.screen === 'tools') {
-      void views.tools().then((report) => dispatch({ type: 'set-tools', report }), fail)
+      void views.tools().then((report) => live && dispatch({ type: 'set-tools', report }), fail)
     }
     if (state.screen === 'settings') {
-      void views.settings().then((view) => dispatch({ type: 'set-settings', view }), fail)
+      void views.settings().then((view) => live && dispatch({ type: 'set-settings', view }), fail)
+    }
+    return () => {
+      live = false
     }
   }, [state.screen, state.statsFilter, state.issueFilter, state.reloads])
 
@@ -319,7 +333,7 @@ export function App({
     let live = true
     void views.issues(filter).then(
       (rows) => {
-        if (live) dispatch({ type: 'set-issues', rows })
+        if (live) dispatch({ type: 'set-issues', rows, surface: 'tab' })
       },
       (err: unknown) => {
         if (live) dispatch({ type: 'view-error', message: (err as Error).message })

@@ -354,6 +354,7 @@ describe('screens and the palette — R11.3', () => {
     let state = reducer(initialState([], 2), {
       type: 'set-issues',
       rows: [{ fingerprint: 'a' }, { fingerprint: 'b' }] as never,
+      surface: 'screen',
     })
     state = reducer(state, { type: 'select-issue', delta: 9 })
     expect(state.selectedIssue).toBe(1)
@@ -363,10 +364,43 @@ describe('screens and the palette — R11.3', () => {
     let state = reducer(initialState([], 2), {
       type: 'set-issues',
       rows: [{ fingerprint: 'a' }, { fingerprint: 'b' }] as never,
+      surface: 'screen',
     })
     state = reducer(state, { type: 'select-issue', delta: 1 })
-    state = reducer(state, { type: 'set-issues', rows: [{ fingerprint: 'a' }] as never })
+    state = reducer(state, {
+      type: 'set-issues',
+      rows: [{ fingerprint: 'a' }] as never,
+      surface: 'screen',
+    })
     expect(state.selectedIssue).toBe(0)
+  })
+
+  // R11.13, rev 15: one row set, two cursors. A response the tab asked for must
+  // leave the screen's cursor where the user left it, and the reverse.
+  it('clamps only the cursor of the surface that asked', () => {
+    const two = [{ fingerprint: 'a' }, { fingerprint: 'b' }] as never
+    let state = reducer(initialState([], 2), { type: 'set-issues', rows: two, surface: 'screen' })
+    state = reducer(state, { type: 'select-issue', delta: 1 })
+    state = reducer(state, { type: 'select-tab-issue', delta: 1 })
+    expect([state.selectedIssue, state.selectedTabIssue]).toEqual([1, 1])
+
+    state = reducer(state, {
+      type: 'set-issues',
+      rows: [{ fingerprint: 'a' }] as never,
+      surface: 'tab',
+    })
+    expect(state.selectedTabIssue).toBe(0)
+    expect(state.selectedIssue).toBe(1)
+  })
+
+  it('moves the tab cursor without moving the screen cursor', () => {
+    const two = [{ fingerprint: 'a' }, { fingerprint: 'b' }] as never
+    let state = reducer(initialState([], 2), { type: 'set-issues', rows: two, surface: 'tab' })
+    state = reducer(state, { type: 'select-tab-issue', delta: 1 })
+    expect(state.selectedTabIssue).toBe(1)
+    expect(state.selectedIssue).toBe(0)
+    // The window follows the cursor, so a pinned offset would fight it.
+    expect(state.outputOffset).toBeNull()
   })
 
   it('resets the scroll offset when the screen changes', () => {

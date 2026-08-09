@@ -66,7 +66,7 @@ function outputTab(
         cursor: state.selectedFinding,
       }
     case 'issues':
-      return { total: state.issues.length, anchor: 'top' }
+      return { total: state.issues.length, anchor: 'top', cursor: state.selectedTabIssue }
     case 'artefacts':
       return { total: state.artefacts.length, anchor: 'top' }
     case 'skill':

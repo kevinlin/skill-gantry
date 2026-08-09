@@ -181,7 +181,7 @@ function Body({
     }
     return (
       <Box flexDirection="column">
-        {issueRows(state.issues, state.selectedIssue, cols)
+        {issueRows(state.issues, state.selectedTabIssue, cols)
           .slice(view.start, view.end)
           .map((row) => (
             <Text
