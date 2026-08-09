@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task by task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** planned.
+**Status:** shipped.
 **Goal:** Every movement key on the Work screen acts on the zone that owns it, both arrow pairs work where the letter pairs do, the Dashboard key is advertised wherever the Overview card renders, and `enter` opens the selected finding or issue at the length its tool wrote it.
 
 **Architecture:** No core change. One new component, two new pure row builders, one new state field and one new cursor, and a rewrite of the key routing in the single `useInput` block. The queue, the pipeline, the ledger and every adapter are untouched.
@@ -130,74 +130,88 @@ Task 1 is first because R13.7's traceability test fails the build until R11.18 h
 
 **Files:** Modify: `docs/specs/requirements.md`, `docs/specs/design-tui.md`, `docs/specs/design.md`, `docs/specs/index.md`, `docs/specs/plan-m8.md`. Create: this file.
 
-- [ ] **Step 1:** requirements.md — rev-15 preamble sentence; amend R11.11, R11.12, R11.13, R11.14 in place; add R11.18; extend M8's ownership row and exit criteria.
-- [ ] **Step 2:** design-tui.md — new `### 14.8` opening exactly `*Satisfies R11.18.*`; amend §14.2 and §14.6.
-- [ ] **Step 3:** design.md §17 and §18; index.md rows and the two catalogue defects; plan-m8.md `## Changelog`.
-- [ ] **Step 4:** Run `pnpm vitest run tests/specs/traceability.test.ts`. Expected: 2 passed.
-- [ ] **Step 5: Commit** `docs (m8): spec the zone-scoped keys and the full-length detail view`
+- [x] **Step 1:** requirements.md — rev-15 preamble sentence; amend R11.11, R11.12, R11.13, R11.14 in place; add R11.18; extend M8's ownership row and exit criteria.
+- [x] **Step 2:** design-tui.md — new `### 14.8` opening exactly `*Satisfies R11.18.*`; amend §14.2 and §14.6.
+- [x] **Step 3:** design.md §17 and §18; index.md rows and the two catalogue defects; plan-m8.md `## Changelog`.
+- [x] **Step 4:** Run `pnpm vitest run tests/specs/traceability.test.ts`. Expected: 2 passed.
+- [x] **Step 5: Commit** `docs (m8): spec the zone-scoped keys and the full-length detail view`
 
 ### Task 2: Arrow keys on the rail
 
 **Files:** Modify: `src/tui/app.tsx`. Test: `tests/tui/arrow-keys.test.tsx` (new).
 
-- [ ] **Step 1:** In the `h`/`l` branch, accept `key.leftArrow` and `key.rightArrow`. Nothing else moves — the vertical pair is already aliased in all eight blocks.
-- [ ] **Step 2:** New test sending `'\x1b[C'`, `'\x1b[D'` against the rail and `'\x1b[A'`, `'\x1b[B'` against the skill list, each as one `stdin.send` string. The bracketed-paste case in `setup-wizard.test.tsx` is the precedent that a multi-byte CSI reaches Ink through the fake.
-- [ ] **Step 3:** Run `pnpm vitest run tests/tui/arrow-keys.test.tsx`.
-- [ ] **Step 4: Commit** `feat (tui): move the rail with the horizontal arrows`
+- [x] **Step 1:** In the `h`/`l` branch, accept `key.leftArrow` and `key.rightArrow`. Nothing else moves — the vertical pair is already aliased in all eight blocks.
+- [x] **Step 2:** New test sending `'\x1b[C'`, `'\x1b[D'` against the rail and `'\x1b[A'`, `'\x1b[B'` against the skill list, each as one `stdin.send` string. The bracketed-paste case in `setup-wizard.test.tsx` is the precedent that a multi-byte CSI reaches Ink through the fake.
+- [x] **Step 3:** Run `pnpm vitest run tests/tui/arrow-keys.test.tsx`.
+- [x] **Step 4: Commit** `feat (tui): move the rail with the horizontal arrows`
 
 ### Task 3: A view-selection key focuses the pane it names
 
 **Files:** Modify: `src/tui/app.tsx`. Test: `tests/tui/focus-zones.test.tsx`.
 
-- [ ] **Step 1:** The `'1'`–`'5'` branch dispatches `set-panel` and `set-focus: 'work'`.
-- [ ] **Step 2:** Scope `S` to `focus === 'work' && panel === 'issues'`, matching the `o` and `s` guards. Leave `0`, `r` and `y` screen-level.
-- [ ] **Step 3:** Cases: a digit from the skill list and from the queue leaves focus on the pane; the existing "cycles exactly three zones" still passes.
-- [ ] **Step 4:** Run `pnpm vitest run tests/tui/focus-zones.test.tsx`.
-- [ ] **Step 5: Commit** `feat (tui): focus the output pane from the key that selects its view`
+- [x] **Step 1:** The `'1'`–`'5'` branch dispatches `set-panel` and `set-focus: 'work'`.
+- [x] **Step 2:** Scope `S` to `focus === 'work' && panel === 'issues'`, matching the `o` and `s` guards. Leave `0`, `r` and `y` screen-level.
+- [x] **Step 3:** Cases: a digit from the skill list and from the queue leaves focus on the pane; the existing "cycles exactly three zones" still passes.
+- [x] **Step 4:** Run `pnpm vitest run tests/tui/focus-zones.test.tsx`.
+- [x] **Step 5: Commit** `feat (tui): focus the output pane from the key that selects its view`
 
 ### Task 4: The Issues tab's own cursor, and the response that cannot land twice
 
 **Files:** Modify: `src/tui/store.ts`, `src/tui/rows.ts`, `src/tui/app.tsx`, `src/tui/components/OutputPane.tsx`. Test: `tests/tui/issues-tab.test.tsx`.
 
-- [ ] **Step 1:** `store.ts` — add `selectedTabIssue`; `set-issues` takes `surface` and applies to that surface's cursor alone; `cycle-issue-scope` resets `selectedTabIssue`; `select-tab-issue` clamps like `select-finding`.
-- [ ] **Step 2:** `rows.ts` — `outputTab`'s `issues` case returns `cursor: state.selectedTabIssue`, mirroring the `findings` case.
-- [ ] **Step 3:** `app.tsx` — `moveDown` routes `issues` to `select-tab-issue`; both `set-issues` dispatch sites pass their `surface`; the Issues-screen effect gains the `live` flag.
-- [ ] **Step 4:** `OutputPane.tsx` — the issues branch renders off `selectedTabIssue`.
-- [ ] **Step 5:** Run `pnpm vitest run tests/tui/issues-tab.test.tsx tests/tui/store.test.ts`.
-- [ ] **Step 6: Commit** `fix (tui): give the issues tab a cursor its own keys move`
+- [x] **Step 1:** `store.ts` — add `selectedTabIssue`; `set-issues` takes `surface` and applies to that surface's cursor alone; `cycle-issue-scope` resets `selectedTabIssue`; `select-tab-issue` clamps like `select-finding`.
+- [x] **Step 2:** `rows.ts` — `outputTab`'s `issues` case returns `cursor: state.selectedTabIssue`, mirroring the `findings` case.
+- [x] **Step 3:** `app.tsx` — `moveDown` routes `issues` to `select-tab-issue`; both `set-issues` dispatch sites pass their `surface`; the Issues-screen effect gains the `live` flag.
+- [x] **Step 4:** `OutputPane.tsx` — the issues branch renders off `selectedTabIssue`.
+- [x] **Step 5:** Run `pnpm vitest run tests/tui/issues-tab.test.tsx tests/tui/store.test.ts`.
+- [x] **Step 6: Commit** `fix (tui): give the issues tab a cursor its own keys move`
 
 ### Task 5: The detail view
 
 **Files:** Create: `src/tui/components/DetailPane.tsx`. Modify: `src/tui/rows.ts`, `src/tui/store.ts`, `src/tui/app.tsx`. Test: `tests/tui/detail-pane.test.tsx` (new).
 
-- [ ] **Step 1:** `findingDetailRows` — severity, rule class, native rule id, stage, tool, `path:line`, the whole message, the whole `artefactDir`, the whole suppression justification. `issueDetailRows` — fingerprint, state, severity, rule class, skill, path, first and last seen run, detection count, blockers, suppression reason.
-- [ ] **Step 2:** `DetailPane` — `Panel` windowed by `screenBodyRows()`, own `StatusBar` with `o open · y copy · s suppress · j/k scroll · esc close · q quit`, `flash` in place of the hints when set.
-- [ ] **Step 3:** `store.ts` — `detail`, `open-detail`, `close-detail`.
-- [ ] **Step 4:** `app.tsx` — `enter` opens from the Findings pane, the Issues tab and the Issues screen; `esc` closes; `j`/`k` and the vertical arrows scroll; `o`/`y`/`s` stay live. Render after `PaletteScreen`, before the screen switch.
-- [ ] **Step 5:** Tests per the Testing table.
-- [ ] **Step 6:** Run `pnpm vitest run tests/tui/detail-pane.test.tsx`.
-- [ ] **Step 7: Commit** `feat (tui): open the selected finding or issue at full length`
+- [x] **Step 1:** `findingDetailRows` — severity, rule class, native rule id, stage, tool, `path:line`, the whole message, the whole `artefactDir`, the whole suppression justification. `issueDetailRows` — fingerprint, state, severity, rule class, skill, path, first and last seen run, detection count, blockers, suppression reason.
+- [x] **Step 2:** `DetailPane` — `Panel` windowed by `screenBodyRows()`, own `StatusBar` with `o open · y copy · s suppress · j/k scroll · esc close · q quit`, `flash` in place of the hints when set.
+- [x] **Step 3:** `store.ts` — `detail`, `open-detail`, `close-detail`.
+- [x] **Step 4:** `app.tsx` — `enter` opens from the Findings pane, the Issues tab and the Issues screen; `esc` closes; `j`/`k` and the vertical arrows scroll; `o`/`y`/`s` stay live. Render after `PaletteScreen`, before the screen switch.
+- [x] **Step 5:** Tests per the Testing table.
+- [x] **Step 6:** Run `pnpm vitest run tests/tui/detail-pane.test.tsx`.
+- [x] **Step 7: Commit** `feat (tui): open the selected finding or issue at full length`
 
 ### Task 6: Discoverability
 
 **Files:** Modify: `src/tui/rows.ts`, `src/tui/components/Issues.tsx`, `src/tui/components/Help.tsx`. Test: `tests/tui/layout.test.tsx`.
 
-- [ ] **Step 1:** The findings action row gains `[enter] details`.
-- [ ] **Step 2:** The Issues tab and the Issues screen gain a selected-row action row of the same shape. Neither footer is touched.
-- [ ] **Step 3:** `KEYS` — `1 – 4` becomes `1 – 5` naming the Issues tab; add `enter`, `0`, `S`, `s`.
-- [ ] **Step 4:** Run `pnpm vitest run tests/tui/layout.test.tsx`.
-- [ ] **Step 5: Commit** `feat (tui): advertise the detail view and the four keys the help screen omitted`
+- [x] **Step 1:** The findings action row gains `[enter] details`.
+- [x] **Step 2:** The Issues tab and the Issues screen gain a selected-row action row of the same shape. Neither footer is touched.
+- [x] **Step 3:** `KEYS` — `1 – 4` becomes `1 – 5` naming the Issues tab; add `enter`, `0`, `S`, `s`.
+- [x] **Step 4:** Run `pnpm vitest run tests/tui/layout.test.tsx`.
+- [x] **Step 5: Commit** `feat (tui): advertise the detail view and the four keys the help screen omitted`
 
 ### Task 7: The dashboard key on every tier that renders
 
 **Files:** Modify: `src/tui/rows.ts`, `src/tui/layout.ts`. Test: `tests/tui/overview.test.tsx`.
 
-- [ ] **Step 1:** `overviewRows` emits the link on `compact` too, relabelled `[0] full dashboard →`.
-- [ ] **Step 2:** `OVERVIEW_ROWS.compact` 3 → 4.
-- [ ] **Step 3:** Update the compact assertions; add the test pinning `OVERVIEW_ROWS[tier]` to the builder's row count for both tiers; repair or remove the dead tier-shrink loop.
-- [ ] **Step 4:** Run `pnpm vitest run tests/tui/overview.test.tsx tests/tui/layout.test.tsx`.
-- [ ] **Step 5: Commit** `feat (tui): advertise the dashboard key on every overview tier`
+- [x] **Step 1:** `overviewRows` emits the link on `compact` too, relabelled `[0] full dashboard →`.
+- [x] **Step 2:** `OVERVIEW_ROWS.compact` 3 → 4.
+- [x] **Step 3:** Update the compact assertions; add the test pinning `OVERVIEW_ROWS[tier]` to the builder's row count for both tiers; repair or remove the dead tier-shrink loop.
+- [x] **Step 4:** Run `pnpm vitest run tests/tui/overview.test.tsx tests/tui/layout.test.tsx`.
+- [x] **Step 5: Commit** `feat (tui): advertise the dashboard key on every overview tier`
 
 ## Deviations found while implementing
 
-_To be filled in as the plan is executed._
+**1. `IssueRow` has no `first_seen_run` (Task 5).** The Contracts section listed "first and last seen run" among the issue detail's fields. `IssueRow` carries `lastSeenRun` alone — first-seen lives on the issue table but no query projects it. The detail names `lastSeenRun`, the occurrence count and the detectors instead. R11.18 never asked for first-seen, so no requirement moves.
+
+**2. The Issues screen advertises `enter` on its title row, not on a selected-row action row (Task 6).** The plan copied the Findings pane's shape to both issue surfaces. It does not transfer: `Issues.tsx` windows with `windowFor(state.issues.length, …)` and renders `issueRows(…).slice(start, end)`, so issue count and rendered row count are the same number by construction. Inserting a row under the selection breaks that identity and reintroduces the `j` stops short of the end failure `outputWindow`'s own comments exist to prevent — and §14.3 already declined to pay the row budget permanently for a static hint. Its footer was not available either: it measures 83 cells and truncates at 80 today. The title row costs nothing. The Work screen's Issues tab has no title of its own, so `KEYS` is what advertises it there.
+
+**3. `KEYS` needed two merges to fit, not four additions (Task 6).** The list was 18 rows against an 80×24 budget of 19. Adding `0`, `enter` and `s / S` would have made 21 and cut the tail, which the module's own comment records as how the screen once hid `q`. `r`/`x` and the two Settings rows merged onto one line each — the same fix that comment describes — landing on 19 exactly.
+
+**4. The three finding actions were extracted before the detail could call them (Task 5).** `o`, `y` and `s` were inline in their key handlers. R11.18 puts all three on a second surface, and two copies of `o` is how the pane and the detail come to report a different path for one directory. They are `openEvidence`, `copyFixPrompt` and `beginSuppress` now, called from both.
+
+**5. `wrapCells` is new, in `layout.ts` (Task 5).** Nothing in the tree wrapped — §14.1's second rule is that text truncates — because every pane is bound by an allocation. The detail view is the one surface that is not, which is the whole reason it exists, so it needed a wrap. It sits beside `truncate` because both answer the same question about cells rather than code units, and it hard-splits a word longer than the width: a 90-cell artefact path with no space in it is the common case here, not a hypothetical.
+
+**6. The tier-shrink test was dead, and its cost map was wrong twice (Task 7).** `overview.test.tsx`'s "returns the rows it gives up" loop walked rows upward, over which the tier is monotone `none → compact → full`, so its assertion never executed. Walking downward, the first repair still failed: a rendered card costs the left column its tier *plus* `Panel`'s own border and title rows, and `none` costs nothing, so the map is `tier + 2` and not `tier`. The repaired test also counts the boundaries it crossed and fails if it stops crossing both.
+
+**7. `state.detail` needed its own scroll offset (Task 5).** The plan named `detail` alone. Reusing `screenOffset` would have scrolled whatever screen the view was opened over, since opening it deliberately does not change `state.screen` — the same shared-cursor defect Task 4 exists to fix, one screen up.
+
+**Not a deviation, recorded so it is not mistaken for one.** `tests/acceptance/m3.test.tsx` — "probes, selects a preset, installs, verifies, writes the selection and registers a repo" — fails at line 92, `expect(config.repos).toHaveLength(1)` receiving 0. It fails identically on the tree without any of this work applied, at the same line. Pre-existing, and untouched by this extension: nothing here reaches the setup wizard, which runs its own `useInput` that `app.tsx` bails out of entirely.
