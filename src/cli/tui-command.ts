@@ -2,6 +2,7 @@ import {
   createQueue,
   loadConfig,
   loadEnvFile,
+  SKILLHONE_TOOL_ID,
   loadToolLock,
   openLedger,
   provenanceOf,
@@ -79,6 +80,11 @@ export async function startTui(options: TuiOptions): Promise<void> {
       queue,
       stages: resolveStages(config),
       concurrency,
+      // R11.20 as amended. Read from the lock this function already opened, not
+      // from `stageTools`: the bundle is catalogued `stage: null` so it can
+      // never appear there, and a guard reading the configuration would refuse
+      // a tool that is installed and working.
+      optimiseReady: SKILLHONE_TOOL_ID in lock.tools,
       setup: buildSetupDriver(options.home),
       views: createGantryViews({
         home: options.home,

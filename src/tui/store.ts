@@ -163,6 +163,20 @@ export interface SuppressSlot {
  * the slot exists precisely because R9.10 forbids inferring the version, so it
  * has to be asked for before a job can be built.
  */
+/**
+ * R11.21. What the optimise surface holds, which is a document and a scroll —
+ * no target, no toggle, no error, because the pane builds no job and writes no
+ * byte. That is also what puts it below every write pane in §14.2's order.
+ */
+export interface OptimiseSlot {
+  skillId: string
+  /** The finished R6.12 body, for the clipboard. */
+  prompt: string
+  /** Split once, because the pane renders it and the scroll clamp counts it. */
+  lines: readonly string[]
+  offset: number
+}
+
 export interface ReleaseSlot {
   /**
    * Every marked skill this one target applies to, in list order. More than
@@ -245,6 +259,7 @@ export interface AppState {
   /** R11.16's acceptance, awaiting its reason or its confirmation. */
   suppress: SuppressSlot | null
   release: ReleaseSlot | null
+  optimise: OptimiseSlot | null
   screen: Screen
   palette: { open: boolean; query: string; selected: number }
   /**
@@ -444,6 +459,10 @@ export type Action =
   | { type: 'toggle-allow-dirty' }
   | { type: 'release-error'; message: string }
   | { type: 'end-release' }
+  // R11.21. No field action and no error action: the pane collects nothing.
+  | { type: 'begin-optimise'; skillId: string; prompt: string }
+  | { type: 'scroll-optimise'; delta: number; viewport: number }
+  | { type: 'end-optimise' }
   | { type: 'flash'; message: string; tone?: FlashTone }
   | { type: 'clear-flash' }
 
@@ -521,6 +540,7 @@ export function initialState(skills: readonly SkillRef[], concurrency: number): 
     displacedReviews: 0,
     suppress: null,
     release: null,
+    optimise: null,
     screen: 'work',
     palette: { open: false, query: '', selected: 0 },
     dashboard: null,
@@ -1073,6 +1093,33 @@ export function reducer(state: AppState, action: Action): AppState {
         // marked since, and the only way out was a keystroke nothing on screen
         // advertised. Skill marks are a separate axis and are left alone.
         markedStages: state.markedStages.filter((stage) => stage !== 'release'),
+      }
+    case 'begin-optimise': {
+      const lines = action.prompt.split('\n')
+      return {
+        ...state,
+        optimise: { skillId: action.skillId, prompt: action.prompt, lines, offset: 0 },
+      }
+    }
+    case 'scroll-optimise': {
+      const slot = state.optimise
+      if (slot === null) return state
+      const max = Math.max(0, slot.lines.length - action.viewport)
+      return {
+        ...state,
+        optimise: { ...slot, offset: Math.min(max, Math.max(0, slot.offset + action.delta)) },
+      }
+    }
+    case 'end-optimise':
+      // The mark goes with the surface, `end-release`'s rule for its reason: a
+      // mark that survives `esc` means the next `r` reopens this pane over
+      // whatever has been marked since, with nothing on screen naming the
+      // keystroke that would free the user.
+      return {
+        ...state,
+        optimise: null,
+        markedStages: state.markedStages.filter((stage) => stage !== 'optimise'),
+        markedSkills: [],
       }
     case 'end-suppress':
       return { ...state, suppress: null }

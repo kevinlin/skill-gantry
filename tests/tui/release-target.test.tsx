@@ -370,7 +370,10 @@ describe('R11.20 the rail refuses a stage with nothing behind it', () => {
     ui.stdin.send(' ')
     await ui.settle()
 
-    expect(ui.lastFrame()).toContain('optimise has no tool selected')
+    // R11.20 as amended: optimise now has a native action, so what the refusal
+    // names is the tool that action needs and the command that installs it —
+    // the mark still does not land, which is what R11.20 exists to guarantee.
+    expect(ui.lastFrame()).toContain('skillhone not installed')
     expect(ui.lastFrame()).not.toContain('*Optimise')
 
     // And `r` therefore falls back to the configured stages rather than

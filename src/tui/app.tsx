@@ -20,6 +20,7 @@ import { ConfirmPane } from './components/ConfirmPane.js'
 import { Dashboard } from './components/Dashboard.js'
 import { DetailPane } from './components/DetailPane.js'
 import { Issues } from './components/Issues.js'
+import { OptimisePane } from './components/OptimisePane.js'
 import { Palette } from './components/Palette.js'
 import { Settings } from './components/Settings.js'
 import { ReleaseTargetPane } from './components/ReleaseTargetPane.js'
@@ -61,6 +62,12 @@ export interface AppProps {
   views: GantryViews
   /** The wizard's effects, for the setup screen; the TUI may not spawn. */
   setup: SetupDriver
+  /**
+   * R11.20 as amended: whether SkillHone is locked. A fact about the lock and
+   * not about `stageTools`, which can never hold it — the bundle is catalogued
+   * `stage: null` precisely so it cannot reach a stage executor.
+   */
+  optimiseReady?: boolean
   /** Flush interval, lowered in tests. */
   intervalMs?: number
 }
@@ -174,6 +181,7 @@ export function App({
   concurrency,
   views,
   setup,
+  optimiseReady = false,
   intervalMs,
 }: AppProps): React.ReactElement {
   const [state, dispatch] = useReducer(reducer, skills, (list) => initialState(list, concurrency))
@@ -636,6 +644,32 @@ export function App({
       }
       return
     }
+    // Fifth: R11.21's surface, whose keys destroy nothing — it builds no job
+    // and writes no byte, which is why it sits below all three write panes and
+    // above the setup screen. The render order below carries the same order.
+    if (state.optimise) {
+      const slot = state.optimise
+      if (key.escape) dispatch({ type: 'end-optimise' })
+      else if (plain && input === 'y') {
+        const seq = osc52(slot.prompt)
+        if (seq === null) {
+          // An action able to report only success is the failure §14.3 exists
+          // to prevent, and a prompt over the cap is exactly that case.
+          flash(`too large to copy · ${slot.skillId}`)
+        } else {
+          // Not Ink's `write()` from the same hook: that writes above the app
+          // and forces a clear-and-re-render, flickering the frame for a
+          // sequence that renders nothing.
+          stdout.write(seq)
+          flash(`optimise prompt copied · ${slot.skillId}`)
+        }
+      } else if ((plain && input === 'j') || key.downArrow) {
+        dispatch({ type: 'scroll-optimise', delta: 1, viewport: reviewRows })
+      } else if ((plain && input === 'k') || key.upArrow) {
+        dispatch({ type: 'scroll-optimise', delta: -1, viewport: reviewRows })
+      }
+      return
+    }
     // Third, per §14.2's precedence, and above every binding below rather than
     // below them: the wizard's own handler is the only one that may act while it
     // is up. Its repo step is a text field, and the wizard guarded its own keys
@@ -933,7 +967,17 @@ export function App({
         // the predicate is core's so this cannot drift from the executor
         // factory that answers the same question.
         const marking = STAGE_ORDER[state.selectedStage] as Stage
-        if (!isNativeStage(marking) && !stages.includes(marking)) {
+        if (marking === 'optimise') {
+          // R11.20 as amended: optimise has a native *action*, not an executor,
+          // so its runnability is a fact about the lock rather than about the
+          // configuration. `stageTools` can never hold SkillHone — it is
+          // catalogued `stage: null` precisely so it cannot — so a guard
+          // reading `stages` here would refuse a tool that is installed.
+          if (!optimiseReady) {
+            flash('skillhone not installed · run `skillgantry setup`')
+            return
+          }
+        } else if (!isNativeStage(marking) && !stages.includes(marking)) {
           flash(`${marking} has no tool selected · configure one in Settings`)
           return
         }
@@ -1019,6 +1063,32 @@ export function App({
         if (ids.length > 0) beginRelease(ids)
         return
       }
+      // R11.21. Optimise opens a surface and enqueues nothing: SkillGantry
+      // composes the prompt and hands it over, and R6.12 forbids it running the
+      // optimiser. Its own batch for release's reason — a mixed mark cannot be
+      // resolved either way without lying about what was asked for.
+      if (wanted.includes('optimise')) {
+        if (wanted.length > 1) {
+          flash('optimise runs on its own — unmark it, or unmark the other stages')
+          return
+        }
+        const ids = chosen.filter((id): id is string => id !== undefined)
+        // One skill: SkillHone's loop is per-skill by construction, one skill
+        // repo against one eval repo, so a prompt naming five is five loops in
+        // one paste.
+        if (ids.length > 1) {
+          flash('optimise takes one skill at a time — unmark the others')
+          return
+        }
+        const only = ids[0]
+        if (only !== undefined) {
+          void views.planOptimise(only).then(
+            (preview) => dispatch({ type: 'begin-optimise', skillId: only, prompt: preview.prompt }),
+            (err: unknown) => flash((err as Error).message, 'bad'),
+          )
+        }
+        return
+      }
       const specs = chosen
         .flatMap((id) => (id ? [byId.current.get(id)] : []))
         .flatMap((skill) => (skill ? [{ skill, stages: wanted }] : []))
@@ -1048,6 +1118,18 @@ export function App({
         changes={configChanges(settingsConfig, state.staged)}
         configPath={state.settings?.configPath ?? ''}
         offset={state.screenOffset}
+        layout={layout}
+      />
+    )
+  }
+  // §14.2 orders the modals by what a keystroke can destroy, and this pane's
+  // keys destroy nothing: it builds no job and writes no byte. Below the three
+  // write panes, above the palette.
+  if (state.optimise) {
+    return (
+      <OptimisePane
+        optimise={state.optimise}
+        flash={state.flash}
         layout={layout}
       />
     )
