@@ -109,6 +109,8 @@ export {
   type InterruptedMutation,
 } from './isolation/recover.js'
 export { retireSkill, type RetireInput, type RetireResult } from './release/retire.js'
+export { releaseDirtyPaths } from './release/preflight.js'
+export { resolveTargetVersion } from './release/version.js'
 export type {
   ChangeEntry,
   ChangeKind,

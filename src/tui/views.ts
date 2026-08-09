@@ -261,6 +261,12 @@ export interface GantryViews {
    * to confirm.
    */
   planSuppression(request: SuppressionRequest): Promise<SuppressionPreviewView>
+  /**
+   * R11.19's pre-flight, read when the surface opens. It reports what a release
+   * would refuse on, and decides nothing: `openSandbox` re-checks the dirty
+   * paths and the stage re-checks every precondition against the live tree.
+   */
+  planRelease(skillId: string): Promise<ReleasePreviewView>
   /** Rechecks the preimage and renames. Rejects with `preimage-drift` on drift. */
   applySuppression(): Promise<void>
   /** Removes the staged temp file. Safe to call when nothing is staged. */
@@ -277,4 +283,26 @@ export interface SuppressionPreviewView {
   diff: string
   uncovered: string[]
   alreadyPresent: boolean
+}
+
+/**
+ * R11.19. What the release-target surface needs and cannot read for itself:
+ * `src/tui/**` may not spawn, and both fields require it — one re-walks the
+ * repos, the other runs `git status`.
+ */
+export interface ReleasePreviewView {
+  /**
+   * Freshly discovered, never the launch-time snapshot. `App` holds the
+   * `SkillRef`s it was rendered with and never refreshes them, so after one
+   * release in a session the frontmatter version in memory is the one that was
+   * just superseded — and a bump computed from it resolves to a version the
+   * stage then refuses as not greater. This ref is also what the enqueued job
+   * carries, so the pane and the run agree on which bytes they are releasing.
+   */
+  skill: SkillRef
+  /**
+   * R10.3's uncommitted paths, so the override is offered with its subject on
+   * screen. Empty for a non-git repo, which has no working tree to be dirty in.
+   */
+  dirty: readonly string[]
 }

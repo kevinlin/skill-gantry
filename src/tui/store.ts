@@ -1,6 +1,7 @@
 import {
   STAGE_ORDER,
   hasAdapter,
+  resolveTargetVersion,
   withRepo,
   withScalar,
   withStageTools,
@@ -155,6 +156,50 @@ export interface SuppressSlot {
   error: string | null
 }
 
+/**
+ * R11.19. The target for the release about to be enqueued, held until `enter`
+ * turns it into `JobSpec.releaseTarget`. Nothing here has reached the queue:
+ * the slot exists precisely because R9.10 forbids inferring the version, so it
+ * has to be asked for before a job can be built.
+ */
+export interface ReleaseSlot {
+  /**
+   * Every marked skill this one target applies to, in list order. More than
+   * one forbids an explicit semver — a single number cannot describe several
+   * skills, while a bump level moves each from its own frontmatter version.
+   */
+  skillIds: readonly string[]
+  /**
+   * Freshly read by `planRelease`, and what the enqueued job carries. Not the
+   * launch-time `SkillRef`: see `ReleasePreviewView.skill`.
+   */
+  refs: Record<string, SkillRef>
+  /**
+   * Starts empty rather than seeded with a suggestion. R9.10 is that the target
+   * is supplied, and a prefilled `patch` the user presses enter through is an
+   * inference wearing a keystroke's clothes.
+   */
+  version: string
+  notes: string
+  /**
+   * The override is a tab stop rather than a letter key, because both other
+   * stops are free-text fields and every letter worth binding is one a user
+   * types — `t` is in `patch`. A stop reached by `tab` and toggled by `space`
+   * needs no modifier and no second editing mode.
+   */
+  field: 'version' | 'notes' | 'dirty'
+  /** R10.3. Off until the user turns it on, with `dirty` on screen beside it. */
+  allowDirty: boolean
+  dirty: readonly string[]
+  /**
+   * What `version` resolves to, recomputed on every keystroke, or null while it
+   * does not resolve. Rendering the resolution is what makes `minor` an
+   * explicit choice rather than a guess the user cannot check before enter.
+   */
+  resolved: string | null
+  error: string | null
+}
+
 export interface AppState {
   skills: SkillRow[]
   selectedSkill: number
@@ -198,6 +243,7 @@ export interface AppState {
   displacedReviews: number
   /** R11.16's acceptance, awaiting its reason or its confirmation. */
   suppress: SuppressSlot | null
+  release: ReleaseSlot | null
   screen: Screen
   palette: { open: boolean; query: string; selected: number }
   /**
@@ -388,8 +434,49 @@ export type Action =
   | { type: 'scroll-suppress'; delta: number }
   | { type: 'suppress-error'; message: string }
   | { type: 'end-suppress' }
+  // R11.19. One `release-field` action for both fields rather than one per
+  // field: the two differ only in which key of the slot they write, and a
+  // second action would have to repeat the resolution the first already does.
+  | { type: 'begin-release'; skillIds: readonly string[]; refs: Record<string, SkillRef>; dirty: readonly string[] }
+  | { type: 'release-field'; value: string }
+  | { type: 'cycle-release-field' }
+  | { type: 'toggle-allow-dirty' }
+  | { type: 'release-error'; message: string }
+  | { type: 'end-release' }
   | { type: 'flash'; message: string; tone?: FlashTone }
   | { type: 'clear-flash' }
+
+const BUMPS: ReadonlySet<string> = new Set(['major', 'minor', 'patch'])
+
+/**
+ * R11.19's two refusals, both computed from the slot alone so the pane renders
+ * a decision rather than making one. `resolveTargetVersion` is core's and pure,
+ * so the preview here and the stage's own resolution cannot disagree on the
+ * arithmetic — only on the bytes, which is the stage's to re-read.
+ *
+ * A multi-skill batch resolves to nothing rather than to the first skill's
+ * number: the bump is valid for all of them and the resulting version differs
+ * per skill, so showing one would name a version most of them will not get.
+ */
+function resolveRelease(slot: ReleaseSlot): Pick<ReleaseSlot, 'resolved' | 'error'> {
+  const spec = slot.version.trim()
+  if (spec === '') return { resolved: null, error: null }
+  if (slot.skillIds.length > 1) {
+    return BUMPS.has(spec)
+      ? { resolved: null, error: null }
+      : {
+          resolved: null,
+          error: `${slot.skillIds.length} skills marked: one version cannot describe them all — use major, minor or patch`,
+        }
+  }
+  const only = slot.skillIds[0]
+  const current = only === undefined ? null : (slot.refs[only]?.version ?? null)
+  try {
+    return { resolved: resolveTargetVersion(current, spec), error: null }
+  } catch (err) {
+    return { resolved: null, error: (err as Error).message }
+  }
+}
 
 const emptyStages = (): Record<Stage, StageCell> =>
   Object.fromEntries(
@@ -434,6 +521,7 @@ export function initialState(skills: readonly SkillRef[], concurrency: number): 
     pending: null,
     displacedReviews: 0,
     suppress: null,
+    release: null,
     screen: 'work',
     palette: { open: false, query: '', selected: 0 },
     dashboard: null,
@@ -931,6 +1019,53 @@ export function reducer(state: AppState, action: Action): AppState {
       return state.suppress === null
         ? state
         : { ...state, suppress: { ...state.suppress, error: action.message } }
+    case 'begin-release':
+      return {
+        ...state,
+        release: {
+          skillIds: action.skillIds,
+          refs: action.refs,
+          version: '',
+          notes: '',
+          field: 'version',
+          allowDirty: false,
+          dirty: action.dirty,
+          resolved: null,
+          error: null,
+        },
+      }
+    case 'release-field': {
+      const slot = state.release
+      if (slot === null) return state
+      if (slot.field === 'notes') return { ...state, release: { ...slot, notes: action.value } }
+      // Resolved on every keystroke rather than on commit: the refusal a user
+      // needs is "1.0.0 is not greater than 1.1.0", and hearing it only after
+      // enter is hearing it after the job exists.
+      const next = { ...slot, version: action.value }
+      return { ...state, release: { ...next, ...resolveRelease(next) } }
+    }
+    case 'cycle-release-field': {
+      const slot = state.release
+      if (slot === null) return state
+      // The override stop exists only when there is something to override —
+      // a stop that toggles a flag with no subject is a stop that teaches the
+      // user the wrong thing about what the flag does.
+      const stops: ReleaseSlot['field'][] =
+        slot.dirty.length > 0 ? ['version', 'notes', 'dirty'] : ['version', 'notes']
+      const next = stops[(stops.indexOf(slot.field) + 1) % stops.length] as ReleaseSlot['field']
+      return { ...state, release: { ...slot, field: next } }
+    }
+    case 'toggle-allow-dirty': {
+      const slot = state.release
+      if (slot === null || slot.dirty.length === 0) return state
+      return { ...state, release: { ...slot, allowDirty: !slot.allowDirty } }
+    }
+    case 'release-error':
+      return state.release === null
+        ? state
+        : { ...state, release: { ...state.release, error: action.message } }
+    case 'end-release':
+      return { ...state, release: null }
     case 'end-suppress':
       return { ...state, suppress: null }
     case 'stage-remove-repo': {

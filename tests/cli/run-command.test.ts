@@ -133,6 +133,22 @@ describe('skillgantry run', () => {
     expect(events.at(-1)?.type).toBe('run:done')
   })
 
+  it('settles an authorised empty selection as a recorded errored stage', async () => {
+    // The `--yes` twin of the case above, and the terminal interface's constant:
+    // authorisation takes the stage past R12.4's skip and into `plan()`'s R4.11
+    // rejection. That throw used to escape the stage loop, so the run ended as
+    // `run:error` with no stage.json and no ledger row — the partial evidence
+    // R5.13 requires it to keep. It now settles as a stage that says why.
+    const h = await harness(SARIF([]))
+    await run(h.program, ['run', 'declawed', '--stage', 'optimise', '--yes', '--json'])
+    const events = h.out.map((line) => JSON.parse(line))
+    const stageDone = events.find((e) => e.type === 'stage:done')
+    expect(stageDone?.outcome).toBe('errored')
+    expect(stageDone?.result.toolRuns[0]?.errorKind).toBe('plan-failed')
+    expect(events.some((e) => e.type === 'run:error')).toBe(false)
+    expect(events.at(-1)?.type).toBe('run:done')
+  })
+
   it('finalises a mixed validate,optimise run against the shipped default config', async () => {
     // validate genuinely runs and passes; optimise is skipped for want of
     // --yes. Before R12.4 moved into the engine, a throw out of plan() for

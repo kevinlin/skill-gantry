@@ -42,7 +42,16 @@ describe('batch enqueue — R5.5', () => {
   it('sends every marked skill and stage as one batch', async () => {
     const { queue, batches } = recordingQueue()
     const ui = renderInk(
-      <App skills={SKILLS} queue={queue} stages={['security']} concurrency={2} views={fakeViews()} intervalMs={20} />,
+      // The stages this test marks have to be configured ones: R11.20 refuses a
+      // mark on a stage with no tool behind it.
+      <App
+        skills={SKILLS}
+        queue={queue}
+        stages={['validate', 'evaluate', 'security']}
+        concurrency={2}
+        views={fakeViews()}
+        intervalMs={20}
+      />,
     )
     await ui.settle()
 

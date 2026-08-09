@@ -11,6 +11,7 @@ import { issueDetectionRules, listIssues, setIssueState } from '../core/ledger/i
 import { readLifecycleCache } from '../core/ledger/lifecycle.js'
 import { appliedRuleMapVersion } from '../core/ledger/rule-map-migration.js'
 import { dashboard, provenanceOptions } from '../core/ledger/stats.js'
+import { releaseDirtyPaths } from '../core/release/preflight.js'
 import { previewSuppression } from '../core/suppress/target.js'
 import {
   applySuppression,
@@ -148,6 +149,15 @@ export function createGantryViews(deps: CliDeps): GantryViews {
       // `saveConfig` runs `configSchema.parse` before it writes, so an invalid
       // document never reaches disk even if a caller skipped staging validation.
       await saveConfig(deps.home, next)
+    },
+    planRelease: async (skillId) => {
+      // Re-discovered rather than taken from the caller, for the reason
+      // `ReleasePreviewView.skill` states: the frontmatter version in the
+      // terminal's memory is the one it launched with.
+      const skills = await discoverAll(await loadConfig(deps.home))
+      const skill = skills.find((candidate) => candidate.id === skillId)
+      if (skill === undefined) throw new Error(`no skill ${skillId}`)
+      return { skill, dirty: await releaseDirtyPaths(skill) }
     },
     planSuppression: async (request) => {
       const skills = await discoverAll(await loadConfig(deps.home))

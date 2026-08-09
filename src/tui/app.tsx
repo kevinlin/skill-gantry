@@ -21,6 +21,7 @@ import { DetailPane } from './components/DetailPane.js'
 import { Issues } from './components/Issues.js'
 import { Palette } from './components/Palette.js'
 import { Settings } from './components/Settings.js'
+import { ReleaseTargetPane } from './components/ReleaseTargetPane.js'
 import { SuppressPane } from './components/SuppressPane.js'
 import { Setup } from './components/Setup.js'
 import { StatusBar } from './components/StatusBar.js'
@@ -190,6 +191,14 @@ export function App({
   const { stdout } = useStdout()
   const byId = useRef(new Map(skills.map((skill) => [skill.id, skill])))
   /**
+   * R11.20's set. `stages` is the configured selection, which is what makes a
+   * gate runnable; `release` is native and so is runnable whatever `stageTools`
+   * says (design §5.1a). Everything else on the rail — `optimise`, today — has
+   * no tool behind it and no native executor, and marking it only produces a
+   * run that cannot start.
+   */
+  const runnable = STAGE_ORDER.filter((stage) => stages.includes(stage) || stage === 'release')
+  /**
    * The palette's input state, mirrored outside React. Key handling has to be
    * synchronous and React batches the dispatches from several keypresses
    * delivered in one tick: reading `state.palette` instead meant `:` and the
@@ -202,6 +211,14 @@ export function App({
   const editor = useRef({ open: false, buffer: '' })
   /** The suppression reason's buffer, mirrored for that same reason again. */
   const reasonRef = useRef('')
+  /** R11.19's two text fields, mirrored for that same reason a third time. */
+  const releaseRef = useRef({ version: '', notes: '' })
+  useEffect(() => {
+    releaseRef.current = {
+      version: state.release?.version ?? '',
+      notes: state.release?.notes ?? '',
+    }
+  }, [state.release?.version, state.release?.notes])
   useEffect(() => {
     // The reducer owns the buffer — a refused reason keeps the editor open
     // holding it — so the ref follows state rather than the handler guessing.
@@ -416,6 +433,61 @@ export function App({
     )
   }
 
+  /**
+   * R11.19. One `planRelease` per marked skill, because both fields it returns
+   * are per-skill: the version the bump moves from, and the uncommitted paths
+   * the override would cover. The refs it hands back replace `byId`'s for the
+   * enqueue — see `ReleasePreviewView.skill` for why the launch-time snapshot
+   * cannot be trusted here.
+   */
+  const beginRelease = (skillIds: readonly string[]): void => {
+    void Promise.all(skillIds.map((id) => views.planRelease(id)))
+      .then((previews) => {
+        dispatch({
+          type: 'begin-release',
+          skillIds,
+          refs: Object.fromEntries(previews.map((preview) => [preview.skill.id, preview.skill])),
+          // Merged across the batch: one dirty skill blocks its own release, and
+          // the user needs to see every path before deciding on the override.
+          dirty: [...new Set(previews.flatMap((preview) => preview.dirty))],
+        })
+      })
+      .catch((err: unknown) => flash((err as Error).message, 'bad'))
+  }
+
+  /**
+   * The one place a release job is built. It refuses rather than enqueues when
+   * the target does not resolve, because an unresolvable target reaches §12.4
+   * row 3 and fails — and a job whose only possible outcome is that failure is
+   * the bug this whole surface exists to close.
+   */
+  const startRelease = (slot: NonNullable<AppState['release']>): void => {
+    if (slot.version.trim() === '') {
+      dispatch({ type: 'release-error', message: 'a target version is required (R9.10)' })
+      return
+    }
+    if (slot.error !== null) return
+    const specs = slot.skillIds.flatMap((id) => {
+      const ref = slot.refs[id]
+      return ref
+        ? [
+            {
+              skill: ref,
+              stages: ['release'] as const,
+              releaseTarget: {
+                version: slot.version.trim(),
+                ...(slot.notes.trim() === '' ? {} : { notes: slot.notes.trim() }),
+              },
+              ...(slot.allowDirty ? { allowDirty: true } : {}),
+            },
+          ]
+        : []
+    })
+    if (specs.length > 0) queue.enqueue(specs)
+    dispatch({ type: 'end-release' })
+    dispatch({ type: 'clear-marks' })
+  }
+
   const beginSuppress = (skillId: string, chosen: FindingRow): void =>
     dispatch({
       type: 'begin-suppress',
@@ -523,7 +595,31 @@ export function App({
         dispatch({ type: 'scroll-suppress', delta: -1 })
       return
     }
-    // Third: the config confirmation writes ~/.skillgantry/config.json, which
+    // Third. Below suppress on that same order — what a keystroke can destroy —
+    // because nothing here writes: the pane builds a job, and the write it
+    // leads to is still gated by `ReviewPane` above. Above the config
+    // confirmation because it is the modal actually on screen.
+    if (state.release) {
+      const slot = state.release
+      if (key.escape) dispatch({ type: 'end-release' })
+      else if (key.return) startRelease(slot)
+      else if (key.tab) dispatch({ type: 'cycle-release-field' })
+      else if (slot.field === 'dirty') {
+        // No text field is focused on this stop, so `space` is unambiguous —
+        // which is the whole reason the override is a stop rather than a letter.
+        if (plain && input === ' ') dispatch({ type: 'toggle-allow-dirty' })
+      } else if (key.backspace || key.delete) {
+        const buffer = releaseRef.current[slot.field].slice(0, -1)
+        releaseRef.current = { ...releaseRef.current, [slot.field]: buffer }
+        dispatch({ type: 'release-field', value: buffer })
+      } else if (plain && input.length > 0) {
+        const buffer = releaseRef.current[slot.field] + input
+        releaseRef.current = { ...releaseRef.current, [slot.field]: buffer }
+        dispatch({ type: 'release-field', value: buffer })
+      }
+      return
+    }
+    // Fourth: the config confirmation writes ~/.skillgantry/config.json, which
     // is SkillGantry's own file rather than the user's repo.
     if (state.confirm && state.staged !== null) {
       const staged = state.staged
@@ -836,9 +932,22 @@ export function App({
     }
     if (plain && input === ' ') {
       if (state.focus === 'queue') return
-      dispatch(
-        state.focus === 'work' ? { type: 'toggle-stage-mark' } : { type: 'toggle-skill-mark' },
-      )
+      if (state.focus === 'work') {
+        // R11.20. The rail is R11.1's five stages whatever is configured, so a
+        // mark is the one place that can tell the user a stage has nothing
+        // behind it. Without this the mark lands, `r` enqueues, and the engine
+        // answers with a refusal from inside a run that should never have
+        // started — `optimise` ships no adapter (D7), and reached
+        // `AdapterStageExecutor.plan()`'s R4.11 rejection every time.
+        const marking = STAGE_ORDER[state.selectedStage] as Stage
+        if (!runnable.includes(marking)) {
+          flash(`${marking} has no tool selected · configure one in Settings`)
+          return
+        }
+        dispatch({ type: 'toggle-stage-mark' })
+        return
+      }
+      dispatch({ type: 'toggle-skill-mark' })
       return
     }
     // R11.18's two Work surfaces. Read-only, so the Issues tab may bind it —
@@ -896,6 +1005,16 @@ export function App({
       // R5.5: every marked skill and stage becomes one batch, one call.
       const chosen = state.markedSkills.length > 0 ? state.markedSkills : [current?.skillId]
       const wanted = state.markedStages.length > 0 ? state.markedStages : stages
+      // R11.19. Release needs a target before a job can exist, so `r` opens the
+      // surface that collects one instead of enqueuing. It is its own batch and
+      // not a stage of a longer chain: the gates it depends on must already have
+      // passed against these bytes (R9.9), so running them in the same job would
+      // release against a digest the ledger has not recorded a pass for.
+      if (wanted.includes('release')) {
+        const ids = chosen.filter((id): id is string => id !== undefined)
+        if (ids.length > 0) beginRelease(ids)
+        return
+      }
       const specs = chosen
         .flatMap((id) => (id ? [byId.current.get(id)] : []))
         .flatMap((skill) => (skill ? [{ skill, stages: wanted }] : []))
@@ -916,6 +1035,9 @@ export function App({
   if (state.pending) return <Work state={state} />
   // Second, for the key handler's reason: its `a` writes the user's repo.
   if (state.suppress) return <SuppressPane suppress={state.suppress} layout={layout} />
+  // Third, matching the key handler's precedence exactly: two orders that can
+  // disagree is how a keystroke reaches a pane the user is not looking at.
+  if (state.release) return <ReleaseTargetPane release={state.release} layout={layout} />
   if (state.confirm && state.staged !== null) {
     return (
       <ConfirmPane

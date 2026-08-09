@@ -114,7 +114,7 @@ function abortedStage(
   plan: StagePlan,
   message: string,
   executed?: StageResult,
-  errorKind: 'mutation-aborted' | 'mutation-incomplete' = 'mutation-aborted',
+  errorKind: 'mutation-aborted' | 'mutation-incomplete' | 'plan-failed' = 'mutation-aborted',
 ): StageResult {
   const toolId = plan.toolIds[0] ?? stage
   return {
@@ -345,7 +345,36 @@ export function runPipeline(input: RunPipelineInput): RunHandle {
         endedAt: nowIso(),
       })
 
-      const plan = await executor.plan(ctx0)
+      // Inside the stage's failure boundary, not above it. `plan()` was the one
+      // executor call sitting outside every catch, so its throw — R4.11's
+      // empty-selection rejection, reached by a caller that admitted a stage it
+      // should not have — escaped as an unhandled rejection and the run lost
+      // the partial evidence R5.13 requires it to keep. That is the failure
+      // rev 7 fixed for the R10.11 apply abort, one call earlier in the stage.
+      // No sandbox exists yet and no tool has run, so there is nothing to
+      // settle and nothing to compensate: record the stage and halt.
+      let plan: StagePlan
+      try {
+        plan = await executor.plan(ctx0)
+      } catch (err) {
+        const result = stamp(
+          abortedStage(
+            stage,
+            { toolIds: [], policy: 'native', mutationScope: { paths: [] } },
+            (err as Error).message,
+            undefined,
+            'plan-failed',
+          ),
+        )
+        // Paired with the `stage:done` below: a consumer that opened a stage on
+        // `stage:start` has nothing to close otherwise.
+        queue.push({ type: 'stage:start', runId: id, stage, toolIds: [] })
+        await writeStageJson(stageDir, result)
+        results.push(result)
+        queue.push({ type: 'stage:done', runId: id, stage, outcome: result.outcome, result })
+        outcome = result.outcome
+        break
+      }
       queue.push({ type: 'stage:start', runId: id, stage, toolIds: plan.toolIds })
       for (const toolId of plan.toolIds) {
         queue.push({ type: 'tool:start', runId: id, stage, toolId })

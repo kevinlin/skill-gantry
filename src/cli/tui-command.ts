@@ -64,6 +64,12 @@ export async function startTui(options: TuiOptions): Promise<void> {
         // Authorisation in the terminal interface *is* the interactive
         // confirmation the mutation gate performs, not a separate check.
         authorised: true,
+        // R11.19 and R10.3. Both are collected per job by the release surface,
+        // because both are answered per skill — and until they were carried
+        // here, every terminal release reached §12.4 row 3 and failed in the
+        // time it took to write one stage.json.
+        ...(spec.releaseTarget === undefined ? {} : { releaseTarget: spec.releaseTarget }),
+        ...(spec.allowDirty === undefined ? {} : { allowDirty: spec.allowDirty }),
       }),
   })
 

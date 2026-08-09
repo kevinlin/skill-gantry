@@ -5,6 +5,7 @@ import type {
   DoctorReport,
   IssueRow,
   ProvenanceOption,
+  SkillRef,
   SuppressionRequest,
 } from '../../src/core/index.js'
 import type { GantryViews, SettingsView } from '../../src/tui/views.js'
@@ -62,19 +63,32 @@ export interface FakeViews extends GantryViews {
   /** Suppression requests the screens staged, and how each was resolved. */
   readonly suppressions: SuppressionRequest[]
   readonly suppressResolutions: Array<'apply' | 'discard'>
+  /** Skill ids the release surface pre-flighted, in order. */
+  readonly releasePlans: string[]
 }
 
-/** No sqlite, no spawn: the screens are pure functions of what this returns. */
-export function fakeViews(overrides: Partial<GantryViews> = {}): FakeViews {
+/**
+ * No sqlite, no spawn: the screens are pure functions of what this returns.
+ *
+ * `skills` seeds `planRelease`, which is the one view keyed to a skill the
+ * caller also renders — a fake returning an unrelated ref would let a test pass
+ * while the enqueued job carried the wrong skill.
+ */
+export function fakeViews(
+  overrides: Partial<GantryViews> = {},
+  releaseSkills: readonly SkillRef[] = [],
+): FakeViews {
   const actions: Array<[string, string]> = []
   const opened: string[] = []
   const suppressions: SuppressionRequest[] = []
   const suppressResolutions: Array<'apply' | 'discard'> = []
+  const releasePlans: string[] = []
   return {
     actions,
     opened,
     suppressions,
     suppressResolutions,
+    releasePlans,
     openPath: async (path) => {
       opened.push(path)
     },
@@ -88,6 +102,16 @@ export function fakeViews(overrides: Partial<GantryViews> = {}): FakeViews {
     tools: async () => emptyDoctor,
     settings: async () => emptySettings,
     applyConfig: async () => undefined,
+    // R11.19. Returns the ref the App was rendered with, so a test that does
+    // not care about the re-read gets the skill it already knows; a test that
+    // does care overrides this and asserts the enqueued job carries the fresh
+    // one rather than `byId`'s.
+    planRelease: async (skillId) => {
+      releasePlans.push(skillId)
+      const skill = releaseSkills.find((candidate) => candidate.id === skillId)
+      if (skill === undefined) throw new Error(`no skill ${skillId}`)
+      return { skill, dirty: [] }
+    },
     planSuppression: async (request) => {
       suppressions.push(request)
       return {

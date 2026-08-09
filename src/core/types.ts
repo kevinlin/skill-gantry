@@ -46,6 +46,15 @@ export type ErrorKind =
    */
   | 'mutation-aborted'
   /**
+   * A stage, not a tool, and before any tool: `plan()` refused. R4.11 rejects
+   * an empty tool selection there, so a caller that admitted a stage it should
+   * not have — the terminal interface enqueuing `optimise`, which ships no
+   * adapter — reaches it. Its own kind rather than `mutation-aborted`, whose
+   * documented meaning is a write refused *after* authorisation: nothing was
+   * built here, let alone authorised.
+   */
+  | 'plan-failed'
+  /**
    * Row 3c. The apply landed — the journal is complete and the user's tree
    * holds the approved bytes — and something after it threw (release's
    * evidence bundle is the reachable case). Distinct from `mutation-aborted`

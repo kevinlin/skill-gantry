@@ -1,10 +1,20 @@
 import type { RunEvent } from '../pipeline/events.js'
+import type { ReleaseTarget } from '../stages/types.js'
 import type { SkillRef, Stage, StageOutcome } from '../types.js'
 
 export interface JobSpec {
   skill: SkillRef
   stages: readonly Stage[]
   trigger?: string
+  /**
+   * R9.10: collected by the frontend before the job exists, because the target
+   * is never inferred and the queue has nowhere to ask. Optional so that every
+   * non-release enqueue is unchanged; a `release` job without one reaches
+   * §12.4 row 3 and fails, which is what a frontend that forgot it deserves.
+   */
+  releaseTarget?: ReleaseTarget
+  /** R10.3's override, carried per job because it is answered per skill. */
+  allowDirty?: boolean
 }
 
 export type JobState = 'queued' | 'running' | 'done' | 'failed' | 'cancelled'

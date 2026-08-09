@@ -580,6 +580,7 @@ Evaluated in order; the first row that matches wins.
 
 | # | Condition | `ToolOutcome` | `error_kind` | Reconciles? |
 |---|---|---|---|---|
+| 0 | `plan()` threw, before any tool was considered | `errored` | `plan-failed` | no |
 | 1 | Tool not in the lock, or lock entry has no runnable `bin` | `skipped` | `not-installed` | no |
 | 2 | `credentials` unsatisfied by the environment | `skipped` | `no-credentials` | no |
 | 3 | Mutating stage reached without authorisation | `skipped` | `no-authorisation` | no |
@@ -600,7 +601,9 @@ Evaluated in order; the first row that matches wins.
 
 Rows 7 and 8 are ordered so a missing report is classified before the parser is ever handed an empty map; revision 2 left this to whichever error the parser happened to throw. Row 6b is ordered above 7 for the same reason one step earlier: a tool that never started wrote none of its artefacts, so a spawn failure evaluated after row 7 reports itself as a missing report. Row 11 is the rule that matters most in practice: a scanner exiting 1 with a clean report has passed, and the parse says so.
 
-Rows 3b and 3c are the two a *stage* rather than a tool produces. R10.11 aborts an apply when a target has drifted since the change set was built, and that is neither a tool failure nor a verdict about the skill: the tools ran and were understood, and then the write was refused. Without the row, `applyMutation` throwing propagated out of the pipeline and the run rejected, discarding the partial evidence R5.13 requires a cancelled or aborted run to keep.
+Row 0 is the third a *stage* rather than a tool produces, and it is first because it is the only one that can fire before a tool selection exists. `executor.plan()` was the one executor call outside the stage loop's try, so its throw escaped to the run's rejection handler: `run:error`, no `stage.json`, no ledger row, and the partial evidence R5.13 requires a run to keep discarded along with it. R4.11 makes that throw reachable by design — an empty tool selection is rejected there — so any caller admitting a stage it should not have finds it, which the terminal interface did on every `optimise` mark before R11.20. Its own kind rather than `mutation-aborted`: that kind's documented meaning is a write refused *after* authorisation, and on this path nothing is built, let alone authorised. No new requirement, for the reason revision 7 gave when this same failure was fixed one call later in the stage — R4.13's enumeration is prefixed "at least", so the table gains a row.
+
+Rows 3b and 3c are the two a *stage* rather than a tool produces once tools are in play. R10.11 aborts an apply when a target has drifted since the change set was built, and that is neither a tool failure nor a verdict about the skill: the tools ran and were understood, and then the write was refused. Without the row, `applyMutation` throwing propagated out of the pipeline and the run rejected, discarding the partial evidence R5.13 requires a cancelled or aborted run to keep.
 
 Row 3c exists because the two cases need opposite recovery and one kind could not carry both. The sandbox record tells them apart — both strategies mark it `applied` only once the journal is complete — so the split is read off disk rather than inferred from how far the code got. Settling a completed apply as an abort flipped a git sandbox's marker to `discarded` over a written tree, putting it beyond recovery's reach, and on the snapshot strategy restored the pre-tool state over an apply the user had approved. Neither row keeps its stage's tool runs out of the record: an aborted stage carries whatever the tools produced before the abort and appends its own synthesised run, because R5.13's partial evidence is the point.
 

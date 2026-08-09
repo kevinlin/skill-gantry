@@ -30,7 +30,10 @@ function harness(views = fakeViews()) {
     <App
       skills={SKILLS}
       queue={queue}
-      stages={['security']}
+      // Every rail stage this suite marks has to be a configured one: R11.20
+      // refuses a mark on a stage with no tool behind it, and these tests are
+      // about which *zone* owns the key, not about what is configured.
+      stages={['validate', 'evaluate', 'security']}
       concurrency={2}
       views={views}
       intervalMs={20}

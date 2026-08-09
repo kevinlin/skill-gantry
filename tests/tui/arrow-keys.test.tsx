@@ -42,7 +42,9 @@ function harness() {
     <App
       skills={SKILLS}
       queue={queue}
-      stages={['security']}
+      // R11.20 refuses a mark on an unconfigured stage, and this suite marks
+      // the rail's first stage to prove the arrows moved it.
+      stages={['validate', 'evaluate', 'security']}
       concurrency={2}
       views={fakeViews()}
       intervalMs={20}

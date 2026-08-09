@@ -130,7 +130,7 @@ export function parseRawDiff(raw: string, binary: ReadonlySet<string>): ChangeEn
  * again. Naming the uncommitted work is actionable; `--allow-dirty` is still
  * the way past it, and seeding then makes the two digests agree.
  */
-async function dirtyPaths(
+export async function dirtyPaths(
   repoPath: string,
   scope: readonly string[],
   policy: CandidatePolicy,
