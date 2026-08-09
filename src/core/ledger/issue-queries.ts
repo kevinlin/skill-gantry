@@ -123,6 +123,31 @@ export function listIssues(db: DatabaseSync, filter: IssueFilter): IssueRow[] {
   })
 }
 
+export interface DetectionRule {
+  toolId: string
+  nativeRuleId: string
+  relPath: string
+}
+
+/**
+ * The native rule ids one issue was reported under, restricted to its
+ * `last_seen_run`. All of history would add a rule for a rule id reported once
+ * and not since — a suppression for a finding that no longer exists.
+ */
+export function issueDetectionRules(db: DatabaseSync, fingerprint: string): DetectionRule[] {
+  return db
+    .prepare(
+      `select distinct tr.tool_id as toolId, d.native_rule_id as nativeRuleId, i.rel_path as relPath
+         from issue_detections d
+         join tool_runs tr on tr.id = d.tool_run_id
+         join stages s on s.id = tr.stage_id
+         join issues i on i.fingerprint = d.issue_fp
+        where d.issue_fp = ? and s.run_id = i.last_seen_run
+        order by tr.tool_id, d.native_rule_id`,
+    )
+    .all(fingerprint) as unknown as DetectionRule[]
+}
+
 /**
  * R8.10's user transitions. Returns the new state, or null when the action is
  * not legal from the issue's current state, in which case nothing is written.

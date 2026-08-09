@@ -138,8 +138,10 @@ export {
 } from './ledger/stats.js'
 export { provenanceFingerprint, type ProvenanceLike } from './ledger/fingerprint.js'
 export {
+  issueDetectionRules,
   listIssues,
   setIssueState,
+  type DetectionRule,
   type IssueFilter,
   type IssueRow,
 } from './ledger/issue-queries.js'
@@ -163,3 +165,9 @@ export {
   type PlanInput,
   type SuppressionPlan,
 } from './suppress/write.js'
+export {
+  previewSuppression,
+  type PreviewInput,
+  type SuppressionPreview,
+  type SuppressionRequest,
+} from './suppress/target.js'
