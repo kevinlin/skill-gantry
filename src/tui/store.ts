@@ -18,6 +18,7 @@ import {
   type RunEvent,
   type SkillRef,
   type Stage,
+  type SuppressionRequest,
   type StageOutcome,
   type StatsFilter,
 } from '../core/index.js'
@@ -130,6 +131,28 @@ export interface PendingReview {
   scope: readonly string[]
   /** First visible diff line, moved by `scroll-review`. */
   offset: number
+}
+
+/**
+ * R11.16's confirmation, held the way `PendingReview` is: one bounded document
+ * in state, unlike log text, because R11.4 is about a stream that never stops.
+ * `request` survives the editing step — the preview cannot be staged until the
+ * reason is committed, and the reason is part of the entry.
+ */
+export interface SuppressSlot {
+  request: SuppressionRequest
+  label: string
+  toolId: string
+  relPath: string
+  diff: string
+  offset: number
+  reason: string
+  editingReason: boolean
+  uncovered: string[]
+  thenRun: 'resume' | 'gates' | 'none'
+  /** The gate chain `resume` enqueues, from `resumedGates`. */
+  stages: readonly Stage[]
+  error: string | null
 }
 
 export interface AppState {
