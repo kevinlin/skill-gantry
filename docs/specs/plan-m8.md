@@ -2674,3 +2674,7 @@ Task 11 also resolved the plan's own internal disagreement: Step 3's `begin-supp
 **Task 13: `pnpm test:integration` names its files explicitly.** Adding the file to `vitest.config.ts`'s `INTEGRATION` list only stops the default run from picking it up; the script had to name it too, or the one test that reaches a real binary would never have run in the tier built for it.
 
 **Two tests added beyond the plan.** `tests/tui/suppress-surfaces.test.tsx` drives `s` through the whole app from both surfaces — nothing else proved the key reaches the pane, that the preview waits for the reason, or that an empty reason is refused at the keyboard rather than only in the reducer. And the integration test was checked by inverting `skillRelative` to write the repo-relative path: it fails on exactly the assertion it exists for, which is the difference between a passing test and a test that would catch the bug.
+
+## Changelog
+
+- 2026-08-09 — **Extended.** [plan_m8-work-screen-navigation.md](plan_m8-work-screen-navigation.md) adds R11.18 and amends R11.11–R11.14 in place: the Work screen's navigation, and the full-length view a pane bound by §14.1's allocation cannot be. Nothing in this plan's write path, manifest field or headless command is touched.
