@@ -1,0 +1,168 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 620">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap');
+    text { font-family: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', monospace; }
+    .name { font-size: 12px; font-weight: 600; }
+    .sub  { font-size: 10px;  font-weight: 500; fill: #4b5563; }
+    .meta { font-size: 9px; font-weight: 500; fill: #6b7280; }
+  </style>
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#e8e8e3" stroke-width="0.5"/>
+    </pattern>
+    <filter id="soft" x="-20%" y="-30%" width="140%" height="170%">
+      <feDropShadow dx="0" dy="1" stdDeviation="1.4" flood-color="#0f172a" flood-opacity="0.10"/>
+    </filter>
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#5b6270"/>
+    </marker>
+    <marker id="arrow-slate" markerWidth="9" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 9 3, 0 6" fill="#5b6270"/>
+    </marker>
+    <marker id="arrow-orange" markerWidth="9" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 9 3, 0 6" fill="#b45309"/>
+    </marker>
+  </defs>
+
+  <rect width="100%" height="100%" fill="#fbfbfa"/>
+  <rect width="100%" height="100%" fill="url(#grid)"/>
+
+  <!-- title -->
+  <text x="40" y="34" fill="#16181d" font-size="16" font-weight="700">SkillGantry — tools by lifecycle stage</text>
+  <text x="40" y="52" fill="#5b6270" font-size="10" font-weight="500">every tool is installed into a directory SkillGantry owns, pinned in a lockfile, and verified by invocation</text>
+
+  <!-- region boundaries -->
+  <rect x="26" y="84" width="708" height="226" rx="12" fill="none" stroke="#0b5fd0" stroke-width="1" stroke-dasharray="8,4" stroke-opacity="0.6"/>
+  <text x="26" y="76" fill="#0b5fd0" font-size="10" font-weight="600">read-only gates — chain automatically, halt on the first stage that does not pass</text>
+
+  <rect x="746" y="84" width="468" height="306" rx="12" fill="none" stroke="#b3261e" stroke-width="1" stroke-dasharray="8,4" stroke-opacity="0.6"/>
+  <text x="1214" y="76" fill="#b3261e" font-size="10" font-weight="600" text-anchor="end">writes your repo — diff shown first, explicit confirmation, path back from every failure</text>
+
+  <!-- rail arrows between stages -->
+  <line x1="242" y1="134" x2="274" y2="134" stroke="#5b6270" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="482" y1="134" x2="514" y2="134" stroke="#5b6270" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="722" y1="134" x2="754" y2="134" stroke="#5b6270" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="962" y1="134" x2="994" y2="134" stroke="#5b6270" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- stage-to-tool connectors -->
+  <line x1="140" y1="164" x2="140" y2="226" stroke="#8b919c" stroke-width="1.2" marker-end="url(#arrow-slate)"/>
+  <line x1="380" y1="164" x2="380" y2="226" stroke="#8b919c" stroke-width="1.2" marker-end="url(#arrow-slate)"/>
+  <path d="M 620,164 L 620,196" fill="none" stroke="#8b919c" stroke-width="1.2"/>
+  <path d="M 567,196 L 673,196" fill="none" stroke="#8b919c" stroke-width="1.2"/>
+  <line x1="567" y1="196" x2="567" y2="226" stroke="#8b919c" stroke-width="1.2" marker-end="url(#arrow-slate)"/>
+  <line x1="673" y1="196" x2="673" y2="226" stroke="#8b919c" stroke-width="1.2" marker-end="url(#arrow-slate)"/>
+  <line x1="860" y1="164" x2="860" y2="226" stroke="#8b919c" stroke-width="1.2" stroke-dasharray="4,4" marker-end="url(#arrow-slate)"/>
+  <line x1="1100" y1="164" x2="1100" y2="226" stroke="#8b919c" stroke-width="1.2" marker-end="url(#arrow-slate)"/>
+  <line x1="1100" y1="290" x2="1100" y2="316" stroke="#8b919c" stroke-width="1.2" marker-end="url(#arrow-slate)"/>
+  <text x="1092" y="308" class="meta" text-anchor="end">install the archive, or refuse</text>
+
+  <!-- tool-to-bus connectors -->
+  <line x1="140" y1="290" x2="140" y2="410" stroke="#c98a3c" stroke-width="1.2" marker-end="url(#arrow-orange)"/>
+  <line x1="380" y1="290" x2="380" y2="410" stroke="#c98a3c" stroke-width="1.2" marker-end="url(#arrow-orange)"/>
+  <line x1="567" y1="290" x2="567" y2="410" stroke="#c98a3c" stroke-width="1.2" marker-end="url(#arrow-orange)"/>
+  <line x1="673" y1="290" x2="673" y2="410" stroke="#c98a3c" stroke-width="1.2" marker-end="url(#arrow-orange)"/>
+  <line x1="1100" y1="380" x2="1100" y2="410" stroke="#c98a3c" stroke-width="1.2" marker-end="url(#arrow-orange)"/>
+
+  <!-- stage pills -->
+  <g filter="url(#soft)">
+    <rect x="40" y="104" width="200" height="60" rx="8" fill="#e8f1fe" stroke="#0b5fd0" stroke-width="1.25"/>
+    <rect x="280" y="104" width="200" height="60" rx="8" fill="#e6f6ec" stroke="#0f8a45" stroke-width="1.25"/>
+    <rect x="520" y="104" width="200" height="60" rx="8" fill="#fdeaea" stroke="#b3261e" stroke-width="1.25"/>
+    <rect x="760" y="104" width="200" height="60" rx="8" fill="#fdf3e0" stroke="#b06f00" stroke-width="1.25"/>
+    <rect x="1000" y="104" width="200" height="60" rx="8" fill="#eeecfb" stroke="#4c3fbf" stroke-width="1.25"/>
+  </g>
+
+  <text x="140" y="130" fill="#0a3f8f" font-size="13" font-weight="700" text-anchor="middle">1 · validate</text>
+  <text x="140" y="148" class="sub" text-anchor="middle">fan out · findings merged</text>
+
+  <text x="380" y="130" fill="#0b5c2e" font-size="13" font-weight="700" text-anchor="middle">2 · evaluate</text>
+  <text x="380" y="148" class="sub" text-anchor="middle">pick one harness</text>
+
+  <text x="620" y="130" fill="#8f1d17" font-size="13" font-weight="700" text-anchor="middle">3 · security</text>
+  <text x="620" y="148" class="sub" text-anchor="middle">fan out · findings merged</text>
+
+  <text x="860" y="130" fill="#7a4d00" font-size="13" font-weight="700" text-anchor="middle">4 · optimise</text>
+  <text x="860" y="148" class="sub" text-anchor="middle">pick one · never concurrent</text>
+
+  <text x="1100" y="130" fill="#372c8d" font-size="13" font-weight="700" text-anchor="middle">5 · release</text>
+  <text x="1100" y="148" class="sub" text-anchor="middle">SkillGantry's own logic</text>
+
+  <!-- tools -->
+  <g filter="url(#soft)">
+    <rect x="40" y="230" width="200" height="60" rx="6" fill="#f2f7fe" stroke="#0b5fd0" stroke-width="1.25"/>
+    <rect x="280" y="230" width="200" height="60" rx="6" fill="#f1faf4" stroke="#0f8a45" stroke-width="1.25"/>
+    <rect x="520" y="230" width="94" height="60" rx="6" fill="#fdf3f3" stroke="#b3261e" stroke-width="1.25"/>
+    <rect x="626" y="230" width="94" height="60" rx="6" fill="#fdf3f3" stroke="#b3261e" stroke-width="1.25"/>
+    <rect x="760" y="230" width="200" height="60" rx="6" fill="#fefaf1" stroke="#b06f00" stroke-width="1.25" stroke-dasharray="6,3"/>
+    <rect x="1000" y="230" width="200" height="60" rx="6" fill="#f5f4fd" stroke="#4c3fbf" stroke-width="1.25"/>
+    <rect x="1000" y="320" width="200" height="60" rx="6" fill="#f5f4fd" stroke="#4c3fbf" stroke-width="1.25"/>
+  </g>
+
+  <text x="140" y="254" class="name" fill="#0a3f8f" text-anchor="middle">skill-lint</text>
+  <text x="140" y="270" class="sub" text-anchor="middle">npm · structure + frontmatter</text>
+  <text x="140" y="283" class="meta" text-anchor="middle">pinned 0.2.0</text>
+
+  <text x="380" y="254" class="name" fill="#0b5c2e" text-anchor="middle">skill-up</text>
+  <text x="380" y="270" class="sub" text-anchor="middle">runs the skill's eval cases</text>
+  <text x="380" y="283" class="meta" text-anchor="middle">GitHub release · pinned v0.7.0</text>
+
+  <text x="567" y="254" fill="#8f1d17" font-size="10" font-weight="600" text-anchor="middle">skill-scanner</text>
+  <text x="567" y="269" class="meta" fill="#4b5563" text-anchor="middle">SARIF · policy</text>
+  <text x="567" y="282" class="meta" text-anchor="middle">uv · 0.3.3</text>
+
+  <text x="673" y="254" fill="#8f1d17" font-size="10" font-weight="600" text-anchor="middle">SkillSpector</text>
+  <text x="673" y="269" class="meta" fill="#4b5563" text-anchor="middle">taint · deps</text>
+  <text x="673" y="282" class="meta" text-anchor="middle">uv · v2.5.1</text>
+
+  <text x="860" y="254" class="name" fill="#7a4d00" text-anchor="middle">SkillHone</text>
+  <text x="860" y="270" class="sub" text-anchor="middle">agent-skill bundle, not a CLI</text>
+  <text x="860" y="283" class="meta" fill="#8a5a00" text-anchor="middle">in progress · hands you a prompt</text>
+
+  <text x="1100" y="252" class="name" fill="#372c8d" text-anchor="middle">native release</text>
+  <text x="1100" y="267" class="meta" fill="#4b5563" text-anchor="middle">version bump · changelog · zip</text>
+  <text x="1100" y="280" class="meta" fill="#4b5563" text-anchor="middle">evidence bundle</text>
+
+  <text x="1100" y="344" class="name" fill="#372c8d" text-anchor="middle">skills (vercel)</text>
+  <text x="1100" y="360" class="sub" text-anchor="middle">installability gate</text>
+  <text x="1100" y="373" class="meta" text-anchor="middle">npm · pinned 1.5.21</text>
+
+  <!-- normalisation bus -->
+  <rect x="40" y="414" width="1160" height="12" rx="6" fill="#f7dfc2" stroke="#b45309" stroke-width="1.2"/>
+  <text x="40" y="446" fill="#8a4008" font-size="10" font-weight="600">every tool's output normalised into one finding shape</text>
+
+  <line x1="480" y1="426" x2="480" y2="462" stroke="#c98a3c" stroke-width="1.2" marker-end="url(#arrow-orange)"/>
+  <line x1="760" y1="426" x2="760" y2="466" stroke="#c98a3c" stroke-width="1.2" marker-end="url(#arrow-orange)"/>
+
+  <!-- stores -->
+  <g transform="translate(400, 470)" filter="url(#soft)">
+    <rect x="0" y="10" width="160" height="50" fill="#f5f4fd"/>
+    <ellipse cx="80" cy="60" rx="80" ry="10" fill="#f5f4fd" stroke="#4c3fbf" stroke-width="1.25"/>
+    <line x1="0" y1="10" x2="0" y2="60" stroke="#4c3fbf" stroke-width="1.25"/>
+    <line x1="160" y1="10" x2="160" y2="60" stroke="#4c3fbf" stroke-width="1.25"/>
+    <ellipse cx="80" cy="10" rx="80" ry="10" fill="#eeecfb" stroke="#4c3fbf" stroke-width="1.25"/>
+  </g>
+  <text x="480" y="503" class="name" fill="#372c8d" text-anchor="middle">local ledger</text>
+  <text x="480" y="517" class="meta" text-anchor="middle">runs, issues, statistics</text>
+
+  <g filter="url(#soft)">
+    <rect x="660" y="470" width="200" height="60" rx="6" fill="#f2f7fe" stroke="#0b5fd0" stroke-width="1.25"/>
+  </g>
+  <text x="760" y="494" class="name" fill="#0a3f8f" text-anchor="middle">sidecar workspace</text>
+  <text x="760" y="510" class="sub" text-anchor="middle">logs, reports, fix prompts</text>
+  <text x="760" y="523" class="meta" font-size="8" text-anchor="middle">&lt;skill&gt;-workspace/skillgantry/runs/</text>
+
+  <!-- legend -->
+  <rect x="40" y="556" width="16" height="10" rx="2" fill="#eef0f2" stroke="#5b6270" stroke-width="1.2"/>
+  <text x="64" y="565" fill="#3f444d" font-size="10" font-weight="500">shipped</text>
+
+  <rect x="150" y="556" width="16" height="10" rx="2" fill="#fdf3e0" stroke="#b06f00" stroke-width="1.2" stroke-dasharray="4,2"/>
+  <text x="174" y="565" fill="#3f444d" font-size="10" font-weight="500">in progress</text>
+
+  <line x1="290" y1="561" x2="316" y2="561" stroke="#8b919c" stroke-width="1.2" marker-end="url(#arrow-slate)"/>
+  <text x="324" y="565" fill="#3f444d" font-size="10" font-weight="500">a stage runs its tools</text>
+
+  <line x1="480" y1="561" x2="506" y2="561" stroke="#c98a3c" stroke-width="1.2" marker-end="url(#arrow-orange)"/>
+  <text x="514" y="565" fill="#3f444d" font-size="10" font-weight="500">findings and evidence come back</text>
+
+  <text x="1200" y="565" fill="#6b7280" font-size="10" font-weight="500" text-anchor="end">no token or cost metrics · no telemetry · no server</text>
+</svg>
