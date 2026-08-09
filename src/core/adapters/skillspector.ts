@@ -12,6 +12,13 @@ import type { AdapterManifest, Parse } from './types.js'
  * scripts/capture-fixtures.sh rather than hand-maintained. `vulnerable-dep` is
  * absent because dependency findings are an LLM-mode analyser in 2.5.1.
  */
+/**
+ * One constant for the flag and the writer. The registry test asserts the two
+ * agree for every adapter, but a shared constant makes them agree at compile
+ * time for this one.
+ */
+const BASELINE_PATH = '{skillDir}/.skillspector-baseline.yaml'
+
 export const manifest: AdapterManifest = {
   id: 'skillspector',
   stage: 'security',
@@ -49,13 +56,24 @@ export const manifest: AdapterManifest = {
     // rather than being relative, because `cwd` here is `repoRoot`.
     conditionalArgv: [
       {
-        whenExists: '{skillDir}/.skillspector-baseline.yaml',
-        argv: ['--baseline', '{skillDir}/.skillspector-baseline.yaml'],
+        whenExists: BASELINE_PATH,
+        argv: ['--baseline', BASELINE_PATH],
       },
     ],
   },
   versionArgv: ['--version'],
   artefacts: ['findings.sarif'],
+  baseline: {
+    path: BASELINE_PATH,
+    document: 'yaml',
+    collection: 'rules',
+    // v2 with an empty `fingerprints` needs no `scanner_version`; a v2 with
+    // entries does, and SkillGantry never writes one — the fingerprint form
+    // hashes the whole file's content plus every finding field, so it cannot
+    // be authored from SARIF and self-invalidates on the next edit anyway.
+    scaffold: { version: 2, rules: [], fingerprints: [] },
+    entry: { id: '{ruleIdGlob}', path: '{pathGlob}', reason: '{reason}' },
+  },
   timeoutMs: 120_000,
 }
 

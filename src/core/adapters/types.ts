@@ -54,6 +54,34 @@ export interface ConditionalArgv {
   argv: readonly string[]
 }
 
+/**
+ * R4.16. Where a tool keeps the findings its user has accepted, and what one
+ * accepted finding looks like inside that file.
+ *
+ * Declarative rather than a function the adapter exports, for two reasons.
+ * R4.1 makes an adapter a manifest and a single `parse`, and a third export
+ * would quietly make it three. And R4.3 forbids an adapter touching the
+ * filesystem at all, which lint enforces — so the write has to live outside
+ * the adapter whatever shape the declaration takes.
+ */
+export interface BaselineSpec {
+  /**
+   * `{skillDir}`/`{repoRoot}` vocabulary. Resolved against the **live** skill
+   * directory, deliberately unlike `conditionalArgv.whenExists`, which
+   * resolves against the tool-facing path: a repo-root skill's tool reads a
+   * materialised candidate copy, so a write resolved the tool's way would
+   * land in a temp directory and be discarded with it (design §12.5).
+   */
+  path: string
+  document: 'yaml' | 'json'
+  /** The sequence one accepted finding is appended to. */
+  collection: string
+  /** The whole document, written when the file is absent. */
+  scaffold: Record<string, unknown>
+  /** One entry, in `src/core/suppress/entry.ts`'s finding vocabulary. */
+  entry: Readonly<Record<string, string>>
+}
+
 export interface AdapterManifest {
   id: string
   stage: Stage
@@ -78,6 +106,8 @@ export interface AdapterManifest {
   versionArgv: readonly string[]
   artefacts: readonly string[]
   binaryArtefacts?: readonly string[]
+  /** R4.16. Absent when the tool has no suppression file of its own. */
+  baseline?: BaselineSpec
   timeoutMs: number
 }
 
