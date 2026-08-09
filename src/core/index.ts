@@ -51,6 +51,7 @@ export type {
   StageResult,
   ToolRunRecord,
 } from './stages/types.js'
+export { isNativeStage } from './stages/types.js'
 export { buildFixPrompt, type FixPromptInput } from './stages/fix-prompt.js'
 export {
   STAGE_ORDER,
@@ -110,7 +111,7 @@ export {
 } from './isolation/recover.js'
 export { retireSkill, type RetireInput, type RetireResult } from './release/retire.js'
 export { releaseDirtyPaths } from './release/preflight.js'
-export { resolveTargetVersion } from './release/version.js'
+export { isBumpLevel, resolveTargetVersion } from './release/version.js'
 export type {
   ChangeEntry,
   ChangeKind,

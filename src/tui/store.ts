@@ -1,6 +1,7 @@
 import {
   STAGE_ORDER,
   hasAdapter,
+  isBumpLevel,
   resolveTargetVersion,
   withRepo,
   withScalar,
@@ -446,8 +447,6 @@ export type Action =
   | { type: 'flash'; message: string; tone?: FlashTone }
   | { type: 'clear-flash' }
 
-const BUMPS: ReadonlySet<string> = new Set(['major', 'minor', 'patch'])
-
 /**
  * R11.19's two refusals, both computed from the slot alone so the pane renders
  * a decision rather than making one. `resolveTargetVersion` is core's and pure,
@@ -462,7 +461,7 @@ function resolveRelease(slot: ReleaseSlot): Pick<ReleaseSlot, 'resolved' | 'erro
   const spec = slot.version.trim()
   if (spec === '') return { resolved: null, error: null }
   if (slot.skillIds.length > 1) {
-    return BUMPS.has(spec)
+    return isBumpLevel(spec)
       ? { resolved: null, error: null }
       : {
           resolved: null,

@@ -1,5 +1,5 @@
 import { vi } from 'vitest'
-import type { QueueEvent, QueueHandle } from '../../src/core/queue/types.js'
+import type { JobSpec, QueueEvent, QueueHandle } from '../../src/core/queue/types.js'
 import type { RunEvent } from '../../src/core/pipeline/events.js'
 import { AsyncEventQueue } from '../../src/core/pipeline/queue.js'
 import type { RunHandle, RunSummary } from '../../src/core/pipeline/run.js'
@@ -66,6 +66,37 @@ export function fakeRun(runId = 'run-1'): FakeRun {
       return state.cancelled
     },
   }
+}
+
+/** Collects a run's events to their end, which is how a suite asserts order. */
+export const drain = async (events: AsyncIterable<RunEvent>): Promise<RunEvent[]> => {
+  const seen: RunEvent[] = []
+  for await (const event of events) seen.push(event)
+  return seen
+}
+
+/**
+ * `fakeQueue`'s twin for the suites that assert what the App *enqueued* rather
+ * than what it rendered from queue events. Here rather than copied per suite:
+ * two copies of the `QueueHandle` shape means the next field added to it
+ * type-errors in one file and is forgotten in the other.
+ */
+export function recordingQueue(): { queue: QueueHandle; batches: JobSpec[][] } {
+  const batches: JobSpec[][] = []
+  const events = new AsyncEventQueue<never>()
+  const queue: QueueHandle = {
+    enqueue: (specs) => {
+      batches.push([...specs])
+      return specs.map((_spec, index) => `job-${batches.length}-${index}`)
+    },
+    snapshot: () => ({ concurrency: 2, queued: [], running: [], completed: [] }),
+    cancelJob: vi.fn(async () => undefined),
+    resolveMutation: vi.fn(),
+    events: events as AsyncIterable<never>,
+    idle: async () => undefined,
+    close: () => events.close(),
+  }
+  return { queue, batches }
 }
 
 export interface FakeQueue extends QueueHandle {

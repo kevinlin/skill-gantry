@@ -2,6 +2,15 @@ const SEMVER = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$
 
 const BUMPS = ['major', 'minor', 'patch'] as const
 
+/**
+ * The vocabulary `resolveTargetVersion` accepts beside a semver. Exported
+ * because a frontend previewing a batch has to reject an explicit version
+ * without resolving one, and a second copy of the list would leave it refusing
+ * a level this function accepts.
+ */
+export const isBumpLevel = (value: string): boolean =>
+  (BUMPS as readonly string[]).includes(value)
+
 interface Parsed {
   major: number
   minor: number
@@ -45,7 +54,7 @@ export function resolveTargetVersion(current: string | null, spec: string): stri
   const trimmed = spec.trim()
 
   let target: string
-  if ((BUMPS as readonly string[]).includes(trimmed)) {
+  if (isBumpLevel(trimmed)) {
     if (!parsedCurrent) {
       throw new Error(`no current version to bump: supply an explicit semver instead of ${trimmed}`)
     }

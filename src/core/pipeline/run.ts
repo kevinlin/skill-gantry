@@ -16,6 +16,7 @@ import { AdapterStageExecutor } from '../stages/adapter-stage.js'
 import { haltsChain, reduceStageMetrics } from '../stages/outcome.js'
 import { buildFixPrompt } from '../stages/fix-prompt.js'
 import { ReleaseStageExecutor } from '../stages/release-stage.js'
+import { isNativeStage } from '../stages/types.js'
 import type {
   PendingMutation,
   ReleaseTarget,
@@ -149,7 +150,7 @@ export function runPipeline(input: RunPipelineInput): RunHandle {
   const makeExecutor: StageExecutorFactory =
     input.executorFactory ??
     ((stage) =>
-      stage === 'release'
+      isNativeStage(stage)
         ? new ReleaseStageExecutor({
             ledger: input.ledger,
             ...(input.interrupted === undefined ? {} : { interrupted: input.interrupted }),
@@ -345,6 +346,18 @@ export function runPipeline(input: RunPipelineInput): RunHandle {
         endedAt: nowIso(),
       })
 
+      // The two halts below — a plan that threw and a sandbox that would not
+      // open — record a stage and stop, in an order a reader has no way to
+      // check: a `stage:done` pushed before the json is written is a consumer
+      // reading a stage document that is not there yet. One closure, for the
+      // same reason `stamp` above is one.
+      const settle = async (settled: StageResult): Promise<void> => {
+        await writeStageJson(stageDir, settled)
+        results.push(settled)
+        queue.push({ type: 'stage:done', runId: id, stage, outcome: settled.outcome, result: settled })
+        outcome = settled.outcome
+      }
+
       // Inside the stage's failure boundary, not above it. `plan()` was the one
       // executor call sitting outside every catch, so its throw — R4.11's
       // empty-selection rejection, reached by a caller that admitted a stage it
@@ -366,13 +379,10 @@ export function runPipeline(input: RunPipelineInput): RunHandle {
             'plan-failed',
           ),
         )
-        // Paired with the `stage:done` below: a consumer that opened a stage on
-        // `stage:start` has nothing to close otherwise.
+        // Paired with the `stage:done` `settle` pushes: a consumer that opened a
+        // stage on `stage:start` has nothing to close otherwise.
         queue.push({ type: 'stage:start', runId: id, stage, toolIds: [] })
-        await writeStageJson(stageDir, result)
-        results.push(result)
-        queue.push({ type: 'stage:done', runId: id, stage, outcome: result.outcome, result })
-        outcome = result.outcome
+        await settle(result)
         break
       }
       queue.push({ type: 'stage:start', runId: id, stage, toolIds: plan.toolIds })
@@ -416,11 +426,7 @@ export function runPipeline(input: RunPipelineInput): RunHandle {
       }
 
       if (openFailure !== null) {
-        const result = stamp(abortedStage(stage, plan, `sandbox: ${openFailure}`))
-        await writeStageJson(stageDir, result)
-        results.push(result)
-        queue.push({ type: 'stage:done', runId: id, stage, outcome: result.outcome, result })
-        outcome = result.outcome
+        await settle(stamp(abortedStage(stage, plan, `sandbox: ${openFailure}`)))
         break
       }
 

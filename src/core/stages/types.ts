@@ -10,6 +10,16 @@ import type {
   ToolOutcome,
 } from '../types.js'
 
+/**
+ * Stages the engine plans without a configured tool. `run.ts` selects
+ * `ReleaseStageExecutor` off this and nothing else, so a frontend asking
+ * "can this stage run?" asks the same question the executor factory answers —
+ * a second copy of the literal in `src/tui/**` is a mark that lands on a stage
+ * whose `plan()` then throws R4.11 from inside a run that should not have
+ * started.
+ */
+export const isNativeStage = (stage: Stage): boolean => stage === 'release'
+
 /** R9.10: supplied explicitly, never inferred. */
 export interface ReleaseTarget {
   /** A semver, or one of `major` / `minor` / `patch`. */

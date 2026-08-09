@@ -236,14 +236,13 @@ async function stageForDiff(
 ): Promise<void> {
   await exec('git', ['add', '-A'], { cwd: workRoot, timeoutMs: 120_000 })
   const present: string[] = []
-  for (const relPath of [...scope, ...seeded]) {
+  // Deduped before the loop, not after it: a path in both lists is otherwise
+  // stat'd twice to reach a list that has to be deduped again anyway.
+  for (const relPath of new Set([...scope, ...seeded])) {
     if (await pathExists(join(workRoot, relPath))) present.push(relPath)
   }
   if (present.length === 0) return
-  await exec('git', ['add', '-f', '--', ...new Set(present)], {
-    cwd: workRoot,
-    timeoutMs: 120_000,
-  })
+  await exec('git', ['add', '-f', '--', ...present], { cwd: workRoot, timeoutMs: 120_000 })
 }
 
 export async function openGitWorktreeSandbox(input: SandboxInput): Promise<MutationSandbox> {

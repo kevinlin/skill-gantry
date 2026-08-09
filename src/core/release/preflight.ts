@@ -1,5 +1,4 @@
-import { candidatePolicyFor } from '../isolation/candidate-policy.js'
-import { dirtyPaths } from '../isolation/git-worktree.js'
+import { previewDirtyPaths } from '../isolation/open.js'
 import { type Exec, defaultExec } from '../tools/exec.js'
 import type { SkillRef } from '../types.js'
 import { readVersionsManifest } from './manifest.js'
@@ -25,12 +24,6 @@ export async function releaseDirtyPaths(
   skill: SkillRef,
   exec: Exec = defaultExec,
 ): Promise<string[]> {
-  // Only the git strategy has a working tree to be dirty in; the snapshot
-  // strategy copies whatever is there (R10.4) and has nothing to refuse.
-  if (!skill.repo.isGit) return []
-
   const manifest = await readVersionsManifest(skill.repo.path)
-  const scope = releaseScope(skill, manifest !== null, '').paths.filter((path) => path !== '')
-  const policy = await candidatePolicyFor(skill)
-  return dirtyPaths(skill.repo.path, scope, policy, exec)
+  return previewDirtyPaths(skill, releaseScope(skill, manifest !== null, null).paths, exec)
 }

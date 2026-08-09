@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { candidateManifest } from '../../src/core/discovery/candidate.js'
-import { skillDigest } from '../../src/core/discovery/digest.js'
+import { digestSkill } from '../../src/core/discovery/digest.js'
 import { discoverSkills } from '../../src/core/discovery/discover.js'
 import { candidatePolicyFor } from '../../src/core/isolation/candidate-policy.js'
 import { dirtyPaths } from '../../src/core/isolation/git-worktree.js'
@@ -31,9 +31,6 @@ async function fixture(files: Record<string, string>): Promise<SkillRef> {
   return skill as SkillRef
 }
 
-const digestOf = async (skill: SkillRef): Promise<string> =>
-  skillDigest(await candidateManifest(skill))
-
 describe('§4.4 excludes filesystem droppings from the candidate', () => {
   it('leaves .DS_Store and Thumbs.db out at any depth', async () => {
     const skill = await fixture({})
@@ -49,18 +46,18 @@ describe('§4.4 excludes filesystem droppings from the candidate', () => {
 
   it('does not move the digest when Finder writes one', async () => {
     const skill = await fixture({})
-    const before = await digestOf(skill)
+    const before = await digestSkill(skill)
     await writeFile(join(skill.dir, '.DS_Store'), 'finder')
-    expect(await digestOf(skill)).toBe(before)
+    expect(await digestSkill(skill)).toBe(before)
   })
 
   // The name is reserved by the operating system, so this is the one basename
   // rule §4.4 tolerates — a file legitimately called `.DS_Store` does not exist.
   it('still counts a normally named file the same way', async () => {
     const skill = await fixture({})
-    const before = await digestOf(skill)
+    const before = await digestSkill(skill)
     await writeFile(join(skill.dir, 'DS_Store.md'), 'real content\n')
-    expect(await digestOf(skill)).not.toBe(before)
+    expect(await digestSkill(skill)).not.toBe(before)
   })
 })
 
@@ -108,7 +105,7 @@ describe('R10.3 sees the candidate files git hides', () => {
     const skill = await fixture({ 'declawed/scripts/run.sh': '#!/bin/sh\n' })
     await mkdir(join(skill.dir, 'scripts', '__pycache__'), { recursive: true })
     await writeFile(join(skill.dir, 'scripts', '__pycache__', 'x.pyc'), 'bytecode')
-    const live = await digestOf(skill)
+    const live = await digestSkill(skill)
 
     const sandbox = await openSandbox({
       skill,
@@ -124,7 +121,7 @@ describe('R10.3 sees the candidate files git hides', () => {
         dir: sandbox.resolve(skill.relPath),
         repo: { ...skill.repo, path: sandbox.workRoot },
       }
-      expect(await digestOf(inSandbox)).toBe(live)
+      expect(await digestSkill(inSandbox)).toBe(live)
     } finally {
       await sandbox.dispose()
     }

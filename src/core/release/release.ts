@@ -18,18 +18,24 @@ export const manifestKeyFor = (skill: SkillRef): string =>
  * revision 1's skill-scoped sandbox could not express a release. The archive is
  * in scope because R9.4 makes it an output that must be previewed, journalled
  * and removed by a rollback like any other.
+ *
+ * `archiveName` is nullable because the name embeds the target version, and a
+ * pre-flight runs before one is supplied. Modelled here rather than left to
+ * each caller to pass a sentinel and strip the result: an empty string survives
+ * into a `git status` pathspec, where it either widens the check to the whole
+ * repo or fails outright, and nothing in this signature would have caught it.
  */
 export function releaseScope(
   skill: SkillRef,
   hasManifest: boolean,
-  archiveName: string,
+  archiveName: string | null,
 ): MutationScope {
   const prefix = skill.relPath === '.' ? '' : `${skill.relPath}/`
   return {
     paths: [
       `${prefix}SKILL.md`,
       `${prefix}CHANGELOG.md`,
-      archiveName,
+      ...(archiveName === null ? [] : [archiveName]),
       ...(hasManifest ? ['versions.json'] : []),
     ],
   }

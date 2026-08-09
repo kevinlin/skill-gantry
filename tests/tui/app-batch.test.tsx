@@ -1,42 +1,11 @@
-import { describe, expect, it, vi } from 'vitest'
-import type { JobSpec, QueueHandle, SkillRef } from '../../src/core/index.js'
-import { AsyncEventQueue } from '../../src/core/pipeline/queue.js'
+import { describe, expect, it } from 'vitest'
 import { App } from '../../src/tui/app.js'
 import { renderInk } from '../helpers/render-ink.js'
 import { fakeViews } from '../helpers/fake-views.js'
+import { recordingQueue } from '../helpers/fake-run.js'
+import { skillRef } from '../helpers/skill-ref.js'
 
-const skill = (id: string): SkillRef => ({
-  id,
-  name: id,
-  version: '1.0.0',
-  dir: `/repo/${id}`,
-  relPath: id,
-  repo: { id: 'fx', path: '/repo', name: 'fx', isGit: false },
-  rootSkill: false,
-  workspacePath: `/repo/${id}-workspace`,
-  deprecated: false,
-  supersededBy: null,
-})
-
-const SKILLS = [skill('declawed'), skill('spec-lint')]
-
-function recordingQueue(): { queue: QueueHandle; batches: JobSpec[][] } {
-  const batches: JobSpec[][] = []
-  const events = new AsyncEventQueue<never>()
-  const queue: QueueHandle = {
-    enqueue: (specs) => {
-      batches.push([...specs])
-      return specs.map((_spec, index) => `job-${batches.length}-${index}`)
-    },
-    snapshot: () => ({ concurrency: 2, queued: [], running: [], completed: [] }),
-    cancelJob: vi.fn(async () => undefined),
-    resolveMutation: vi.fn(),
-    events: events as AsyncIterable<never>,
-    idle: async () => undefined,
-    close: () => events.close(),
-  }
-  return { queue, batches }
-}
+const SKILLS = [skillRef('declawed'), skillRef('spec-lint')]
 
 describe('batch enqueue — R5.5', () => {
   it('sends every marked skill and stage as one batch', async () => {

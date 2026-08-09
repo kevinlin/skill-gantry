@@ -19,6 +19,7 @@ import {
   type SuppressionPlan,
 } from '../core/suppress/write.js'
 import { doctor } from '../core/tools/doctor.js'
+import type { SkillRef } from '../core/types.js'
 import type { GantryViews, SettingsCredential, SettingsView } from '../tui/views.js'
 import { type CliDeps, discoverAll } from './run-command.js'
 
@@ -74,6 +75,19 @@ export function createGantryViews(deps: CliDeps): GantryViews {
   // preimage hash that no component renders, and the recheck those exist for
   // has to run against the plan the diff was built from.
   let staged: SuppressionPlan[] = []
+
+  /**
+   * Re-discovered on every call rather than taken from the caller, for the
+   * reason `ReleasePreviewView.skill` states: the frontmatter version in the
+   * terminal's memory is the one it launched with.
+   */
+  const skillById = async (id: string): Promise<SkillRef> => {
+    const skill = (await discoverAll(await loadConfig(deps.home))).find(
+      (candidate) => candidate.id === id,
+    )
+    if (skill === undefined) throw new Error(`no skill ${id}`)
+    return skill
+  }
 
   return {
     dashboard: async (filter) => withLedger(deps.dbPath, (ledger) => dashboard(ledger.db, filter)),
@@ -151,18 +165,11 @@ export function createGantryViews(deps: CliDeps): GantryViews {
       await saveConfig(deps.home, next)
     },
     planRelease: async (skillId) => {
-      // Re-discovered rather than taken from the caller, for the reason
-      // `ReleasePreviewView.skill` states: the frontmatter version in the
-      // terminal's memory is the one it launched with.
-      const skills = await discoverAll(await loadConfig(deps.home))
-      const skill = skills.find((candidate) => candidate.id === skillId)
-      if (skill === undefined) throw new Error(`no skill ${skillId}`)
+      const skill = await skillById(skillId)
       return { skill, dirty: await releaseDirtyPaths(skill) }
     },
     planSuppression: async (request) => {
-      const skills = await discoverAll(await loadConfig(deps.home))
-      const skill = skills.find((candidate) => candidate.id === request.skillId)
-      if (skill === undefined) throw new Error(`no skill ${request.skillId}`)
+      const skill = await skillById(request.skillId)
 
       const { rules, stillReporting } =
         request.kind === 'issue'

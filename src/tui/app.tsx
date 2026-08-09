@@ -6,6 +6,7 @@ import {
   STAGE_ORDER,
   configChanges,
   fixPromptPathFor,
+  isNativeStage,
 } from '../core/index.js'
 import type {
   IssueAction,
@@ -190,14 +191,6 @@ export function App({
   // stream Ink itself holds, not `process.stdout`.
   const { stdout } = useStdout()
   const byId = useRef(new Map(skills.map((skill) => [skill.id, skill])))
-  /**
-   * R11.20's set. `stages` is the configured selection, which is what makes a
-   * gate runnable; `release` is native and so is runnable whatever `stageTools`
-   * says (design §5.1a). Everything else on the rail — `optimise`, today — has
-   * no tool behind it and no native executor, and marking it only produces a
-   * run that cannot start.
-   */
-  const runnable = STAGE_ORDER.filter((stage) => stages.includes(stage) || stage === 'release')
   /**
    * The palette's input state, mirrored outside React. Key handling has to be
    * synchronous and React batches the dispatches from several keypresses
@@ -467,21 +460,16 @@ export function App({
       return
     }
     if (slot.error !== null) return
+    // Built once and shared, because that is the batch's invariant: one target,
+    // every marked skill. Rebuilt per skill it would only be stated by repetition.
+    const releaseTarget = {
+      version: slot.version.trim(),
+      ...(slot.notes.trim() === '' ? {} : { notes: slot.notes.trim() }),
+    }
+    const override = slot.allowDirty ? { allowDirty: true } : {}
     const specs = slot.skillIds.flatMap((id) => {
-      const ref = slot.refs[id]
-      return ref
-        ? [
-            {
-              skill: ref,
-              stages: ['release'] as const,
-              releaseTarget: {
-                version: slot.version.trim(),
-                ...(slot.notes.trim() === '' ? {} : { notes: slot.notes.trim() }),
-              },
-              ...(slot.allowDirty ? { allowDirty: true } : {}),
-            },
-          ]
-        : []
+      const skill = slot.refs[id]
+      return skill ? [{ skill, stages: ['release'] as const, releaseTarget, ...override }] : []
     })
     if (specs.length > 0) queue.enqueue(specs)
     dispatch({ type: 'end-release' })
@@ -939,8 +927,13 @@ export function App({
         // answers with a refusal from inside a run that should never have
         // started — `optimise` ships no adapter (D7), and reached
         // `AdapterStageExecutor.plan()`'s R4.11 rejection every time.
+        //
+        // `stages` is the configured selection, which is what makes a gate
+        // runnable; a native stage is runnable whatever `stageTools` says, and
+        // the predicate is core's so this cannot drift from the executor
+        // factory that answers the same question.
         const marking = STAGE_ORDER[state.selectedStage] as Stage
-        if (!runnable.includes(marking)) {
+        if (!isNativeStage(marking) && !stages.includes(marking)) {
           flash(`${marking} has no tool selected · configure one in Settings`)
           return
         }

@@ -36,7 +36,7 @@ Two defects of the same family were fixed with it, both found while tracing the 
 |---|---|
 | `plan()` inside the stage's failure boundary | `src/core/pipeline/run.ts` |
 | `plan-failed` error kind | `src/core/types.ts` |
-| R10.3 pre-flight | `src/core/release/preflight.ts` (new), `src/core/isolation/git-worktree.ts` (exports `dirtyPaths`) |
+| R10.3 pre-flight | `src/core/release/preflight.ts` (new), `src/core/isolation/open.ts` (`previewDirtyPaths`, dispatching by strategy the way `openSandbox` does) |
 | `releaseTarget`, `allowDirty` on a job | `src/core/queue/types.ts` |
 | the port | `src/tui/views.ts`, `src/cli/gantry-views.ts` |
 | slot, resolution, batch refusal | `src/tui/store.ts` |

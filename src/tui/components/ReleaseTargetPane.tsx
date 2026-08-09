@@ -29,15 +29,14 @@ export function ReleaseTargetPane({
   // §14.1's first rule: every conditional row is counted *against* the budget
   // before the list is sized, never appended under it. The uncommitted paths
   // are the only unbounded content here, so they are what gives way.
-  const fixed =
-    2 + (release.error === null ? 0 : 1) + (batched ? 1 : 0) + (release.dirty.length > 0 ? 1 : 0)
+  const fixed = 2 + (batched ? 1 : 0) + (release.dirty.length > 0 ? 1 : 0)
   const room = Math.max(0, reviewDiffRows(layout) - fixed)
   const overflow = release.dirty.length > room
   const shown = overflow ? release.dirty.slice(0, Math.max(0, room - 1)) : release.dirty
   const hidden = release.dirty.length - shown.length
 
   const only = release.skillIds[0]
-  const current = batched ? null : (only === undefined ? null : release.refs[only]?.version) ?? null
+  const current = batched || only === undefined ? null : (release.refs[only]?.version ?? null)
   const title = batched
     ? `Release — ${release.skillIds.length} skills`
     : `Release — ${truncateMiddle(only ?? '', Math.max(12, cols - 28))} · current ${current ?? 'none'}`
@@ -90,13 +89,16 @@ export function ReleaseTargetPane({
             {truncate(`  +${hidden} more`, cols)}
           </Text>
         )}
-        {release.error !== null && (
-          <Text color={STATUS.bad} wrap="truncate">
-            {truncate(release.error, cols)}
-          </Text>
-        )}
       </Panel>
-      <StatusBar hints={HINTS} columns={layout.columns} />
+      {/* The refusal rides on the footer the keys already had, the way
+          `SuppressPane` puts its own there: a conditional row inside the panel
+          is a row taken off the uncommitted list every time the user mistypes
+          a version. */}
+      <StatusBar
+        hints={release.error ?? HINTS}
+        columns={layout.columns}
+        {...(release.error === null ? {} : { tone: 'bad' as const })}
+      />
     </Box>
   )
 }

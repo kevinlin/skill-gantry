@@ -3,8 +3,8 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { openLedger } from '../../src/core/ledger/db.js'
 import { runPipeline } from '../../src/core/pipeline/run.js'
-import type { RunEvent } from '../../src/core/pipeline/events.js'
 import { discoverSkills } from '../../src/core/discovery/discover.js'
+import { drain } from '../helpers/fake-run.js'
 import { SKILL_MD, makeRepo } from '../helpers/tmp-repo.js'
 
 /**
@@ -37,12 +37,6 @@ async function setup() {
       authorised: true,
     },
   }
-}
-
-const drain = async (events: AsyncIterable<RunEvent>): Promise<RunEvent[]> => {
-  const seen: RunEvent[] = []
-  for await (const event of events) seen.push(event)
-  return seen
 }
 
 describe('a stage whose plan() throws', () => {
