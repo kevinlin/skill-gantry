@@ -9,7 +9,7 @@
 
 ## Global Constraints
 
-Everything in [plan-m1.md's Global Constraints](plan-m1.md), [plan-m2.md's](plan-m2.md) and [plan-m3.md's](plan-m3.md) still holds. M4 additions:
+Everything in [plan_m1.md's Global Constraints](plan_m1.md), [plan_m2.md's](plan_m2.md) and [plan_m3.md's](plan_m3.md) still holds. M4 additions:
 
 - Import boundary unchanged; three new adapters in `src/core/adapters/` enforce R4.3 against four parsers.
 - A parser receives bytes, never a path. `ParseContext` carries `artefacts: ReadonlyMap<string, Buffer>`, `stdout`, `stderr`, `exitCode` and `durationMs`.

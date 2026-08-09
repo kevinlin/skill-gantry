@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** revision 1, aligned to [design.md](design.md) revision 3, [requirements.md](requirements.md) revision 3, [plan-m1.md](plan-m1.md) revision 2 and shipped M2.
+**Status:** revision 1, aligned to [design.md](design.md) revision 3, [requirements.md](requirements.md) revision 3, [plan_m1.md](plan_m1.md) revision 2 and shipped M2.
 
 **Goal:** Complete the `tools` module. Nine external tools become installable, verifiable and lockable through three drivers; a re-enterable setup wizard takes a clean machine from no runtime to a verified toolchain, a registered repo and a written selection; `doctor` re-verifies the lock and reports every drift kind.
 
@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-Everything in [plan-m1.md's Global Constraints](plan-m1.md) and [plan-m2.md's](plan-m2.md) still holds. These are the additions.
+Everything in [plan_m1.md's Global Constraints](plan_m1.md) and [plan_m2.md's](plan_m2.md) still holds. These are the additions.
 
 - Node engine floor `>=24.0.0`; ESM only, `NodeNext`; relative imports carry `.js`, in `.tsx` too.
 - Import boundary unchanged: `cli → tui → core`, `src/tui/**` reaches core only through `src/core/index.ts`, no `console` or `process.exit` in `src/core/**`, no `node:fs` / `node:child_process` / `node:https` / `node:net` in `src/core/adapters/**`.
@@ -225,4 +225,4 @@ As written, `const RUNNABLE_STAGES: readonly Stage[]` widens the element type to
 - 026-08-02 — Promptfoo removal carried out under a separate plan: [plan_m3-promptfoo-removal.md](plan_m3-promptfoo-removal.md).
 - 2026-08-02 — **`pnpm install:cli`** — new `scripts/install-cli.sh` builds, packs, and installs into `~/.skillgantry/cli/`, symlinking `~/.local/bin/skillgantry`. Paths overridable via `SG_HOME`/`SG_BIN_DIR`. Acceptance test in `tests/acceptance/install-cli.test.ts`. Deliberate exception to R3.1, which governs managed tools, not SkillGantry's own binary. Original plan recoverable via git history as `plan_m3-install-as-terminal-command.md`.
 - 2026-08-02 — **Fix the `credentials-and-repo` wizard step** — five bugs, all reproduced before fix: typed path never displayed (rendered post-registration state instead of the draft buffer), pasted paths dropped (single-char guard vs multi-char paste), unhandled rejection crashed the wizard, `~` not expanded, and Enter on empty input was a silent no-op. Added `inspectRepo` on `SetupDriver` for real-time path feedback (debounced, sequence-guarded). Ctrl+D now exits without a repo (`repoSkipped`). Design §5.3 updated.
-- 2026-08-02 — **Wizard styling** — step counter and five-step progress rail replace the raw state enum in the title; frame capped at 84 columns. Nine new cases in `tests/tui/setup-wizard.test.tsx`; `tests/core/config.test.ts` covers `~` expansion and `inspectRepo`. Ink 6.8 → 7.1 bump recorded in [plan-m2.md](plan-m2.md).
+- 2026-08-02 — **Wizard styling** — step counter and five-step progress rail replace the raw state enum in the title; frame capped at 84 columns. Nine new cases in `tests/tui/setup-wizard.test.tsx`; `tests/core/config.test.ts` covers `~` expansion and `inspectRepo`. Ink 6.8 → 7.1 bump recorded in [plan_m2.md](plan_m2.md).

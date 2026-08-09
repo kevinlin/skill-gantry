@@ -10,7 +10,7 @@
 ## Specification
 
 Layer 1: [requirements.md](requirements.md) — six new ids, R4.16, R8.16, R10.12, R11.16, R11.17, R12.7, and a new M8 row in § Milestone ownership.
-Layer 2: [design.md](design.md) §4.4, §7, new §12.5, §15, §16, §17, §18; [design-tui.md](design-tui.md) new §14.7.
+Layer 2: [design.md](design.md) §4.4, §7, new §12.5, §15, §16, §17, §18; [design_tui.md](design_tui.md) new §14.7.
 Decisions: [decision-log.md](decision-log.md) new §12, D24–D27, retiring D21's deferral.
 
 ## The problem
@@ -193,7 +193,7 @@ Milestone ownership gains an M8 row owning all six. Range safety under R13.7: R4
 | design.md §15 | `skillgantry suppress` |
 | design.md §16 | Test rows |
 | design.md §17, §18 | Traceability, change history |
-| design-tui.md §14.7 | New: the two surfaces, the reason input, `SuppressPane`, the toggle, precedence |
+| design_tui.md §14.7 | New: the two surfaces, the reason input, `SuppressPane`, the toggle, precedence |
 | decision-log.md §12 | D24–D27; D21's deferral marked retired |
 | CLAUDE.md | "release and retire are the only commands that write to the user's own repo" becomes three, naming the safety each carries |
 | index.md | This plan's row |
@@ -285,7 +285,7 @@ The repo's rule: when implementation proves a spec wrong, amend the spec in the 
 **Files:**
 - Modify: `docs/specs/requirements.md`
 - Modify: `docs/specs/design.md`
-- Modify: `docs/specs/design-tui.md`
+- Modify: `docs/specs/design_tui.md`
 - Modify: `docs/specs/decision-log.md`
 - Modify: `CLAUDE.md`
 - Test: `tests/specs/traceability.test.ts` (existing, must stay green)
@@ -317,7 +317,7 @@ Add to the revision preamble at the top: `Revision 14 marks *(rev 14)* and adds 
 
 `design.md` §4.4: one row in the exclusion table for `.skillgantry-write.tmp` with the reason. §7: the `BaselineSpec` interface, skillspector's declaration, the skill-relative path trap, the shared-constant rule. New §12.5 covering the write sequence and the four §12 mechanisms it omits with a reason each. §15: the `suppress` subcommand. §16: the test rows from the "Testing" table above. §17: the six ids mapped to their sections. §18: a change-history entry.
 
-`design-tui.md`: new §14.7 covering the two surfaces, the reason editor, `SuppressPane`, the toggle, and the precedence slot.
+`design_tui.md`: new §14.7 covering the two surfaces, the reason editor, `SuppressPane`, the toggle, and the precedence slot.
 
 `decision-log.md`: new §12 carrying D24–D27 verbatim from the Decisions section above, and one line in §11 under D21 reading `*Retired by §12, D24–D27.*`
 

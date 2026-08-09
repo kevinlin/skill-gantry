@@ -5,7 +5,7 @@
 **Layer:** design (layer 2 of 3: [requirements](requirements.md) → design → plan)
 **Traces to:** [requirements.md](requirements.md), [decision-log.md](decision-log.md)
 
-Each section names the requirements it satisfies. Revision 2 closed the twelve findings of the first review, revision 3 the eleven of the second, and every milestone since has amended sections in place rather than opening a revision. §18 indexes all of it: which sections each pass touched, and which document holds its reasoning. A bare `§14.x` anywhere below is [design-tui.md](design-tui.md)'s, which holds the terminal interface under its original numbers; every other `§n` is this document's.
+Each section names the requirements it satisfies. Revision 2 closed the twelve findings of the first review, revision 3 the eleven of the second, and every milestone since has amended sections in place rather than opening a revision. §18 indexes all of it: which sections each pass touched, and which document holds its reasoning. A bare `§14.x` anywhere below is [design_tui.md](design_tui.md)'s, which holds the terminal interface under its original numbers; every other `§n` is this document's.
 
 ---
 
@@ -244,7 +244,7 @@ The catalogue exists separately from the adapter registry because installability
 
 A consequence the wizard must respect: a selection written into `stageTools` names only tools the adapter registry knows, since `AdapterStageExecutor.plan()` rejects an unknown id and would fail every run of that stage. An installed tool with no adapter is reported as installed and not yet runnable.
 
-A tool D7 names but no public source publishes in installable form is omitted from the catalogue rather than carried as an entry that can only fail. The omissions and the probe output behind each are recorded in [plan-m3.md](plan-m3.md).
+A tool D7 names but no public source publishes in installable form is omitted from the catalogue rather than carried as an entry that can only fail. The omissions and the probe output behind each are recorded in [plan_m3.md](plan_m3.md).
 
 ### 5.2 Install drivers
 
@@ -1243,7 +1243,7 @@ The cache still earns its place: the Issues and Dashboard screens filter depreca
 
 ## 14. Terminal interface
 
-Specified in [design-tui.md](design-tui.md), which holds §14 through §14.6 under their own numbers: the store and render discipline, the responsive layout and its row budget, Settings, the fix-prompt copy, the queue's progress reporting, run rehydration and the Work screen overhaul. It is a separate file because it is a fifth of this document and no engine change reads it.
+Specified in [design_tui.md](design_tui.md), which holds §14 through §14.6 under their own numbers: the store and render discipline, the responsive layout and its row budget, Settings, the fix-prompt copy, the queue's progress reporting, run rehydration and the Work screen overhaul. It is a separate file because it is a fifth of this document and no engine change reads it.
 
 ## 15. Headless interface
 
@@ -1366,7 +1366,7 @@ Fixture capture is a scripted, repeatable step tied to the pinned tool versions,
 | R8 ledger and issues | 10 |
 | R9 release | 12.4 |
 | R10 mutation safety | 12.1, 12.2, 12.3, 12.5 |
-| R11 terminal interface | [design-tui.md](design-tui.md) 14, 14.1, 14.2, 14.3, 14.5, 14.6, 14.7, 14.8 |
+| R11 terminal interface | [design_tui.md](design_tui.md) 14, 14.1, 14.2, 14.3, 14.5, 14.6, 14.7, 14.8 |
 | R12 headless | 15 |
 | R13 quality and distribution | 2, 16 |
 
@@ -1382,11 +1382,11 @@ Every pass below is recorded in full somewhere else — the two reviews are thei
 |---|---|---|
 | Revision 2 | Twelve findings: release as a dispatchable stage (§6, §12.1), the redaction boundary (§9.3), fan-out artefact collisions (§9), the outcome model (§8), the command path (§11.1, §11.4), identity and reconciliation (§10.3–§10.5), the repo-root sidecar (§4.3), gates bound to bytes (§4.4, §12.4), the finalisation race (§9.1, §9.2), `ParseContext` bytes and the closed `MetricKey` (§7), the coverage gaps that became §4, §5, §13 and §17, and a contract test per P1 finding (§16) | [design-review-r1.md](design-review-r1.md) |
 | Revision 3 | Eleven findings: the archive inside the release transaction (§12.4), a repo-root skill able to scan its own workspace (§4.4), digest omissions and symlink policy (§4.4, §4.5), the mutation recovery gaps before apply (§12.2), M1's inability to bootstrap its own tool plus `gh-release` integrity (§5.1, §5.2), SkillSpector's credential mode (§7), the tool-outcome table restored (§8.1), nondeterministic detector ownership (§10.1, §10.4), NDJSON and lock durability overstated (§9.1, §9.2), retirement with no named authority (§13), and milestone ownership leaving this document (§17) | [design-review-r2.md](design-review-r2.md) |
-| M3 planning | R3.5 split into a catalogue entry and an adapter, making the catalogue the install authority and the registry the run authority (§5.1a); `{os}` and `{arch}` in `assetPattern`, since one fixed pattern cannot resolve a per-platform asset (§5.2); doctor's two reporting-but-not-failing conditions and where its inputs come from (§5.3) | [plan-m3.md](plan-m3.md) |
-| M5 | Six amendments taken from building against it: `mutation-incomplete` as its own row, because an apply that wrote nothing and one that completed call for opposite recovery (§8.1, §12.4); the release table re-derived from the shipped branches (§12.4); `MutationSandbox` and `sandbox.json` reshaped so recovery needs no live `SkillRef` (§12.1, §12.2); §3's tool count and dependency column; §15's command list; and the journal's symlink rule (§12.3) | [plan-m5.md](plan-m5.md) |
+| M3 planning | R3.5 split into a catalogue entry and an adapter, making the catalogue the install authority and the registry the run authority (§5.1a); `{os}` and `{arch}` in `assetPattern`, since one fixed pattern cannot resolve a per-platform asset (§5.2); doctor's two reporting-but-not-failing conditions and where its inputs come from (§5.3) | [plan_m3.md](plan_m3.md) |
+| M5 | Six amendments taken from building against it: `mutation-incomplete` as its own row, because an apply that wrote nothing and one that completed call for opposite recovery (§8.1, §12.4); the release table re-derived from the shipped branches (§12.4); `MutationSandbox` and `sandbox.json` reshaped so recovery needs no live `SkillRef` (§12.1, §12.2); §3's tool count and dependency column; §15's command list; and the journal's symlink rule (§12.3) | [plan_m5.md](plan_m5.md) |
 | M6 | A generated coding-agent prompt as the deliverable for a stage that found something, rather than a fixer (§9.4, §14.3, §15); then a tool's own suppression file honoured from argv to Issues screen (§7, §8.1, §9.4, §10.1, §10.4–§10.7, §12.4, §14, §15) | [plan_m6-fix-prompts-for-stage-findings.md](plan_m6-fix-prompts-for-stage-findings.md), [plan_m6-respect-skillspector-baseline.md](plan_m6-respect-skillspector-baseline.md) |
-| M7 | The Work screen overhaul (§14.6), plus the in-place corrections to §14, §14.1 and §14.3 that measuring a rendered frame forced | [plan-m7.md](plan-m7.md) |
-| M8 | Writing the file M6 taught SkillGantry to read: a declared baseline on the manifest (§7), a narrow write path that keeps the diff, the preimage recheck and the atomic rename while omitting the sandbox, the journal and the crash marker with a reason each (§12.5, §4.4), and the two surfaces that reach it (§14.7, §15) | [plan-m8.md](plan-m8.md) |
+| M7 | The Work screen overhaul (§14.6), plus the in-place corrections to §14, §14.1 and §14.3 that measuring a rendered frame forced | [plan_m7.md](plan_m7.md) |
+| M8 | Writing the file M6 taught SkillGantry to read: a declared baseline on the manifest (§7), a narrow write path that keeps the diff, the preimage recheck and the atomic rename while omitting the sandbox, the journal and the crash marker with a reason each (§12.5, §4.4), and the two surfaces that reach it (§14.7, §15) | [plan_m8.md](plan_m8.md) |
 | M8 extension | Navigation, and the surface a truncating pane cannot be: a key that moves focus to what it selects rather than acting at a distance, both arrow pairs as aliases, the Issues tab's own cursor and a tagged query response, the dashboard key on every Overview tier that renders, and a full-length view of one finding or one issue (§14.2, §14.6, §14.8) | [plan_m8-work-screen-navigation.md](plan_m8-work-screen-navigation.md) |
 
 ## 19. Risks carried into implementation

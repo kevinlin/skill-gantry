@@ -1,6 +1,6 @@
 # SkillGantry M2 Implementation Plan
 
-**Status:** Shipped. Aligned to [design.md](design.md) revision 3, [requirements.md](requirements.md) revision 3 and [plan-m1.md](plan-m1.md) revision 2.
+**Status:** Shipped. Aligned to [design.md](design.md) revision 3, [requirements.md](requirements.md) revision 3 and [plan_m1.md](plan_m1.md) revision 2.
 
 **Goal:** Put a queue and a terminal interface over the M1 engine — batch enqueue with a bounded worker pool, a command path that cancels and resolves, and a Work screen that renders live state without holding log text in React.
 
@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-Everything in [plan-m1.md's Global Constraints](plan-m1.md) still holds. These are the additions.
+Everything in [plan_m1.md's Global Constraints](plan_m1.md) still holds. These are the additions.
 
 - The import boundary gains a rule: `src/tui/**` imports core **only** through `src/core/index.ts`. Deep imports such as `../core/ledger/db.js` fail `pnpm lint`. This is R13.1 applied to the new consumer.
 - `src/tui/**` may touch the filesystem. It may not spawn processes or open the ledger; those belong to `src/cli/tui-command.ts`, which owns the wiring.
@@ -24,9 +24,9 @@ Everything in [plan-m1.md's Global Constraints](plan-m1.md) still holds. These a
 
 ## Working against M1
 
-M1 is being implemented in a separate worktree. Where a task below shows a whole M1 file, it shows that file **as plan-m1 specifies it, with the M2 change applied**. If the shipped file has drifted from plan-m1, apply the described change to the shipped file rather than pasting over it. Each task states its change in prose before the code for exactly this reason.
+M1 is being implemented in a separate worktree. Where a task below shows a whole M1 file, it shows that file **as plan_m1 specifies it, with the M2 change applied**. If the shipped file has drifted from plan_m1, apply the described change to the shipped file rather than pasting over it. Each task states its change in prose before the code for exactly this reason.
 
-Two M1 behaviours M2 depends on, both verified in plan-m1's own tests:
+Two M1 behaviours M2 depends on, both verified in plan_m1's own tests:
 
 1. `runTool` already accepts an `AbortSignal`, kills the process **group** on abort, and returns `cancelled: true`. `classifyToolRun` already maps that to `errored` with `error_kind = 'cancelled'`, which does not reconcile. So cancelling a running tool needs no new kill path — only a pipeline that survives it.
 2. `withSkillLock` already carries a pid and a stale threshold, and `finalizeRun` already defines `latest` as the greatest run id. M1 tests both **in one process**. R6.7 and R6.9 are M2-owned because one process shares a lock table and a file descriptor table, so an in-process test cannot prove either. M2 proves them across real processes and logs the reclaim, which M1's no-op callback does not.
