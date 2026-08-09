@@ -695,9 +695,12 @@ export function App({
     // so moving down the skill list moved the rail with it and nothing on
     // screen said so — and the rail describes the *selected* skill, so moving
     // both at once is how a user loses track of which stage they are reading.
-    if (plain && (input === 'h' || input === 'l')) {
+    // The horizontal arrows alias the pair (R11.11, rev 15). The vertical pair
+    // has been aliased in every block above since M2 while this one was bound
+    // nowhere, so a user who reached for `←` got silence and no way to learn why.
+    if ((plain && (input === 'h' || input === 'l')) || key.leftArrow || key.rightArrow) {
       if (state.focus !== 'work') return
-      dispatch({ type: 'select-stage', delta: input === 'l' ? 1 : -1 })
+      dispatch({ type: 'select-stage', delta: input === 'l' || key.rightArrow ? 1 : -1 })
       return
     }
     if (plain && input === ' ') {
