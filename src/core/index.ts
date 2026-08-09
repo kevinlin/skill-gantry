@@ -154,3 +154,12 @@ export {
 } from './ledger/issues.js'
 export { recomputeIssueSuppression } from './ledger/reconcile.js'
 export { actionableFindings } from './stages/outcome.js'
+export { appendEntries, type AppendResult } from './suppress/document.js'
+export { globEscape, skillRelative, suppressionEntry, type FindingVars } from './suppress/entry.js'
+export {
+  applySuppression,
+  discardSuppression,
+  planSuppression,
+  type PlanInput,
+  type SuppressionPlan,
+} from './suppress/write.js'
