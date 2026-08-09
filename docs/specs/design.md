@@ -176,6 +176,7 @@ type CandidateEntry =
 | `.git/` | repo metadata, not skill content |
 | `<skillName>_*.zip` at the candidate root | release archives, which for a repo-root skill land inside the tree |
 | `.gitignore` at the candidate root **of a repo-root skill only** | repo control that SkillGantry itself mutates under R6.6 |
+| `.skillgantry-write.tmp` at the candidate root | where §12.5 stages a suppression write; same-directory rename is the only portable atomic recipe, so the file has to sit inside the candidate root, and a run digesting mid-write would otherwise hash it. Unguarded by `rootSkill`, unlike the row above, because the write happens in whichever candidate root holds the baseline |
 
 Basename matching is deliberately gone. Revision 2 excluded "any `snapshot-pre/` directory", which would have let a legitimately named skill directory change without invalidating gate evidence. Snapshots live at `<run>/snapshot-pre/` inside the workspace, so the workspace exclusion already covers them.
 
@@ -319,7 +320,7 @@ Fan-out tools run concurrently, capped at two, each in its own artefact director
 
 ## 7. Adapter contract
 
-*Satisfies R1.5, R4.1–R4.5, R4.12, R4.14, R4.15.*
+*Satisfies R1.5, R4.1–R4.5, R4.12, R4.14, R4.15, R4.16.*
 
 ```ts
 type Stage    = 'validate' | 'evaluate' | 'security' | 'optimise' | 'release'
@@ -357,7 +358,28 @@ interface AdapterManifest {
   versionArgv: string[]
   artefacts: string[]              // relative to this tool's artefact dir
   binaryArtefacts?: string[]       // subset copied verbatim, never parsed
+  /** R4.16. Absent when the tool has no suppression file of its own. */
+  baseline?: BaselineSpec
   timeoutMs: number
+}
+
+/**
+ * R4.16. Where a tool keeps the findings its user has accepted, and what one
+ * accepted finding looks like inside that file. Declarative rather than a
+ * function the adapter exports: R4.1 makes an adapter a manifest and a single
+ * `parse`, and R4.3 forbids an adapter touching the filesystem at all, so the
+ * write lives in `src/core/suppress/` whatever shape the declaration takes.
+ */
+interface BaselineSpec {
+  /** `{skillDir}`/`{repoRoot}` vocabulary — but resolved live, see §12.5. */
+  path: string
+  document: 'yaml' | 'json'
+  /** The sequence one accepted finding is appended to. */
+  collection: string
+  /** The whole document, written when the file is absent. */
+  scaffold: Record<string, unknown>
+  /** One entry, in the finding vocabulary, kept separate from the path one. */
+  entry: Readonly<Record<string, string>>
 }
 
 /**
@@ -461,6 +483,13 @@ export const manifest: AdapterManifest = {
   },
   versionArgv: ['--version'],
   artefacts: ['findings.sarif'],
+  baseline: {
+    path: BASELINE_PATH,           // the same constant `conditionalArgv` reads
+    document: 'yaml',
+    collection: 'rules',
+    scaffold: { version: 2, rules: [], fingerprints: [] },
+    entry: { id: '{ruleIdGlob}', path: '{pathGlob}', reason: '{reason}' },
+  },
   timeoutMs: 120_000,
 }
 
@@ -490,6 +519,14 @@ Three rules, each covering a real failure. `isFile()` rather than existence, bec
 `outcome`, `findings.length` and `metrics.findingsTotal` are unchanged by suppression — the parser's verdict stays "did I see anything", and a count that drops when a user edits a YAML file makes "did this skill improve" unanswerable. `summary` gains the count (`2 findings, 1 suppressed`), which reaches the lifecycle rail and `stage.json` and is the feature's always-on signal that the flag fired.
 
 Two consequences fall out of the baseline file being an ordinary file inside the skill directory. It is part of the candidate manifest (§4.4), so writing or editing it moves the skill digest — which is what makes R9.9 refuse a release whose passing gates were recorded against different bytes (§12.4). And it is therefore inside the release archive, which is correct: a consumer receives the maintainer's accepted-false-positive list along with the skill.
+
+**The manifest declares that file so §12.5 can write it** (R4.16). One optional field, fully declarative, and only skillspector has one — `skill-scanner 0.3.3` ships no ignore or baseline flag, `skill-lint` none, and skill-up runs evals. Suppression is therefore refused for three of four tools by name rather than offered and silently ineffective.
+
+**The path shape is the silent failure mode.** skillspector's SARIF reports a skill-relative `uri: scripts/scan.py`, while `RawFinding.path` is repo-relative, rebased onto `skillRelPath` by §7.1. The glob matches against the tool's own path, so `{pathGlob}` carries the skill-relative form; writing the repo-relative one produces a rule that is syntactically valid, loads without complaint and suppresses nothing. For a repo-root skill `skillRelPath` is `.`, so the two coincide.
+
+`{ruleIdGlob}` and `{pathGlob}` are glob-escaped by definition of the token, because skillspector matches rules with `fnmatch`: `*`, `?` and `[` in a substituted value are metacharacters, so a file named `notes[1].md` needs `notes[[]1].md` or the rule matches nothing at all. Escaping as a property of the token is what keeps §12.5's writer tool-agnostic.
+
+**Two literals of one path, so one constant.** `conditionalArgv.whenExists` already carries `{skillDir}/.skillspector-baseline.yaml`, and `baseline.path` must be the same string or the day one of them moves is the day SkillGantry writes a file it no longer passes to the tool. Within an adapter that is a shared `BASELINE_PATH` const; across the registry a test asserts that every manifest declaring a `baseline` has a conditional group whose `whenExists` equals `baseline.path`.
 
 ### 7.1 Rule-class mapping
 
@@ -1154,6 +1191,39 @@ A refusal is `failed` with no `error_kind`, because the gate ran and understood 
 
 Git commit and tag are offered as a separate confirmed action after `done`. `apply()` never commits.
 
+### 12.5 The narrow write path
+
+*Satisfies R8.16, R10.12.*
+
+`src/core/suppress/` writes one file the user's repo can see: the suppression baseline §7's manifest declares. It is the third and last thing in SkillGantry that writes outside the sidecar, and it does not use §12.1–§12.3.
+
+```
+read live bytes, or take `scaffold` when absent   → preimage: sha256, null when absent
+parse through yaml's Document API                 → comments and key order survive
+refuse a non-mapping document, or a `collection` that is not a sequence
+append the entry; never touch `version`
+stop if an identical entry is already present
+write <candidateRoot>/.skillgantry-write.tmp, fsync
+unifiedDiffFor(live, tmp, label)                  → the same renderer both sandboxes use
+await authorisation                               → the pane, or --yes
+re-hash live against the preimage                 → abort naming the path on any mismatch
+rename tmp over the target, fsync the directory
+```
+
+**What is omitted, and why each.** §12's machinery answers problems this write does not have. The sandbox exists because a *tool* writes the live tree over minutes across many paths; here SkillGantry composes one file's bytes itself. The journal exists because POSIX has no multi-file atomic write, and one rename is atomic, so there is no partial state to compensate. The active-sandbox record covers a crash during tool execution or while awaiting approval, and nothing is modified until the rename fires. The dirty-skill guard is the odd one out: it exists because a worktree starts at HEAD and would hide uncommitted work, and there is no worktree — the append merges into the user's current bytes by construction.
+
+**What is kept, and why each.** The diff before the write, because that is the standing rule for every byte SkillGantry puts in a user's repo. The preimage recheck, because the window between preview and confirm is exactly R10.11's window and widens with however long the user reads. The atomic rename, because a half-written baseline is one the tool exits 2 on. And the abort covers absent-became-present too: a preimage of `null` that finds a file at recheck means someone created the baseline while the diff sat on screen.
+
+**`{skillDir}` resolves live here, deliberately unlike §7's conditional-argv stat**, which resolves against the tool-facing path. A repo-root skill's tool reads a materialised candidate copy (§4.4), so a write resolved the tool's way would land in a temp directory and be discarded with it. Same token, opposite answer, and it carries a comment in the code because it reads as a bug otherwise.
+
+**The temp file is in the candidate root, and §4.4 excludes it.** Same-directory rename is the only portable atomic recipe, and reusing one staged file for both the diff and the write means the bytes reviewed are the bytes renamed rather than a second render that could differ. Release solved the same problem the same way for `<skillName>_*.zip`.
+
+**`version` is never touched.** A legacy v1 rule-only baseline stays v1. skillspector loads it with a warning; bumping it to 2 retroactively applies the non-empty-reason rule to rules the user wrote before that rule existed, and can turn a loadable file into an unloadable one.
+
+**The identical-entry stop.** Without it, accepting one finding twice stacks duplicate rules in the user's repo and nothing downstream would notice.
+
+**The ledger is not written here** (R8.16). R8.15 keeps the file the authority and the suppression columns a derived cache recomputed on conclusive tool runs, so the `⊘` mark appears only after the re-run — which is why §14.7's confirmation says so, and why an acceptance offers to enqueue the gates it invalidated rather than leaving the user to discover R9.9's refusal later.
+
 ## 13. Retirement
 
 *Satisfies R1.4, R1.6.*
@@ -1177,7 +1247,7 @@ Specified in [design-tui.md](design-tui.md), which holds §14 through §14.6 und
 
 ## 15. Headless interface
 
-*Satisfies R12.1–R12.4, R12.5a, R12.5b, R12.6.*
+*Satisfies R12.1–R12.4, R12.5a, R12.5b, R12.6, R12.7.*
 
 ```
 skillgantry run <skill> --stage validate,evaluate,security [--json] [--yes]
@@ -1189,6 +1259,9 @@ skillgantry retire <skill> [--undo] [--superseded-by <id>]
                            [--yes] [--json] [--allow-dirty]
 skillgantry recover [--restore <runId>] [--forget <runId>] [--json]
 skillgantry fix <skill> [--stage <stage>] [--run <id>] [--json]
+skillgantry suppress <skill> --tool <id> --rule <nativeRuleId> --path <skillRelPath>
+                             --reason <text> [--yes] [--json]
+skillgantry suppress <skill> --fingerprint <fp> --reason <text> [--yes] [--json]
 skillgantry [--concurrency <n>]                    # no subcommand: the TUI
 ```
 
@@ -1205,6 +1278,10 @@ Every launch, headless or not, first scans for an unresolved mutation record and
 **Its exit code answers "is there a prompt on stdout", not "did the skill pass"** — `0` when one was produced, `1` when the run resolved and nothing in scope carried a finding. This is a deliberate divergence from R12.2's meaning for `run`: reusing that meaning would make a clean skill and a failed lookup indistinguishable. An unknown skill, run id or stage rejects and reaches the top-level handler like every other command's errors.
 
 **Suppression reaches the headless surface additively.** `run --json` carries `ToolRunRecord` on `tool:done`, so each suppressed finding gains one optional key: no new event, no version bump. `RunDelta` is deliberately not extended — a `suppressed` counter would keep six files in step for a number the stage summary already puts on the rail and the Issues screen answers afterwards. `fix` gains one exit case: a run whose findings are all suppressed exits `1` saying so rather than `0` with an empty table, and `--json` reports `findings` (actionable) and `suppressed` as siblings.
+
+`suppress` writes one rule into the tool's own baseline through §12.5 (R12.7). It takes either an explicit `--tool`/`--rule`/`--path` triple or a `--fingerprint` it resolves against the ledger the way the Issues screen does. `--yes` is prior authorisation with the diff emitted to output immediately before the write, R12.4's rule for every mutating headless path; without it the diff prints, nothing is written, and the exit is non-zero. **Its exit code reports whether a suppression was written, never whether the skill passes** — `fix`'s precedent, for its reason: reusing R12.2's meaning would make a clean skill indistinguishable from a failed lookup. Distinct non-zero codes separate the cases a script would act on differently: a bad request, no detecting tool declaring a baseline, an entry already present, and authorisation withheld.
+
+There is no `--then-run`, unlike §14.7's toggle. The shell composes `suppress && run`, and duplicating stage selection into a second command is how the two come to disagree.
 
 **It resolves the run from the sidecar, not the ledger.** The default is the greatest run id in `index.ndjson` — not the `latest` symlink, which is absent mid-write, and not `runs.sidecar_path`, because R8.2 makes the sidecar the evidence, the command already names its skill so no cross-skill query is needed, and a run whose ledger row failed still has complete evidence on disk. When the prompt file is absent but that stage's `stage.json` carries findings, `fix` rebuilds it in memory and marks it `onDisk: false`; it never writes, so the pipeline stays the only writer and runs recorded before §9.4 existed are answerable without rewriting their evidence.
 
@@ -1255,6 +1332,15 @@ Every launch, headless or not, first scans for an unresolved mutation record and
 | Overview tiers | `layoutFor` and `overviewRows` as pure functions across the whole size range, plus one render at 80×24 and 50×14 | The chosen tier leaves `SKILL_LIST_MIN` rows in the list and returns exactly the rows it gives up; no card in `narrow`; the frame never exceeds the terminal. Over the function, never at a named size, so a change to what the chrome costs moves the boundary without breaking a test — R11.12 |
 | Issues tab and screen | `issueRows()` driven by both surfaces; the scope cycle against `IssueFilter` | One issue renders identically in both; the three scopes resolve to the existing per-skill, per-repo and unfiltered queries; no transition key is bound on the tab, and `o` stays the Issues screen's — R11.13 |
 | Finding attribution and evidence | `findingRows()` over a reducer state built from real `stage:done` events; `o` through a fake `openPath` | Stage and tool survive the event into the row; the selected finding's detail sits inside the allocation at both sizes; the report opens through the injected port, so no test spawns; `y` yields that finding's stage's prompt whatever the rail points at — R11.14, R11.9 as amended |
+| Baseline declaration | The registry, over every manifest declaring one | The declared path, document, collection, scaffold and entry shape; a `conditionalArgv` whose `whenExists` equals `baseline.path`, so the file written is the file passed to the tool; the three tools with no baseline leave it undeclared — R4.16 |
+| Entry substitution | `suppressionEntry`, `skillRelative` and `globEscape` as pure functions | Every token resolves and an unknown one throws; `{pathGlob}` is skill-relative and not repo-relative; `*`, `?` and `[` escape to single-member classes; a repo-root skill's path is unchanged; a sibling directory sharing the skill's name is not stripped — R4.16 |
+| Document append | `appendEntries` over YAML and JSON documents | Comments and key order survive a round trip; a non-mapping document and a non-sequence collection are refused; `version` is unchanged on a v1 file; an absent file takes the scaffold; an identical entry is a no-op — §12.5 |
+| Suppression write | Real fixture skills through discovery, so `dir` and `relPath` are discovery's own | Nothing is touched before apply; the staged bytes are exactly the bytes renamed; preimage drift aborts naming the path and absent-became-present aborts too; discard leaves neither file; `.skillgantry-write.tmp` is excluded from the digest — R10.12 |
+| Target resolution | `previewSuppression` over multi-detector rule sets | A tool with a baseline plans a write; one without is named as uncovered only while it is still reporting; several rule ids for one tool fold into one plan; no baseline anywhere plans nothing — R11.16 |
+| `skillgantry suppress` | `buildProgram` with a collecting writer | Without `--yes` the diff prints and the file is byte-identical; with it the diff precedes the write in the output; an empty reason, a baseline-less tool and an entry already present each exit non-zero with their own code; `--json` is one document — R12.7 |
+| `SuppressPane` and the toggle | `renderInk` at 80×24 and 50×14, plus `resumedGates` asserted directly | The title names the tool and the file; the uncovered warning and the stale-gate line each appear only in their own case; the resolved chain is contiguous from the first non-passing gate; three passing gates resolve to empty and start the toggle on every gate; the frame's row count is unchanged — R11.16, R11.17 |
+| Suppression round trip | A fake tool branching on `--baseline`, through the whole CLI (`tests/acceptance/m8.test.ts`) | The gate fails, `suppress` writes the rule, the re-run passes, the issue reads suppressed and still `open` with its history, and deleting the entry brings the finding back |
+| The written rule matches | A real installed skillspector, twice over a real skill (`SG_INTEGRATION=1`) | The rule SkillGantry wrote is one the tool's own `fnmatch` matches. The acceptance tier cannot prove this: its fake tool branches on whether the flag arrived, which is a different question from whether the rule inside the file matches, and a wrong path shape loads cleanly and suppresses nothing |
 | Palette and titled border | `tokens.ts` asserted as data, plus a source scan over `src/tui/**`; `Panel`'s title row measured against the box beneath it | Every token is a hex triple and no background or body foreground is set anywhere in the tree; the title row and its box agree to the cell, so no corner tears; the saved row reaches the layout budget — R11.15, §14.6 |
 
 Fixture capture is a scripted, repeatable step tied to the pinned tool versions, so fixtures and pins cannot drift apart.
@@ -1279,8 +1365,8 @@ Fixture capture is a scripted, repeatable step tied to the pinned tool versions,
 | R7 credentials and redaction | 9.3, 10.2 |
 | R8 ledger and issues | 10 |
 | R9 release | 12.4 |
-| R10 mutation safety | 12.1, 12.2, 12.3 |
-| R11 terminal interface | [design-tui.md](design-tui.md) 14, 14.1, 14.2, 14.3, 14.5, 14.6 |
+| R10 mutation safety | 12.1, 12.2, 12.3, 12.5 |
+| R11 terminal interface | [design-tui.md](design-tui.md) 14, 14.1, 14.2, 14.3, 14.5, 14.6, 14.7 |
 | R12 headless | 15 |
 | R13 quality and distribution | 2, 16 |
 
@@ -1300,6 +1386,7 @@ Every pass below is recorded in full somewhere else — the two reviews are thei
 | M5 | Six amendments taken from building against it: `mutation-incomplete` as its own row, because an apply that wrote nothing and one that completed call for opposite recovery (§8.1, §12.4); the release table re-derived from the shipped branches (§12.4); `MutationSandbox` and `sandbox.json` reshaped so recovery needs no live `SkillRef` (§12.1, §12.2); §3's tool count and dependency column; §15's command list; and the journal's symlink rule (§12.3) | [plan-m5.md](plan-m5.md) |
 | M6 | A generated coding-agent prompt as the deliverable for a stage that found something, rather than a fixer (§9.4, §14.3, §15); then a tool's own suppression file honoured from argv to Issues screen (§7, §8.1, §9.4, §10.1, §10.4–§10.7, §12.4, §14, §15) | [plan_m6-fix-prompts-for-stage-findings.md](plan_m6-fix-prompts-for-stage-findings.md), [plan_m6-respect-skillspector-baseline.md](plan_m6-respect-skillspector-baseline.md) |
 | M7 | The Work screen overhaul (§14.6), plus the in-place corrections to §14, §14.1 and §14.3 that measuring a rendered frame forced | [plan-m7.md](plan-m7.md) |
+| M8 | Writing the file M6 taught SkillGantry to read: a declared baseline on the manifest (§7), a narrow write path that keeps the diff, the preimage recheck and the atomic rename while omitting the sandbox, the journal and the crash marker with a reason each (§12.5, §4.4), and the two surfaces that reach it (§14.7, §15) | [plan-m8.md](plan-m8.md) |
 
 ## 19. Risks carried into implementation
 

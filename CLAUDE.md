@@ -8,7 +8,7 @@ SkillGantry is a SkillOps orchestrator for maintainers of agent skills. It disco
 
 Lifecycle stages: `validate`, `evaluate`, `security`, `optimise`, `release`.
 
-`release` and `retire` are the only commands that write to the user's own repo, and the crash safety there does not read off the code: a marker on disk before the first byte moves, a diff before any write, a path back from every failure. Read design §12 before touching either.
+Three commands write to the user's own repo, and they do not carry the same safety. `release` and `retire` drive a *tool* over the live tree, so the crash safety there does not read off the code: a marker on disk before the first byte moves, a diff before any write, a path back from every failure — design §12. `suppress` composes one file's bytes itself, so it keeps the diff, the preimage recheck and one atomic rename and deliberately omits the sandbox, the journal and the marker, with a reason stated for each — design §12.5. Read the section before touching any of the three.
 
 ## Commands
 

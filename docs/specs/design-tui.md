@@ -231,4 +231,53 @@ The detail names the message, the rule class, the native rule id, `ToolRunRecord
 
 **Colour for state; the terminal's own for surfaces** (R11.15). `tokens.ts` takes D23's hex — `ACCENT` `#0070f3`, passed `#00c853`, failed `#ee0000`, errored and degraded `#f5a623`, skipped and idle `#555555`, critical and high `#ee0000`, medium `#f5a623`, low and info `#888888` — and chalk downsamples where there is no truecolour. No body foreground and no background is ever set, which is why the screen reads on a light theme and what the study's own `#ededed` body text would have broken. A selected row is `inverse` over text `padCells`-padded to the pane's inner width: reverse video swaps the inherited pair rather than replacing it, and the padding is load-bearing, since Ink's `inverse` covers only the characters rendered and an unpadded short row highlights a stub instead of a band. `▸` stays beside it, because a monochrome terminal keeps the cursor when it loses the attribute.
 
-**Not adopted from the study, and why.** Applying a fix (D21: no tool reports the patch, so SkillGantry would author it, and R6.10 exists because the two findings that prompted it were unsafe to apply mechanically). Suppressing a finding (D21: a repo write, so §12's gate, an adapter-declared baseline path and shape, and an amendment to R8.15's authority clause — M8, not a footnote to a pane). The rail's per-column left border rule (a cell per column to say what `underline` and `bold` already say). Deleting the sibling screens (D20: R11.3, and M6's settings editor is already palette-only). And the study's header, which adds an open-issue count and the repo name: cheap, probably right, and no requirement asks for it — recorded here rather than smuggled in through a diagram, because a frame drawn in a spec is read as a promise.
+**Not adopted from the study, and why.** Applying a fix (D21: no tool reports the patch, so SkillGantry would author it, and R6.10 exists because the two findings that prompted it were unsafe to apply mechanically). Suppressing a finding (D21: a repo write, so §12's gate, an adapter-declared baseline path and shape, and an amendment to R8.15's authority clause — M8, not a footnote to a pane; §14.7 is that milestone). The rail's per-column left border rule (a cell per column to say what `underline` and `bold` already say). Deleting the sibling screens (D20: R11.3, and M6's settings editor is already palette-only). And the study's header, which adds an open-issue count and the repo name: cheap, probably right, and no requirement asks for it — recorded here rather than smuggled in through a diagram, because a frame drawn in a spec is read as a promise.
+
+### 14.7 Accepting a finding
+
+*Satisfies R11.16, R11.17.*
+
+Derived from D24–D27. M6 taught SkillGantry to *read* a tool's suppression file; writing one was still a manual YAML edit, which D21 deferred and this section closes. The write itself is design.md §12.5's; what is here is the two ways in and the one confirmation.
+
+**`s` on the Issues screen and on the Work Findings pane.** Free on both today — Dashboard's `s` is its skill filter and the Work screen's issue-scope cycle is uppercase `S`. Two surfaces because the Findings pane is where a maintainer is when they judge a finding and the Issues screen is where they are when they triage the backlog, and both are the same question. The Work screen's Issues *tab* is deliberately not a third: R11.13 forbids that tab binding a state-changing key, precisely so its keymap stays learnable.
+
+The Findings pane has what it needs in hand — `FindingRow` carries `finding.nativeRuleId`, `finding.path`, `toolId` and `stage`. The Issues screen does not, so `GantryViews` gains one read resolving a fingerprint to its detections' native rule ids, taken from the issue's `last_seen_run` rather than from all history: a rule id reported once and not since would otherwise add a rule for a finding that no longer exists.
+
+**The grain is honest about itself.** A skillspector rule keyed on id and path suppresses every occurrence of that rule id in that file. That matches the issue fingerprint's grain — `(skillId, relPath, ruleClass)` — but it is coarser than one finding, so the confirmation says what the rule will cover rather than implying it accepted one row. Narrowing to a single occurrence would need a `message` glob, which breaks the next time the tool rewords its message.
+
+**Refusals and warnings are named before the write.** A finding from a tool with no `baseline` reports `skill-scanner declares no baseline` and points at `w` for wontfix, saying that wontfix does not affect the gate. The harder case is an issue both scanners report: skillspector's rule can be written, but §10.4's conjunction leaves the issue unsuppressed while skill-scanner still reports it, and the security stage still fails. A user who accepts a finding, re-runs, and watches it fail anyway has been misled by the feature that was supposed to help.
+
+**The reason** reuses §14.2's `begin-edit` / `edit-input` / `stage-edit` / `cancel-edit` *shape* rather than those actions — `begin-edit` is typed to `ScalarField`, the config document's vocabulary, and widening it would put two unrelated editors behind one action. What is reused is the part the user learns: a buffer in state, a refusal on commit, no per-keystroke write. Unlike the config editor the buffer is **seeded** with `Accepted <date> via SkillGantry` and the first keystroke appends to it, which is what a prefill is for. Empty is refused — skillspector's v2 schema refuses it too, and the reason is what the Issues row later renders as `⊘ suppressed: <reason>`.
+
+**`SuppressPane`** is a sibling of `ReviewPane` and `ConfirmPane`. It renders diff text, so `ReviewPane`'s diff body is extracted into a shared `DiffBody` used by both: two renderers of one diff is the divergence `tokens.ts` records from when five modules each owned severity colour, and these are the panes whose `a` writes the user's repo, so this is exactly where a colour has to mean what it means everywhere else.
+
+```
+┌─ Suppress — skillspector · declawed/scripts/scan.py ───────────────┐
+│ --- a/declawed/.skillspector-baseline.yaml                         │
+│ +++ b/declawed/.skillspector-baseline.yaml                         │
+│ @@ -3,2 +3,6 @@                                                    │
+│  rules:                                                            │
+│ +- id: MP2                                                         │
+│ +  path: scripts/scan.py                                           │
+│ +  reason: Alignment whitespace in a re.VERBOSE block, not padding │
+│ reason ▏Alignment whitespace in a re.VERBOSE block, not padding▕   │
+│ also reported by skill-scanner, no baseline — security still fails │
+│ then run: validate, evaluate, security · t cycles                  │
+│ recorded gates passed against the previous bytes                   │
+└────────────────────────────────────────────────────────────────────┘
+a apply · d discard · t then-run · j/k scroll · esc cancel
+```
+
+The last two body rows are conditional: the second-detector warning only when one exists, and the R9.9 line whenever the **resolved** stage set does not cover all three gates. Resolved and not the toggle's label, because "resume from the first non-passing gate" already covers all three when validate is the failure, and a warning that release will refuse would then be false. Every row is counted against the pane's allocation, per §14.1's first rule.
+
+Precedence slots **second** in §14.2's fixed order — after the mutation review, before the config confirmation — on that order's own principle, which is what a keystroke can destroy.
+
+**The re-run is offered at confirm time, as a toggle, and defaults to resuming the chain** (R11.17). `t` cycles `resume from the first non-passing gate` → `every gate` → `nothing`; `a` applies and enqueues per the toggle, `d` discards. A toggle rather than three apply keys, so `a` and `d` keep exactly the meaning the mutation review already trains. The acceptance moves the digest, so which stages are now stale is a fact the pane knows and the user should not have to derive.
+
+`resume` resolves to the contiguous chain from the earliest gate whose last recorded outcome is not `passed`, through security — not the literal set of failed stages, because R5.1 halts the chain, so a validate failure leaves evaluate and security at `·` and enqueueing validate alone makes the user press `r` again. Two edge states are defined rather than left to fall out: a stage that never ran reads `·` and counts as non-passing, so a skill with no recorded run resumes from validate; and a skill whose three gates all passed resolves to an empty set, where the toggle starts on `every gate` instead — the right default there anyway, since every one of those passing runs was recorded against the pre-write digest. `resumedGates()` in `rows.ts` is that rule's one expression, pure, so every boundary is asserted without rendering a frame.
+
+Both non-`nothing` settings call `queue.enqueue` — the same call `r` makes, with the same batch shape R5.5 defines. No new run path and no core change. The Issues screen is cross-repo and does not know the target skill's rail, so the pane calls the existing `loadLastRun(skill)` when it opens: one index read plus at most five `stage.json` reads, the lazy-per-selection shape §14.5 already uses.
+
+**The flash says the ledger has not caught up.** R8.15 makes the file the authority and the suppression columns a cache recomputed on conclusive tool runs, so the `⊘ suppressed` mark appears only after the re-run. Without that line the user applies, sees the Issues screen unchanged, and concludes nothing happened.
+
+**Unsuppressing is out of scope**, so undoing means editing the YAML or reverting the file in git. The mitigation is that the diff gate makes a wrong rule visible before it lands, and the file is an ordinary tracked file in the user's repo. If mistakes turn out to be routine, `S` to unsuppress through the same write path is the follow-up.
