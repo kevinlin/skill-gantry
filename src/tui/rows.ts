@@ -1,8 +1,9 @@
 import { basename } from 'node:path'
-import type { DashboardStats, IssueRow, ScalarField } from '../core/index.js'
+import { GATE_STAGES } from '../core/index.js'
+import type { DashboardStats, IssueRow, ScalarField, Stage } from '../core/index.js'
 import { padCells, truncate, truncateMiddle, windowFor } from './layout.js'
 import { ACCENT, OUTCOME_COLOUR, SEVERITY_COLOUR, STATUS } from './tokens.js'
-import type { AppState, FindingRow, SkillRow } from './store.js'
+import type { AppState, FindingRow, SkillRow, StageCell } from './store.js'
 
 export type SettingsAction =
   | { kind: 'edit-scalar'; field: ScalarField; current: string }
@@ -606,4 +607,17 @@ export function overviewRows(
   })
   line('0  full dashboard →', { colour: ACCENT })
   return rows
+}
+
+/**
+ * R11.17. The contiguous chain from the earliest non-passing gate through
+ * security, not the literal set of failed stages: R5.1 halts the chain, so a
+ * validate failure leaves evaluate and security at `·`, and enqueueing
+ * validate alone makes the user press `r` again. Empty when all three passed,
+ * which is what makes the pane start the toggle on `every gate` there — every
+ * one of those runs was still recorded against the pre-write digest.
+ */
+export function resumedGates(cells: Record<Stage, StageCell>): Stage[] {
+  const first = GATE_STAGES.findIndex((stage) => cells[stage]?.outcome !== 'passed')
+  return first === -1 ? [] : [...GATE_STAGES.slice(first)]
 }
