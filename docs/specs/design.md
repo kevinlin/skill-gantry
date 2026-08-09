@@ -251,6 +251,8 @@ A consequence the wizard must respect: a selection written into `stageTools` nam
 
 A tool D7 names but no public source publishes in installable form is omitted from the catalogue rather than carried as an entry that can only fail. The omissions and the probe output behind each are recorded in [plan_m3.md](plan_m3.md).
 
+**A catalogue entry need not have an executable.** SkillHone ships as a bundle of agent skills — six `SKILL.md` directories with their scripts and references — and nothing in it answers a version argv. That is the `git-skill` kind, and `stage: null` is what keeps it out of `stageTools`, vercel `skills` being the precedent for an entry installed by the catalogue and selected by no stage. `ToolSpec.install` therefore widens to `InstallSpec | GitSkillSpec` while `AdapterManifest.install` keeps the three-kind `InstallSpec` it has: an adapter manifest can never legitimately carry `git-skill`, because the tool it would describe has no executable to invoke, and widening the shared union would make that nonsense typecheck and weaken the test above that asserts catalogue and manifest agree for every tool holding both.
+
 ### 5.2 Install drivers
 
 | Kind | Mechanism | Executable resolution |
@@ -258,6 +260,11 @@ A tool D7 names but no public source publishes in installable form is omitted fr
 | `uv-tool` | `uv tool install <requirement>` with `UV_TOOL_DIR=<toolRoot>/<id>` and `UV_TOOL_BIN_DIR=<toolRoot>/<id>/bin` in the child environment, where `<requirement>` is `<spec>==<pin>` for a registry spec and `<spec>@<pin>` for a `git+` spec | `<toolRoot>/<id>/bin/<binName>` |
 | `npm-prefix` | `npm install --prefix <toolRoot>/<id> <spec>@<pin>` | `<toolRoot>/<id>/node_modules/.bin/<binName>` |
 | `gh-release` | download the asset matching `assetPattern` for tag `<pin>`, verify integrity per `integrity`, extract | declared `binName` inside the extracted tree |
+| `git-skill` | `git clone` into `<toolRoot>/<id>/repo` then `git checkout <pin>`; one symlink per bundled skill directory into each detected runtime skills directory; `uv venv` plus `uv pip install -r <requirements>` into `<toolRoot>/<id>/.venv` | the venv interpreter at `<toolRoot>/<id>/.venv/bin/python` |
+
+`git-skill` verification is three facts rather than a version argv, because `verifyTool`'s semver regex rejects a commit sha and nothing in a skill bundle answers a version argv at all: `git rev-parse HEAD` equals `resolvedVersion`, every recorded symlink resolves into the tool root, and the interpreter runs. That is what gives §5.3's existing drift kinds meaning here — `missing` is a vanished clone or a dangling link, `unverifiable` an interpreter that will not run, `version-drift` a HEAD moved off the pin. The pin is a commit sha because upstream publishes no tags, and git's own object hashing is the integrity check, so the lock records `integrity: "n/a"`.
+
+The symlinks are the one place an install writes outside the tool root, which R3.1 permits only because they are recorded in the lock and removed on uninstall. They are per skill directory, never the parent `skills/`: upstream advises `cp -r` and the reason it gives — other skills already live in that directory — is an argument against linking the parent, not against linking a member. An existing entry that is not a symlink into our tool root is refused and named rather than clobbered, and detection is per directory rather than global, so a machine holding the bundle in one runtime gains links in the others without the first being disturbed. Detection cannot tell our install from someone else's, so a pre-existing copy is left alone and reported as installed but unmanaged — no sha, no drift — because clobbering a user's own install is a worse failure than a weaker doctor line. Uninstall is an explicit path rather than a consequence of deleting the tree: links outlive the clone, and a dangling `~/.claude/skills/skillhone` breaks every agent that scans that directory, which is the cost R3.1 exists to avoid.
 
 Revision 2 specified `uv tool install --tool-dir <path>`. uv 0.7.12, the version this project targets, rejects that with `unexpected argument '--tool-dir'`; relocation is done through `UV_TOOL_DIR` and `UV_TOOL_BIN_DIR`. Both are set explicitly on the child rather than inherited, so an install can never land in the user's global `~/.local/share/uv/tools`.
 
@@ -282,11 +289,11 @@ Setup is a four-state machine: `probe-runtimes → select-tools → install-and-
 
 `done` is reachable with a registered repo **or** with the repo step explicitly skipped. A verified toolchain is the deliverable; requiring a repo left a user who set up before their skills repo existed with no exit but Ctrl+C.
 
-Presets: **Minimal** is skill-up plus skillspector — the two already present, one evaluate and one security tool. **Recommended** is at most one tool per stage. **Everything** is the whole catalogue. A stage whose D7 candidates are all unavailable has no tool in any preset; that is visible in the wizard rather than papered over. Optimise is that stage: both its candidates are unpublished. Evaluate has one candidate rather than two, because promptfoo needs a per-skill config file no skill carries — decision-log §10.
+Presets: **Minimal** is skill-up plus skillspector — the two already present, one evaluate and one security tool. **Recommended** is at most one tool per stage. **Everything** is the whole catalogue. A stage whose D7 candidates are all unavailable has no tool in any preset; that is visible in the wizard rather than papered over. Optimise's member is SkillHone, which is published as a skill bundle rather than a CLI — R3.5 as amended — so it joins Recommended and Everything and is absent from Minimal, a git clone plus a `litellm[proxy]` venv not being what "the two already present" means. Evaluate has one candidate rather than two, because promptfoo needs a per-skill config file no skill carries — decision-log §10.
 
 Every preset includes vercel `skills`, because the release stage cannot run its installability gate without it.
 
-Doctor reports four drift kinds per tool: `missing` (in lock, absent on disk), `unverifiable` (present, will not run), `version-drift` (runs, reports a version other than `resolvedVersion`), and `unlocked` (installed under the tool root but absent from the lock). Three further conditions are reported and do not fail the report: `integrity-unverified`, a lock entry recording `integrity: "none"` per §5.2; `lifecycle-drift` per §13; and `rule-map-pending`, a ledger whose applied rule-map version trails the shipped one per §10.6. None means a tool cannot run. `rule-map-pending` is resolved by `skillgantry doctor --migrate-rule-map`, which is the explicit trigger R8.14 requires — the migration never runs as a side effect of opening the ledger.
+Doctor reports four drift kinds per tool: `missing` (in lock, absent on disk), `unverifiable` (present, will not run), `version-drift` (runs, reports a version other than `resolvedVersion`), and `unlocked` (installed under the tool root but absent from the lock). Three further conditions are reported and do not fail the report: `integrity-unverified`, a lock entry recording `integrity: "none"` per §5.2; `lifecycle-drift` per §13; `rule-map-pending`, a ledger whose applied rule-map version trails the shipped one per §10.6; `skillhone-deps`, a managed venv whose interpreter cannot import the bundle's requirements; and `claude-cli-missing`, no `claude` on PATH, which `claude-agent-sdk` shells out to, so its absence surfaces not at install time but as a `FileNotFoundError` at the optimisation loop's first run. The last two are R3.7's probe-and-report rule applied to a tool's own runtime dependency rather than to a host runtime: named, never installed. None means a tool cannot run. `rule-map-pending` is resolved by `skillgantry doctor --migrate-rule-map`, which is the explicit trigger R8.14 requires — the migration never runs as a side effect of opening the ledger.
 
 Doctor reads the skills it checks and the ledger's lifecycle column as data supplied by its caller, so `tools` needs neither discovery's I/O nor a sqlite dependency.
 
@@ -726,6 +733,18 @@ The prompt instructs the agent to judge each finding into one of three — corre
 **Suppressed findings are omitted, and their count is named** (R6.11). The table is built from `actionableFindings`, the survivors are numbered from 1, and one line says how many were left out and why. `buildFixPrompt` returns null when that set is empty, so a fully baselined stage writes no prompt at all. The one instruction a prompt must never give a coding agent is to fix the thing the user has already ruled on — and the omitted count is there so the agent is not left wondering why the tool report it is told to read first lists more findings than the table does. Sub-floor findings are not suppressed, so the paragraph above is untouched.
 
 **It is built from `input.skill`, never `ctx.skill`.** The prompt names where an agent should edit, and `ctx.skill` points into the mutation sandbox or into the materialised candidate's temp directory — neither of which exists after the run. The builder is a pure function in `stages`, which is the only module that adds no §3 edge: it already depends on `adapters` for the manifest lookup, and it already owns no I/O. `workspace` gets a four-line `writeFixPrompt` and no judgement, per §3's own rule that a module owning I/O does not own decisions.
+
+### 9.4a Optimise prompt
+
+*Satisfies R6.12.*
+
+The second coding-agent prompt composed from run evidence, and it lives in `stages` beside `fix-prompt.ts` even though optimise is no longer a stage: one module composing both is what keeps their shared rules — name the report rather than restate it, omit and count suppressed findings, forbid workspace writes — from becoming two divergent copies.
+
+**Its trigger is a user action, not a run**, so unlike §9.4 there is no file. The prompt is emitted to stdout headlessly and copied through OSC 52 in the terminal; nothing is written anywhere, which is the constraint R11.10 and R12.6 already share and for their reason. That is also why it returns a string always rather than §9.4's nullable: the trigger is a keystroke rather than a findings count, and a refusal is a flash rather than an absent document.
+
+The body names the skill directory, the repo root, the declared version, the commit and dirty flag and the skill digest; the newest recorded run's per-stage outcomes; **the absolute path of each tool's own report rather than a restatement of it**, §9.4's rule and for its reason, `RawFinding` being a closed six-field record; the eval assets found under `<skill>/evals/`; the managed interpreter, the SkillHone location and its sha; the handoff to the top-level `skillhone` skill, which dispatches to its own sub-skills; and the constraints — no write under `*-workspace/` or `.skillgantry-workspace/`, plus upstream's own notice that some of its workflows use bypass mode and local subprocess execution. A missing dependency and a missing `claude` CLI are named **before** the task, so a prompt is never handed over describing a loop that cannot start: that failure otherwise surfaces inside the agent's session rather than in the terminal that produced it. Absent evidence is stated rather than omitted — a section that vanishes reads as a builder that failed.
+
+**Suppressed findings are omitted and counted**, R6.11's rule reused verbatim and for its reason. **It is built from `input.skill`, never `ctx.skill`**, §9.4's rule: there is no run in flight here, but the prompt still names where an agent should edit, and a sandbox path does not survive to be edited. Its install argument is plain fields rather than a type imported from `tools`, so the builder adds no §3 edge — the property §9.4 records as the reason `fix-prompt.ts` lives in `stages` at all. `src/cli/gantry-views.ts` reads the lock and flattens it, which is where the ledger and the process table are already reachable.
 
 ## 10. Ledger
 
@@ -1257,7 +1276,7 @@ Specified in [design_tui.md](design_tui.md), which holds §14 through §14.6 und
 
 ## 15. Headless interface
 
-*Satisfies R12.1–R12.4, R12.5a, R12.5b, R12.6, R12.7.*
+*Satisfies R12.1–R12.4, R12.5a, R12.5b, R12.6, R12.7, R12.8.*
 
 ```
 skillgantry run <skill> --stage validate,evaluate,security [--json] [--yes]
@@ -1272,6 +1291,7 @@ skillgantry fix <skill> [--stage <stage>] [--run <id>] [--json]
 skillgantry suppress <skill> --tool <id> --rule <nativeRuleId> --path <skillRelPath>
                              --reason <text> [--yes] [--json]
 skillgantry suppress <skill> --fingerprint <fp> --reason <text> [--yes] [--json]
+skillgantry optimise <skill> [--json]
 skillgantry [--concurrency <n>]                    # no subcommand: the TUI
 ```
 
@@ -1290,6 +1310,8 @@ Every launch, headless or not, first scans for an unresolved mutation record and
 **Suppression reaches the headless surface additively.** `run --json` carries `ToolRunRecord` on `tool:done`, so each suppressed finding gains one optional key: no new event, no version bump. `RunDelta` is deliberately not extended — a `suppressed` counter would keep six files in step for a number the stage summary already puts on the rail and the Issues screen answers afterwards. `fix` gains one exit case: a run whose findings are all suppressed exits `1` saying so rather than `0` with an empty table, and `--json` reports `findings` (actionable) and `suppressed` as siblings.
 
 `suppress` writes one rule into the tool's own baseline through §12.5 (R12.7). It takes either an explicit `--tool`/`--rule`/`--path` triple or a `--fingerprint` it resolves against the ledger the way the Issues screen does. `--yes` is prior authorisation with the diff emitted to output immediately before the write, R12.4's rule for every mutating headless path; without it the diff prints, nothing is written, and the exit is non-zero. **Its exit code reports whether a suppression was written, never whether the skill passes** — `fix`'s precedent, for its reason: reusing R12.2's meaning would make a clean skill indistinguishable from a failed lookup. Distinct non-zero codes separate the cases a script would act on differently: a bad request, no detecting tool declaring a baseline, an entry already present, and authorisation withheld.
+
+`optimise` prints the §9.4a prompt for a named skill (R12.8). Its default output is the body alone, so `skillgantry optimise declawed | pbcopy` works, and `--json` prints one document carrying the body beside the missing-dependency list. It takes no run id and no stage, unlike `fix`: the prompt is about the skill's current state rather than about one recorded stage, and it resolves the newest run itself. **Its exit code answers "is there a prompt on stdout"** — `fix`'s divergence from R12.2, for its reason — so an uninstalled SkillHone exits non-zero naming the tool and the command that installs it, while a skill with no recorded run still exits `0` with a prompt that says so. It writes not one byte, which is R11.10's and R12.6's shared constraint: the pipeline stays the only writer under `runs/`.
 
 There is no `--then-run`, unlike §14.7's toggle. The shell composes `suppress && run`, and duplicating stage selection into a second command is how the two come to disagree.
 

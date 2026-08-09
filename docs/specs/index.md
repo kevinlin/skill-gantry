@@ -39,7 +39,7 @@ Which milestone owns which requirement is a separate question, answered only by 
 | [plan_m7-work-screen-navigation.md](plan_m7-work-screen-navigation.md) | M7 (extension) | Shipped | Work screen navigation and the detail view (R11.18, amended R11.11–R11.14): arrow aliases, a view-selection key that focuses the pane it names, the Issues tab's own cursor, the dashboard key on every Overview tier, and `enter` for a full-length finding or issue |
 | [plan_m8.md](plan_m8.md) | M8 | Shipped | Accept a finding from the terminal (R4.16, R8.16, R10.12, R11.16, R11.17, R12.7): a declarative baseline spec on the manifest, a narrow diff-confirm-recheck-rename write path, `s` on the Issues screen and the Findings pane, and the gate re-run the acceptance invalidates |
 
-| [plan_m9-skillhone-optimise.md](plan_m9-skillhone-optimise.md) | M9 | Design brief; tasks pending | SkillHone and the optimise action (R3.1, R3.5, R3.8, R6.12, R11.20, R11.21, R12.8): a `git-skill` install driver for a tool published as an agent-skill bundle, its managed venv and per-skill symlinks, and a rail mark that opens a coding-agent prompt built from recorded evidence instead of enqueuing a run |
+| [plan_m9-skillhone-optimise.md](plan_m9-skillhone-optimise.md) | M9 | In progress | SkillHone and the optimise action (R3.1, R3.5, R3.8, R6.12, R11.20, R11.21, R12.8): a `git-skill` install driver for a tool published as an agent-skill bundle, its managed venv and per-skill symlinks, and a rail mark that opens a coding-agent prompt built from recorded evidence instead of enqueuing a run |
 
 ## Reviews (historical)
 
