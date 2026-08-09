@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task by task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** designed, not started.
+**Status:** shipped.
 **Goal:** A maintainer who has judged a finding a false positive can accept it from the Issues screen or the Findings pane, see the exact bytes that will land in their repo before they land, and re-run the gates that the acceptance invalidated — without leaving the terminal and without hand-editing YAML.
 
 **Architecture:** One new declarative field on the adapter manifest, one new core module owning a narrow repo-write path, one new confirmation pane, one key on two existing surfaces, and one headless subcommand. The queue, the pipeline, the ledger schema and the run lifecycle are untouched: the re-run goes through the same `queue.enqueue` call `r` already makes.
@@ -2653,4 +2653,24 @@ git commit -m "test (m8): prove the written rule is one skillspector matches"
 
 ## Deviations found while implementing
 
-None yet — implementation has not started.
+Shipped as designed. Eight corrections the code forced, none of them to a decision.
+
+**Task 1: M5 owned the `R10` group token, so R10.12 was owned twice.** The plan said "no existing range widens", which is true of ranges and false of the group form: `R10` expands to every `R10.*`, so adding R10.12 gave it two owners and R13.7 failed the build. M5's cell is now `R10.1–R10.11`. The same trap is live for `R9` and for `R2`, which are also group tokens.
+
+**Task 3: `]` must not be glob-escaped.** The sketch's regex was `/[*?[\]]/g`, which turns `notes[1].md` into `notes[[]1[]].md` — a pattern for a filename with a `]` in it, matching nothing. `]` only terminates a class that is open, and every `[` is escaped, so no class is ever open when one is reached. The plan's own test asserted the correct answer; the implementation sketch beside it did not.
+
+**Task 5: the digest fixture is `makeRepo`, not a `fixtureSkill()` helper.** `tests/core/digest.test.ts` builds skills through `discoverSkills` over a `makeRepo` root and has no such helper. Followed the file.
+
+**Task 8: the CLI fixture must canonicalise its repo path.** §4.1 canonicalises on registration, so on macOS the registered path is `/private/var/...` while the raw `mkdtemp` path is `/var/...`, and a fixture built from the latter disagrees with the skill the command resolves. `realpath` in the harness.
+
+**Task 9: `DiffBody` returns rows and a hidden count, and the pane title names the finding.** The sketch's `DiffBody` returned rows alone, but `ReviewPane` renders `N hidden` in its own footer, so the extraction had to hand back what it dropped or that footnote would have been lost. And the title carries the finding's path, per §14.7's frame — the baseline's filename is already in the diff's `---`/`+++` headers, which the plan's test fixture omitted.
+
+**Task 10: `resumedGates` takes the rail's record, not an array.** `SkillRow.stages` is `Record<Stage, StageCell>`. Indexing by stage name rather than by position is also the safer shape: the positional version silently depended on `GATE_STAGES` and `STAGE_ORDER` agreeing on their first three entries.
+
+**Task 11: the reason buffer needs a ref mirror.** `app.tsx` already mirrors the palette query and the value editor outside React, because React batches the dispatches from several keypresses delivered in one tick and reading state loses every character but the last. A reason editor reading `slot.reason` had exactly that bug. `reasonRef` follows the reducer, which stays the authority for whether the editor is open.
+
+Task 11 also resolved the plan's own internal disagreement: Step 3's `begin-suppress` carried `{toolId, relPath, reason}` while Step 5's dispatch also passed a `request`. Step 5 is right — §14.7 requires the request to survive the editing step — so the action carries the `SuppressionRequest` alongside the two display fields.
+
+**Task 13: `pnpm test:integration` names its files explicitly.** Adding the file to `vitest.config.ts`'s `INTEGRATION` list only stops the default run from picking it up; the script had to name it too, or the one test that reaches a real binary would never have run in the tier built for it.
+
+**Two tests added beyond the plan.** `tests/tui/suppress-surfaces.test.tsx` drives `s` through the whole app from both surfaces — nothing else proved the key reaches the pane, that the preview waits for the reason, or that an empty reason is refused at the keyboard rather than only in the reducer. And the integration test was checked by inverting `skillRelative` to write the repo-relative path: it fails on exactly the assertion it exists for, which is the difference between a passing test and a test that would catch the bug.

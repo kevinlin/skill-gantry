@@ -4,7 +4,7 @@ import { defineConfig } from 'vitest/config'
  * Two opt-in suites keep the default run offline and fast: the install driver
  * reaches a real package index, and the acceptance suite drives the whole CLI.
  */
-const INTEGRATION = ['tests/core/install.test.ts']
+const INTEGRATION = ['tests/core/install.test.ts', 'tests/core/suppress-integration.test.ts']
 const ACCEPTANCE = ['tests/acceptance/**']
 
 export default defineConfig({
