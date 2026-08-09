@@ -65,6 +65,8 @@ export interface FakeViews extends GantryViews {
   readonly suppressResolutions: Array<'apply' | 'discard'>
   /** Skill ids the release surface pre-flighted, in order. */
   readonly releasePlans: string[]
+  /** Skill ids the optimise surface pre-flighted, in order. */
+  readonly optimisePlans: string[]
 }
 
 /**
@@ -83,12 +85,14 @@ export function fakeViews(
   const suppressions: SuppressionRequest[] = []
   const suppressResolutions: Array<'apply' | 'discard'> = []
   const releasePlans: string[] = []
+  const optimisePlans: string[] = []
   return {
     actions,
     opened,
     suppressions,
     suppressResolutions,
     releasePlans,
+    optimisePlans,
     openPath: async (path) => {
       opened.push(path)
     },
@@ -111,6 +115,12 @@ export function fakeViews(
       const skill = releaseSkills.find((candidate) => candidate.id === skillId)
       if (skill === undefined) throw new Error(`no skill ${skillId}`)
       return { skill, dirty: [] }
+    },
+    planOptimise: async (skillId) => {
+      optimisePlans.push(skillId)
+      const skill = releaseSkills.find((candidate) => candidate.id === skillId)
+      if (skill === undefined) throw new Error(`no skill ${skillId}`)
+      return { skill, prompt: `# Optimise: ${skill.name}\n\n- Skill directory: \`${skill.dir}\`\n`, missing: [] }
     },
     planSuppression: async (request) => {
       suppressions.push(request)

@@ -267,6 +267,8 @@ export interface GantryViews {
    * paths and the stage re-checks every precondition against the live tree.
    */
   planRelease(skillId: string): Promise<ReleasePreviewView>
+  /** R11.21's pre-flight, read when the surface opens. Rejects when SkillHone is not locked. */
+  planOptimise(skillId: string): Promise<OptimisePreviewView>
   /** Rechecks the preimage and renames. Rejects with `preimage-drift` on drift. */
   applySuppression(): Promise<void>
   /** Removes the staged temp file. Safe to call when nothing is staged. */
@@ -305,4 +307,17 @@ export interface ReleasePreviewView {
    * screen. Empty for a non-git repo, which has no working tree to be dirty in.
    */
   dirty: readonly string[]
+}
+
+/**
+ * R11.21's pre-flight. The port returns the finished body rather than its
+ * ingredients: assembling it needs the lock, `git status` and the sidecar, and
+ * `src/tui/**` may not spawn for the first two. The pane renders; it decides
+ * nothing — `planRelease` and `planSuppression` are the precedent in both
+ * shape and reason.
+ */
+export interface OptimisePreviewView {
+  skill: SkillRef
+  prompt: string
+  missing: readonly string[]
 }
