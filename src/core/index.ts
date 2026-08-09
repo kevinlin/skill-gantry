@@ -65,15 +65,23 @@ export {
   CATALOGUE,
   PRESETS,
   RELEASE_TOOL_ID,
+  SKILLHONE_TOOL_ID,
   catalogueEntry,
   catalogueIds,
   expandPreset,
   toolsForStage,
+  type GitSkillSpec,
   type PresetName,
   type Runtime,
   type ToolSpec,
 } from './tools/catalogue.js'
 export { installTool, toolRoot, verifyTool } from './tools/install.js'
+export {
+  RUNTIME_SKILL_DIRS,
+  detectSkillDirs,
+  gitSkillUninstall,
+  type GitSkillInstall,
+} from './tools/git-skill.js'
 export {
   INSTALL_COMMAND,
   probeRuntimes,

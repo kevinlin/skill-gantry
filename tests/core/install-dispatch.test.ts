@@ -60,4 +60,46 @@ describe('installTool', () => {
     )
     expect((await loadToolLock(h)).tools['skill-lint']).toBeUndefined()
   })
+
+  it('locks a git-skill install by its sha and records its links', async () => {
+    const h = await home()
+    const userHome = await mkdtemp(join(tmpdir(), 'sg-userhome-'))
+    await mkdir(join(userHome, '.agents', 'skills'), { recursive: true })
+    const sha = 'c'.repeat(40)
+    const exec: Exec = async (bin, argv) => {
+      if (bin === 'git' && argv[0] === 'clone') {
+        const repoDir = argv[2] as string
+        await mkdir(join(repoDir, 'skills', 'skillhone'), { recursive: true })
+        await writeFile(join(repoDir, 'skills', 'skillhone', 'SKILL.md'), '---\n---\n')
+      }
+      if (argv.includes('rev-parse')) return { stdout: `${sha}\n`, stderr: '' }
+      return { stdout: '', stderr: '' }
+    }
+
+    const entry = await installTool(
+      h,
+      {
+        id: 'skillhone',
+        displayName: 'SkillHone',
+        stage: null,
+        runtime: 'uv',
+        install: {
+          kind: 'git-skill',
+          repo: 'Tencent/SkillHone',
+          pin: sha,
+          skills: ['skillhone'],
+          requirements: 'skills/skillhone/assets/requirements.txt',
+        },
+        versionArgv: [],
+      },
+      { exec, userHome },
+    )
+
+    expect(entry.installKind).toBe('git-skill')
+    // The sha, not a semver: `verifyTool` is bypassed entirely for this kind.
+    expect(entry.resolvedVersion).toBe(sha)
+    expect(entry.bin).toBe(join(toolRoot(h), 'skillhone', '.venv', 'bin', 'python'))
+    expect(entry.integrity).toBe('n/a')
+    expect(entry.links).toEqual([join(userHome, '.agents', 'skills', 'skillhone')])
+  })
 })

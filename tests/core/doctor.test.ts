@@ -6,8 +6,9 @@ import { RULE_CLASS_MAP_VERSION } from '../../src/core/adapters/rule-classes.js'
 import { saveToolLock } from '../../src/core/config/config.js'
 import type { ToolLockEntry } from '../../src/core/config/schema.js'
 import { discoverSkills } from '../../src/core/discovery/discover.js'
-import { CATALOGUE } from '../../src/core/tools/catalogue.js'
+import { CATALOGUE, SKILLHONE_TOOL_ID } from '../../src/core/tools/catalogue.js'
 import { doctor } from '../../src/core/tools/doctor.js'
+import type { Exec } from '../../src/core/tools/exec.js'
 import { toolRoot } from '../../src/core/tools/install.js'
 import { runtimesFor } from '../../src/core/tools/runtimes.js'
 import { makeRepo, SKILL_MD } from '../helpers/tmp-repo.js'
@@ -145,5 +146,74 @@ describe('doctor', () => {
     await saveToolLock(h, { version: 1, tools: {} })
     const report = await doctor({ home: h, skills: [], ledgerLifecycle: new Map(), ruleMap: CURRENT })
     expect(report.tools.some((t) => t.kind === 'rule-map-pending')).toBe(false)
+  })
+})
+
+describe('doctor on a git-skill bundle', () => {
+  const SHA = 'c'.repeat(40)
+
+  /** A locked bundle whose clone, link and interpreter all resolve. */
+  const seedGitSkillLock = async (h: string): Promise<string> => {
+    const dir = join(toolRoot(h), SKILLHONE_TOOL_ID)
+    await mkdir(join(dir, 'repo'), { recursive: true })
+    const link = join(dir, 'repo', 'skills', 'skillhone')
+    await mkdir(link, { recursive: true })
+    const bin = await fakeBin(join(dir, '.venv', 'bin'), 'python', 'echo "Python 3.13.0"')
+    await saveToolLock(h, {
+      version: 1,
+      tools: {
+        [SKILLHONE_TOOL_ID]: entry({
+          installKind: 'git-skill',
+          requestedPin: SHA,
+          resolvedVersion: SHA,
+          bin,
+          links: [link],
+        }),
+      },
+    })
+    return bin
+  }
+
+  it('names a missing claude CLI without offering to install it', async () => {
+    const h = await home()
+    await seedGitSkillLock(h)
+    const exec: Exec = async (bin, argv) => {
+      if (bin === 'command' || bin === 'which') throw new Error('not found')
+      if (argv.includes('rev-parse')) return { stdout: `${SHA}\n`, stderr: '' }
+      return { stdout: '', stderr: '' }
+    }
+
+    const report = await doctor({
+      home: h,
+      skills: [],
+      ledgerLifecycle: new Map(),
+      ruleMap: CURRENT,
+      exec,
+    })
+
+    const finding = report.tools.find((row) => row.kind === 'claude-cli-missing')
+    expect(finding?.detail).toContain('npm install -g @anthropic-ai/claude-code')
+    // R3.7's rule, applied to a tool's own runtime dependency: reported, never
+    // installed, and never a reason the report fails.
+    expect(report.failed).toBe(false)
+  })
+
+  it('reports a HEAD moved off the pin as version drift, not as missing', async () => {
+    const h = await home()
+    await seedGitSkillLock(h)
+    const exec: Exec = async (_bin, argv) =>
+      argv.includes('rev-parse')
+        ? { stdout: `${'d'.repeat(40)}\n`, stderr: '' }
+        : { stdout: '', stderr: '' }
+
+    const report = await doctor({
+      home: h,
+      skills: [],
+      ledgerLifecycle: new Map(),
+      ruleMap: CURRENT,
+      exec,
+    })
+
+    expect(report.tools.find((row) => row.toolId === SKILLHONE_TOOL_ID)?.kind).toBe('version-drift')
   })
 })

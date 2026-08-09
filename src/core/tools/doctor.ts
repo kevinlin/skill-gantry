@@ -4,8 +4,10 @@ import { loadToolLock } from '../config/config.js'
 import { parseFrontmatter } from '../discovery/frontmatter.js'
 import type { LifecycleState } from '../ledger/lifecycle.js'
 import type { SkillRef } from '../types.js'
-import { CATALOGUE, catalogueEntry } from './catalogue.js'
-import type { Exec } from './exec.js'
+import type { ToolLockEntry } from '../config/schema.js'
+import { CATALOGUE, SKILLHONE_TOOL_ID, catalogueEntry } from './catalogue.js'
+import { type Exec, defaultExec } from './exec.js'
+import { verifyGitSkill } from './git-skill.js'
 import { toolRoot, verifyTool } from './install.js'
 import { type RuntimeStatus, probeRuntimes, runtimesFor } from './runtimes.js'
 
@@ -17,6 +19,10 @@ export type ToolDriftKind =
   | 'unlocked'
   | 'integrity-unverified'
   | 'rule-map-pending'
+  // R3.7's probe-and-report rule, extended from a host runtime to a tool's own
+  // runtime dependency: named, never installed, never failing the report.
+  | 'skillhone-deps'
+  | 'claude-cli-missing'
 
 /** The four kinds R3.9 names are the ones that fail the report. */
 const FAILING: ReadonlySet<ToolDriftKind> = new Set<ToolDriftKind>([
@@ -80,10 +86,37 @@ async function installedDirs(home: string): Promise<string[]> {
 
 async function checkLockedTool(
   toolId: string,
-  bin: string,
-  expected: string,
-  integrity: string,
+  entry: ToolLockEntry,
+  home: string,
+  exec: Exec,
 ): Promise<Pick<ToolFinding, 'kind' | 'actualVersion' | 'detail'>> {
+  // Three facts rather than a version argv — §5.2 — because `verifyTool`'s
+  // semver regex rejects a commit sha and a skill bundle answers no argv.
+  if (entry.installKind === 'git-skill') {
+    try {
+      const sha = await verifyGitSkill(
+        join(toolRoot(home), toolId),
+        entry.links ?? [],
+        entry.resolvedVersion,
+        exec,
+      )
+      return { kind: 'ok', actualVersion: sha, detail: '' }
+    } catch (err) {
+      const message = (err as Error).message
+      // A moved HEAD is drift the user can reconcile; a dangling link or a dead
+      // interpreter is a bundle that cannot be used at all.
+      if (message.includes('HEAD is')) {
+        return { kind: 'version-drift', actualVersion: null, detail: message }
+      }
+      return {
+        kind: message.includes('does not resolve') ? 'missing' : 'unverifiable',
+        actualVersion: null,
+        detail: message,
+      }
+    }
+  }
+
+  const { bin, resolvedVersion: expected, integrity } = entry
   if (!(await isFile(bin))) {
     return { kind: 'missing', actualVersion: null, detail: `${bin} is gone` }
   }
@@ -141,10 +174,42 @@ async function lifecycleDrift(
 export async function doctor(input: DoctorInput): Promise<DoctorReport> {
   const lock = await loadToolLock(input.home)
 
+  const exec = input.exec ?? defaultExec
+
   const tools: ToolFinding[] = []
   for (const [toolId, entry] of Object.entries(lock.tools)) {
-    const checked = await checkLockedTool(toolId, entry.bin, entry.resolvedVersion, entry.integrity)
+    const checked = await checkLockedTool(toolId, entry, input.home, exec)
     tools.push({ toolId, expectedVersion: entry.resolvedVersion, ...checked })
+  }
+
+  const bundle = lock.tools[SKILLHONE_TOOL_ID]
+  if (bundle) {
+    // R3.7's rule extended from host runtimes to a tool's own runtime
+    // dependency: probed and named, never installed, never failing the report.
+    try {
+      await exec(bundle.bin, ['-c', 'import git, yaml, litellm'])
+    } catch {
+      tools.push({
+        toolId: SKILLHONE_TOOL_ID,
+        kind: 'skillhone-deps',
+        expectedVersion: null,
+        actualVersion: null,
+        detail: 're-run `skillgantry setup` to rebuild the managed venv',
+      })
+    }
+    try {
+      await exec('command', ['-v', 'claude'])
+    } catch {
+      tools.push({
+        toolId: SKILLHONE_TOOL_ID,
+        kind: 'claude-cli-missing',
+        expectedVersion: null,
+        actualVersion: null,
+        detail:
+          'claude-agent-sdk shells out to it, so optim.py fails at first run — ' +
+          'npm install -g @anthropic-ai/claude-code',
+      })
+    }
   }
 
   for (const dir of await installedDirs(input.home)) {
@@ -173,7 +238,7 @@ export async function doctor(input: DoctorInput): Promise<DoctorReport> {
   }
 
   return {
-    runtimes: await probeRuntimes(runtimesFor(CATALOGUE), input.exec),
+    runtimes: await probeRuntimes(runtimesFor(CATALOGUE), exec),
     tools,
     lifecycle: await lifecycleDrift(input.skills, input.ledgerLifecycle),
     failed: tools.some((finding) => FAILING.has(finding.kind)),

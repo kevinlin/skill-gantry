@@ -1,11 +1,13 @@
 import { execFile } from 'node:child_process'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { loadToolLock, saveToolLock } from '../config/config.js'
 import type { ToolLockEntry } from '../config/schema.js'
 import type { ToolSpec } from './catalogue.js'
-import type { Exec } from './exec.js'
+import { type Exec, defaultExec } from './exec.js'
 import { type GhReleaseOptions, ghReleaseInstall } from './gh-release.js'
+import { gitSkillInstall } from './git-skill.js'
 import { npmInstall } from './npm.js'
 import { type UvInstallSpec, uvInstall } from './uv.js'
 
@@ -37,6 +39,8 @@ export async function verifyTool(
 
 export interface InstallToolOptions extends GhReleaseOptions {
   exec?: Exec
+  /** Where `git-skill` looks for runtime skills directories; tests point it at a temp home. */
+  userHome?: string
 }
 
 /** Where a driver placed the executable, and what integrity it could prove. */
@@ -44,7 +48,7 @@ async function drive(
   dir: string,
   spec: ToolSpec,
   options: InstallToolOptions,
-): Promise<{ bin: string; integrity: string }> {
+): Promise<{ bin: string; integrity: string; links?: string[]; resolvedVersion?: string }> {
   switch (spec.install.kind) {
     case 'uv-tool':
       return {
@@ -60,6 +64,17 @@ async function drive(
       }
     case 'gh-release':
       return ghReleaseInstall(dir, { id: spec.id, ...spec.install }, options)
+    case 'git-skill': {
+      // git's own object hashing is the integrity check, so there is nothing
+      // for us to re-verify — the same reasoning `uv-tool` records.
+      const out = await gitSkillInstall(
+        dir,
+        { id: spec.id, ...spec.install },
+        options.exec ?? defaultExec,
+        options.userHome ?? homedir(),
+      )
+      return { integrity: 'n/a', bin: out.bin, links: out.links, resolvedVersion: out.sha }
+    }
   }
 }
 
@@ -69,10 +84,13 @@ export async function installTool(
   options: InstallToolOptions = {},
 ): Promise<ToolLockEntry> {
   const dir = join(toolRoot(home), spec.id)
-  const { bin, integrity } = await drive(dir, spec, options)
+  const { bin, integrity, links, resolvedVersion: driven } = await drive(dir, spec, options)
   const installedAt = new Date().toISOString()
 
-  const resolvedVersion = await verifyTool({ bin }, spec.versionArgv)
+  // A skill bundle has no executable that answers a version argv, so the driver
+  // resolves its own identity — the commit sha — and `verifyTool`'s semver
+  // regex is bypassed rather than loosened for every other tool.
+  const resolvedVersion = driven ?? (await verifyTool({ bin }, spec.versionArgv))
 
   const entry: ToolLockEntry = {
     installKind: spec.install.kind,
@@ -80,6 +98,7 @@ export async function installTool(
     resolvedVersion,
     bin,
     integrity,
+    ...(links ? { links } : {}),
     installedAt,
     verifiedAt: new Date().toISOString(),
   }

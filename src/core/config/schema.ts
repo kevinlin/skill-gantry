@@ -36,6 +36,8 @@ export const toolLockEntrySchema = z.object({
   bin: z.string().min(1),
   /** 'n/a' when the package manager verified its own download, else 'sha256:…' or 'none'. */
   integrity: z.string().min(1).default('n/a'),
+  /** Absolute symlink paths a `git-skill` install created, so uninstall removes exactly them. */
+  links: z.array(z.string()).optional(),
   installedAt: z.string(),
   verifiedAt: z.string().nullable(),
 })
