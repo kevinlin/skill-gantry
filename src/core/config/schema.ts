@@ -28,7 +28,9 @@ export const configSchema = z.object({
 export type GantryConfig = z.infer<typeof configSchema>
 
 export const toolLockEntrySchema = z.object({
-  installKind: z.enum(['uv-tool', 'npm-prefix', 'gh-release']),
+  // Additive: a lock written before `git-skill` existed still parses, so
+  // `toolLockSchema.version` stays at 1.
+  installKind: z.enum(['uv-tool', 'npm-prefix', 'gh-release', 'git-skill']),
   requestedPin: z.string(),
   resolvedVersion: z.string(),
   bin: z.string().min(1),

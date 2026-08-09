@@ -3,6 +3,7 @@ import {
   CATALOGUE,
   PRESETS,
   RELEASE_TOOL_ID,
+  SKILLHONE_TOOL_ID,
   catalogueEntry,
   catalogueIds,
   expandPreset,
@@ -20,7 +21,10 @@ describe('catalogue', () => {
     for (const spec of CATALOGUE) {
       expect(['uv', 'npm', 'none']).toContain(spec.runtime)
       expect(spec.install.pin.length).toBeGreaterThan(0)
-      expect(spec.versionArgv.length).toBeGreaterThan(0)
+      // A `git-skill` bundle is the one kind with nothing to invoke, so it
+      // verifies by §5.2's three facts instead. Asserting an argv it can never
+      // answer would make the invariant describe a tool rather than a rule.
+      if (spec.install.kind !== 'git-skill') expect(spec.versionArgv.length).toBeGreaterThan(0)
       expect(spec.displayName.length).toBeGreaterThan(0)
     }
   })
@@ -74,5 +78,30 @@ describe('presets', () => {
 
   it('offers per-stage choice', () => {
     expect(toolsForStage('security').map((s) => s.id)).toContain('skillspector')
+  })
+})
+
+describe('the skillhone entry', () => {
+  it('is installable but selectable by no stage', () => {
+    const spec = catalogueEntry(SKILLHONE_TOOL_ID)
+    expect(spec?.install.kind).toBe('git-skill')
+    // R3.5b: an id the adapter registry does not hold fails every run of the
+    // stage that selects it, so a bundle with no parser must reach no stage.
+    expect(spec?.stage).toBeNull()
+    expect(spec?.versionArgv).toEqual([])
+  })
+
+  it('pins a commit sha, because upstream publishes no tags', () => {
+    const spec = catalogueEntry(SKILLHONE_TOOL_ID)
+    if (spec?.install.kind !== 'git-skill') throw new Error('wrong kind')
+    expect(spec.install.pin).toMatch(/^[0-9a-f]{40}$/)
+    expect(spec.install.skills).toContain('skillhone-optimization')
+    expect(spec.install.requirements).toBe('skills/skillhone/assets/requirements.txt')
+  })
+
+  it('joins Recommended and Everything but not Minimal', () => {
+    expect(PRESETS.minimal).not.toContain(SKILLHONE_TOOL_ID)
+    expect(PRESETS.recommended).toContain(SKILLHONE_TOOL_ID)
+    expect(PRESETS.everything).toContain(SKILLHONE_TOOL_ID)
   })
 })
