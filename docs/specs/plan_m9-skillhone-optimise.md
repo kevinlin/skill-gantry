@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task.
 
-**Status:** revision 1, design brief. Written against [design.md](design.md), [design_tui.md](design_tui.md) and [requirements.md](requirements.md) as of shipped M8. The task breakdown is added by `superpowers:writing-plans`; everything above it is settled.
+**Status:** revision 1, shipped. Written against [design.md](design.md), [design_tui.md](design_tui.md) and [requirements.md](requirements.md) as of shipped M8. The task breakdown is added by `superpowers:writing-plans`; everything above it is settled.
 
 **Goal:** Give the optimise stage something behind it. SkillHone becomes the catalogue's first non-CLI entry — a bundle of agent skills installed by clone and per-skill symlink, with its Python dependencies isolated in a managed venv. Marking `optimise` on the rail then opens a surface that hands the maintainer a coding-agent prompt built from the skill's recorded evidence. SkillGantry installs and composes; it never runs the loop and never applies its result.
 
@@ -2176,6 +2176,21 @@ that writes nothing, and the prompt's suppression rule."
 - **An unmanaged pre-existing install reports weakly** — installed, no sha, no drift detection. See §2.
 - **R13.7's mechanical coverage check still does not exist.** Carried since M3; this milestone edits the ownership table by hand like every one before it.
 
+## Deviations found while implementing
+
+- **The M9 ownership row claims only the new ids.** The brief listed R3.1, R3.5, R3.8 and R11.20 beside R6.12, R11.21 and R12.8, but those four are owned by M1, M3, M3 and M5, and `tests/specs/traceability.test.ts` fails a requirement claimed twice. Amending a requirement in place does not move its owner — that is what "amended in place" means — so the row is `R6.12, R11.21, R12.8`.
+- **A sixth catalogue entry broke the wizard's row budget.** `Setup` rendered the whole catalogue and the whole selection unwindowed, so the frame reached 15 rows on a 50×14 terminal — §14.1's first rule, failing in `tests/tui/layout.test.tsx`. `setupBodyRows(rows, extras)` in `layout.ts` now decides the budget and both lists window against it with a counted footnote. The wizard had simply never had enough entries to overflow before.
+- **`catalogue.test.ts`'s "every entry has a version argv" invariant is now conditional.** A `git-skill` bundle answers no argv by construction, which is the whole reason §5.2 verifies it by three facts, so asserting one would make the invariant describe a tool rather than a rule.
+- **`stageToolsFor` takes an injected `isRunnable`.** The brief's wizard test called it with one argument. It is asserted with the permissive predicate instead, which is the stronger claim: `stage: null` keeps SkillHone out even where the runnable filter would not have caught it.
+- **`RawFinding.suppressed` is `{ justification }`, not a boolean.** The brief's prompt fixture used `suppressed: false` / `true`; absent means unsuppressed, so both would have counted as suppressed and the actionable table would have been empty.
+- **Link presence is checked with `lstat`, not `stat`.** A dangling symlink still occupies the name, so `symlink()` over it throws `EEXIST`; checking through `stat` would have skipped it and turned a link we could replace into a failed install.
+- **`checkLockedTool` takes the whole lock entry.** As the brief predicted, its four scalars could not express the branch — it needs `installKind` and `links`.
+- **`state.flash` is a plain string.** The brief's render branch read `state.flash?.message`.
+- **The `SG_INTEGRATION` loop over `CATALOGUE` needed a redirected `userHome`.** `git-skill` is the one kind that writes outside the tool root, and the loop would otherwise have put real symlinks in the machine's own `~/.claude/skills`.
+- **`makeCliFixture` did not exist** and was written in Task 6, as the brief allowed for.
+- **The R11.20 case in `release-target.test.tsx` was amended, not deleted.** It still proves the mark does not land; what changed is which refusal it names.
+
 ## Changelog
 
+- 2026-08-10 — revision 1, shipped. Eight tasks, `pnpm check` green: 1102 unit tests, 52 acceptance.
 - 2026-08-09 — revision 1, design brief. Written after reading `Tencent/SkillHone` at `7d56583`, its install guide, its requirements file and the `skillhone-optimization` skill. Task breakdown pending `superpowers:writing-plans`.
