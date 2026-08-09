@@ -1,4 +1,4 @@
-# M8 extension — Work screen navigation and the detail view
+# M7 extension — Work screen navigation and the detail view
 
 > **For agentic workers:** REQUIRED SUB-SKILL: use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task by task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -9,7 +9,7 @@
 
 ## Specification
 
-Layer 1: [requirements.md](requirements.md) — one new id, R11.18, and rev-15 amendments in place to R11.11, R11.12, R11.13 and R11.14. R11.18 is owned by M8's row in § Milestone ownership.
+Layer 1: [requirements.md](requirements.md) — one new id, R11.18, and rev-15 amendments in place to R11.11, R11.12, R11.13 and R11.14. R11.18 is owned by M7's row in § Milestone ownership.
 Layer 2: [design_tui.md](design_tui.md) new §14.8, amended §14.2 and §14.6; [design.md](design.md) §17, §18.
 Decisions: none new. The three the grilling settled that are not already in a `D*` are recorded under Decisions below.
 
@@ -67,11 +67,11 @@ export function issueDetailRows(row: IssueRow, width: number): ScreenRow[]
 
 | Document | Edit |
 |---|---|
-| requirements.md | rev-15 preamble line; four in-place amendments; R11.18; M8's ownership row and exit criteria |
+| requirements.md | rev-15 preamble line; four in-place amendments; R11.18; M7's ownership row and exit criteria |
 | design_tui.md | new §14.8; §14.2 precedence gains the detail view; §14.6 gains the digit-focus rule, the arrow aliases, the compact-tier link and the Issues cursor split |
-| design.md | §17 claims §14.8; §18 gains an "M8 extension" row |
-| index.md | row for this plan; plan_m8.md's status; two pre-existing catalogue defects fixed — the `plan-m6-settings-edit.md` dead link and the orphan `plan_m2-rehydrate-the-last-recorded-run.md` |
-| plan_m8.md | `## Changelog` pointing here |
+| design.md | §17 claims §14.8; §18 gains an "M7 extension" row |
+| index.md | row for this plan; plan_m7.md's status; two pre-existing catalogue defects fixed — the `plan-m6-settings-edit.md` dead link and the orphan `plan_m2-rehydrate-the-last-recorded-run.md` |
+| plan_m7.md | `## Changelog` pointing here |
 
 ## Testing
 

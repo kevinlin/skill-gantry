@@ -2677,4 +2677,4 @@ Task 11 also resolved the plan's own internal disagreement: Step 3's `begin-supp
 
 ## Changelog
 
-- 2026-08-09 — **Extended.** [plan_m8-work-screen-navigation.md](plan_m8-work-screen-navigation.md) adds R11.18 and amends R11.11–R11.14 in place: the Work screen's navigation, and the full-length view a pane bound by §14.1's allocation cannot be. Nothing in this plan's write path, manifest field or headless command is touched.
+(none)
