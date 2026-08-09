@@ -671,10 +671,6 @@ export function overviewRows(
     line('loading…', { dim: true })
     return rows
   }
-  if (stats.runs === 0) {
-    line('no runs recorded yet', { dim: true })
-    return rows
-  }
 
   // Both derived from the width, and derived so the row *fits* it: the row is
   // `label · bar · pct`, which is `labelWidth + cells + 8` cells, and reserving
@@ -684,19 +680,23 @@ export function overviewRows(
   // no longer shows a proportion.
   const labelWidth = width >= 24 ? 8 : 3
   const cells = Math.max(4, Math.min(10, width - labelWidth - 8))
-  for (const row of stats.stagePassRates) {
+  const gateBar = (stage: string, rate: number | null): void => {
     line(
-      `${row.stage.slice(0, labelWidth).padEnd(labelWidth)} ${bar(row.rate, cells)} ${pct(
-        row.rate,
-      ).padStart(4)}`,
-      {
-        // A literal fallback, not `colour: undefined`: `exactOptionalPropertyTypes`
-        // rejects an explicit undefined for an optional prop, and an indexed read
-        // of the map is `string | undefined` under `noUncheckedIndexedAccess`.
-        colour:
-          OUTCOME_COLOUR[row.rate >= 0.6 ? 'passed' : row.rate >= 0.25 ? 'errored' : 'failed'] ??
-          STATUS.muted,
-      },
+      `${stage.slice(0, labelWidth).padEnd(labelWidth)} ${bar(rate ?? 0, cells)} ${(rate === null ? '—' : pct(rate)).padStart(4)}`,
+      // `—` and not `0%`, dim and not red: a stage nobody has run has no pass
+      // rate, which is a different fact from a stage that fails everything —
+      // the distinction `bar` already exists to protect, and `failed`'s red
+      // over an untouched gate is that same lie in colour.
+      rate === null
+        ? { dim: true }
+        : {
+            // A literal fallback, not `colour: undefined`: `exactOptionalPropertyTypes`
+            // rejects an explicit undefined for an optional prop, and an indexed read
+            // of the map is `string | undefined` under `noUncheckedIndexedAccess`.
+            colour:
+              OUTCOME_COLOUR[rate >= 0.6 ? 'passed' : rate >= 0.25 ? 'errored' : 'failed'] ??
+              STATUS.muted,
+          },
     )
   }
   // On every tier that renders, not the largest alone (R11.12, rev 15): the key
@@ -705,23 +705,49 @@ export function overviewRows(
   // rows above open with counts — `2 low`, `med evaluate 26.5s` — and a bare
   // leading digit in that column is read as one more of them.
   const dashboardLink = (): void => line('[0] full dashboard →', { colour: ACCENT })
-  if (tier === 'compact') {
-    dashboardLink()
-    return rows
-  }
 
-  line(
-    stats.openBySeverity.length === 0
-      ? 'no open issues'
-      : stats.openBySeverity.map((row) => `${row.count} ${row.severity}`).join(' · '),
-    { dim: true },
-  )
-  const slowest = [...stats.wallClock].sort((a, b) => (b.medianMs ?? 0) - (a.medianMs ?? 0))[0]
-  // `med` rather than `median`: the full word pushed the row past an 18-cell
-  // inner width and the duration — the datum — was what got cut.
-  line(slowest === undefined ? '' : `med ${slowest.stage} ${humanMs(slowest.medianMs)}`, {
-    dim: true,
-  })
+  // One bar per gate, driven by `GATE_STAGES` rather than by the rows the
+  // ledger happens to hold: `stagePassRates` omits a stage nobody has run and
+  // includes `optimise`/`release` once somebody has, so iterating it emitted
+  // anywhere from one to five bars into a tier allocated exactly three. That is
+  // the silent under-fill `OVERVIEW_ROWS` is asserted against — and it is the
+  // same gap the empty card had, which is why both are now the one loop.
+  const rateFor = new Map(stats.stagePassRates.map((row) => [row.stage, row.rate]))
+  for (const stage of GATE_STAGES) gateBar(stage, rateFor.get(stage) ?? null)
+
+  if (tier === 'full') {
+    if (stats.runs === 0) {
+      // The tier has already been allocated these rows, and one dim line left
+      // the rest of them blank on the one screen a new maintainer meets first —
+      // while dropping `[0]`, the only key this card advertises, exactly when
+      // they are newest. `SkillList` and `QueuePanel` both name the next
+      // keystroke when they are empty; this card was the one that went quiet.
+      //
+      // Phrased to the column rather than truncated into it, for the reason the
+      // bar's label shortens first — and the clause leads, for the reason the
+      // landing flash puts its verdict before its path: `truncate` cuts from
+      // the end, so `4 skills · nothing ru…` loses the fact the row exists to
+      // state while `no runs · 100 sk…` keeps it. The card's inner width runs
+      // from 18 cells (the 22-cell list column the whole 76–109 band uses) to
+      // 30, which is why the keys have one phrasing and it is the footer's own.
+      const skills = `${stats.skills} skill${stats.skills === 1 ? '' : 's'}`
+      line(width >= 26 ? `nothing run yet · ${skills}` : `no runs · ${skills}`, { dim: true })
+      line('space mark · r run', { dim: true })
+    } else {
+      line(
+        stats.openBySeverity.length === 0
+          ? 'no open issues'
+          : stats.openBySeverity.map((row) => `${row.count} ${row.severity}`).join(' · '),
+        { dim: true },
+      )
+      const slowest = [...stats.wallClock].sort((a, b) => (b.medianMs ?? 0) - (a.medianMs ?? 0))[0]
+      // `med` rather than `median`: the full word pushed the row past an 18-cell
+      // inner width and the duration — the datum — was what got cut.
+      line(slowest === undefined ? '' : `med ${slowest.stage} ${humanMs(slowest.medianMs)}`, {
+        dim: true,
+      })
+    }
+  }
   dashboardLink()
   return rows
 }

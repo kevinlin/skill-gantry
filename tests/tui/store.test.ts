@@ -538,6 +538,10 @@ describe('set-last-run — R11.10', () => {
       running: false,
       summary: '1 finding',
       findings: 1,
+      // A recorded run's per-stage start is not in `index.ndjson`, so the rail
+      // has no clock to run for it and inventing one would count from a time
+      // nothing recorded.
+      startedAt: null,
     })
     expect(state.skills[0]?.findings).toEqual(toolRun.findings)
     // Only the stage the run executed; the other four stay `·`.

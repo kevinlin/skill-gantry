@@ -218,7 +218,10 @@ describe('R11.18 the full-length view', () => {
     // the reducer is where the row comes from, which is what `o` needs.
     ui.stdin.send('\r')
     await ui.settle(20)
-    expect(ui.lastFrame()).toContain('no finding selected')
+    // The refusal names the run that would produce a finding, not the cursor:
+    // all three sites are already gated on the Findings pane, so the pane is
+    // open and the list under it is empty.
+    expect(ui.lastFrame()).toContain('no findings here · space marks a stage, r runs it')
     ui.unmount()
     queue.close()
   })

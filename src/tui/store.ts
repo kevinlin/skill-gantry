@@ -101,6 +101,16 @@ export interface StageCell {
    * the rail has selected — this can.
    */
   findings: number
+  /**
+   * When this stage began, for the rail's counter. `stage:start` carries no
+   * timestamp, and giving it one would be a core contract change for one cell
+   * of one screen — so the clock is read at dispatch, which is the same trade
+   * §14.4 already made for the queue row's `JobRecord.startedAt`. Null on every
+   * stage that is not running, including a rehydrated one: a recorded run's
+   * per-stage start is not in `index.ndjson` and inventing one would make the
+   * rail count from a time nothing recorded.
+   */
+  startedAt: number | null
 }
 
 export interface SkillRow {
@@ -500,7 +510,7 @@ const emptyStages = (): Record<Stage, StageCell> =>
   Object.fromEntries(
     STAGE_ORDER.map((stage) => [
       stage,
-      { outcome: null, running: false, summary: '', findings: 0 },
+      { outcome: null, running: false, summary: '', findings: 0, startedAt: null },
     ]),
   ) as Record<Stage, StageCell>
 
@@ -671,7 +681,11 @@ function onRunEvent(state: AppState, jobId: string, event: RunEvent): AppState {
   switch (event.type) {
     case 'stage:start':
       return withSkill(state, skillId, (row) =>
-        withStage(row, event.stage, { running: true, summary: event.toolIds.join(', ') }),
+        withStage(row, event.stage, {
+          running: true,
+          summary: event.toolIds.join(', '),
+          startedAt: Date.now(),
+        }),
       )
     case 'tool:done':
       return withSkill(state, skillId, (row) =>
@@ -697,6 +711,10 @@ function onRunEvent(state: AppState, jobId: string, event: RunEvent): AppState {
         withStage(row, event.stage, {
           running: false,
           outcome: event.outcome,
+          // Cleared with `running`, not left behind it: a stage that has settled
+          // has an outcome to show and no clock to run, and a field only one
+          // flag makes meaningless is the pair that comes apart.
+          startedAt: null,
           // The event already carries the whole StageResult, so R11.9's count
           // costs no change to the event contract.
           findings: event.result.toolRuns.reduce((n, run) => n + run.findings.length, 0),
@@ -1196,6 +1214,7 @@ export function reducer(state: AppState, action: Action): AppState {
             running: false,
             summary: recorded.summary,
             findings: recorded.findings.length,
+            startedAt: null,
           }
         }
         return {

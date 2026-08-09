@@ -162,6 +162,19 @@ function moveDown(
 const suppressionPrefill = (): string =>
   `Accepted ${new Date().toISOString().slice(0, 10)} via SkillGantry`
 
+/**
+ * `enter`, `s` and `o` all reach for the selected finding, and all three are
+ * already gated on the Findings pane — so the pane is open and the list under
+ * it is empty, which `no finding selected` named as a cursor problem the user
+ * could not fix by moving the cursor. The recovery is the run that would
+ * produce one, in the words `QueuePanel`'s own empty state already teaches.
+ *
+ * One constant for the three sites: the same refusal spelled three times is
+ * how two of them come to say different things about one condition, which is
+ * the divergence `StatusBar` was extracted to end for the footer itself.
+ */
+const NO_FINDINGS = 'no findings here · space marks a stage, r runs it'
+
 /** The palette above the same footer hint every screen prints. */
 function PaletteScreen({ state }: { state: AppState }): React.ReactElement {
   const { columns, rows } = useWindowSize()
@@ -772,7 +785,7 @@ export function App({
         else flash('no recorded run here — copy the prompt from the Work screen')
       } else if (plain && input === 's') {
         if (detail.kind === 'finding' && current) beginSuppress(current.skillId, detail.row)
-        else if (detail.kind === 'issue') flash('accept it from the Issues screen')
+        else if (detail.kind === 'issue') flash('accept it from Issues · esc, then :issues')
       }
       return
     }
@@ -974,11 +987,13 @@ export function App({
           // catalogued `stage: null` precisely so it cannot — so a guard
           // reading `stages` here would refuse a tool that is installed.
           if (!optimiseReady) {
-            flash('skillhone not installed · run `skillgantry setup`')
+            // The wizard is a screen since §14.2, so the recovery is a
+            // keystroke away rather than a quit and a shell command.
+            flash('skillhone not installed · :setup installs it')
             return
           }
         } else if (!isNativeStage(marking) && !stages.includes(marking)) {
-          flash(`${marking} has no tool selected · configure one in Settings`)
+          flash(`${marking} has no tool selected · :settings configures one`)
           return
         }
         dispatch({ type: 'toggle-stage-mark' })
@@ -993,7 +1008,7 @@ export function App({
       if (state.panel === 'findings') {
         const chosen = current?.findings[state.selectedFinding]
         if (chosen) dispatch({ type: 'open-detail', detail: { kind: 'finding', row: chosen } })
-        else flash('no finding selected')
+        else flash(NO_FINDINGS)
         return
       }
       if (state.panel === 'issues') {
@@ -1007,7 +1022,7 @@ export function App({
     if (plain && input === 's' && state.panel === 'findings' && state.focus === 'work') {
       const chosen = current?.findings[state.selectedFinding]
       if (!chosen || !current) {
-        flash('no finding selected')
+        flash(NO_FINDINGS)
         return
       }
       beginSuppress(current.skillId, chosen)
@@ -1019,7 +1034,7 @@ export function App({
     if (plain && input === 'o' && state.panel === 'findings' && state.focus === 'work') {
       const chosen = current?.findings[state.selectedFinding]
       if (!chosen) {
-        flash('no finding selected')
+        flash(NO_FINDINGS)
         return
       }
       openEvidence(chosen.artefactDir)
