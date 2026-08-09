@@ -53,6 +53,7 @@ export type {
 } from './stages/types.js'
 export { isNativeStage } from './stages/types.js'
 export { buildFixPrompt, type FixPromptInput } from './stages/fix-prompt.js'
+export { buildOptimisePrompt, type OptimisePromptInput } from './stages/optimise-prompt.js'
 export {
   STAGE_ORDER,
   fixPromptPathFor,
