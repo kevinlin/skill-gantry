@@ -12,6 +12,7 @@ import type { GantryConfig } from '../core/config/schema.js'
 import type { SkillRef, Stage } from '../core/types.js'
 import { runDoctor } from './doctor-command.js'
 import { runFix, type FixOptions } from './fix-command.js'
+import { runSuppress, type SuppressOptions } from './suppress-command.js'
 import { detectInterrupted, formatInterrupted, runRecover } from './recover-command.js'
 import { runRelease, type ReleaseOptions } from './release-command.js'
 import { runRetire, type RetireOptions } from './retire-command.js'
@@ -255,6 +256,23 @@ export function buildProgram(deps: CliDeps): GantryProgram {
       // skill pass" — reusing R12.2's meaning would make a clean skill and a
       // failed lookup indistinguishable.
       program.exitCode = await runFix(deps, selector, opts)
+    })
+
+  program
+    .command('suppress')
+    .description("record a finding in its tool's own suppression file")
+    .argument('<skill>', 'skill id or unambiguous name')
+    .option('--tool <id>', 'the detecting tool')
+    .option('--rule <nativeRuleId>', "the tool's own rule id")
+    .option('--path <skillRelPath>', 'skill-relative path the finding is in')
+    .option('--fingerprint <fp>', 'an issue fingerprint, resolved from the ledger')
+    .option('--reason <text>', 'why the finding is accepted; required and non-empty')
+    .option('--yes', 'prior authorisation for the write')
+    .option('--json', 'emit one JSON document')
+    .action(async (selector: string, opts: SuppressOptions) => {
+      // R12.7: the code reports whether a suppression was written, never
+      // whether the skill passes — `fix`'s precedent, for the same reason.
+      program.exitCode = await runSuppress(deps, selector, opts)
     })
 
   program
