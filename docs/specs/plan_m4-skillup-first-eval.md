@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task.
 
-**Status:** revision 1, planned. Written against [design.md](design.md), [design_tui.md](design_tui.md) and [requirements.md](requirements.md) as of shipped M9.
+**Status:** revision 1, shipped. Written against [design.md](design.md), [design_tui.md](design_tui.md) and [requirements.md](requirements.md) as of shipped M9.
 
 **Goal:** Give the evaluate gate a way to start. skill-up cannot run without `evals/eval.yaml`, most skills carry none, and the gate answers that with `errored`/`missing-artefact` and no next step. Marking `evaluate` on a skill with no suite now opens a surface that hands the maintainer a coding-agent prompt for authoring one. `skill-upper`, the agent skill that owns the templates and the judge guidance that prompt names, becomes a catalogued, installed and verified dependency rather than something the user is assumed to have.
 
@@ -206,7 +206,21 @@ Every requirement in the M10 row maps to a task, and no task says TBD. The one u
 
 ## Deviations found while implementing
 
-_None yet._
+**The open probe came back clean.** `skills/skill-upper/SKILL.md` exists in `alibaba/skill-up` at `v0.7.0`, alongside `README.md`, `README.zh.md`, `assets/`, `evals/` and `references/` and no Python. The pin is the tag Task 2 named, and no deviation was needed.
+
+**A tag pin resolves to a sha, and R3.3 already said so.** `installTool` records `requestedPin: 'v0.7.0'` and `resolvedVersion: '5ac7ce04…'`, the commit the tag names — because the `git-skill` driver resolves its own identity through `git rev-parse HEAD`. Every previous `git-skill` pin was a sha, so the two coincided and nothing distinguished them. `verifyGitSkill` and doctor's `version-drift` both compare HEAD against `resolvedVersion`, so both are correct as they stand; only the first integration assertion written against this entry was wrong.
+
+**The install set is a rule in `catalogue.ts`, not a branch in `setup.ts`.** Task 4 put it in the wizard's driver, and that is one place too late: `PRESETS.everything` is `catalogueIds()` and both `Setup.tsx` and `use-setup-session.ts` iterate `CATALOGUE` directly, so a catalogued skill-upper appears in Everything and on the selectable list before any install code runs. What shipped is `SELECTABLE_CATALOGUE` — the catalogue less skill-upper, which the wizard and `everything` both read — plus a pure `expandSelection(selected)` applied at the one call into `installAll`. `CATALOGUE` stays the install, verify and lock authority. The state on screen therefore stays what the user picked, and `stageToolsFor` drops the addition anyway, having no adapter for it.
+
+**`verifyGitSkill` takes the condition rather than deriving it.** A fifth parameter, defaulting to true, and doctor reads `catalogueEntry(toolId)` to supply it. Deriving it from the lock was the alternative and it answers the wrong question: the lock records where `bin` landed, while the check needs to know whether an interpreter was ever meant to exist.
+
+**`R13.7`'s own check could not see an M10 row.** The milestone regex in `tests/specs/traceability.test.ts` read `M\d`, which matched no row at all once the table reached two digits — so an unowned requirement would have passed rather than failed the build, which is the one thing that test exists to prevent. Fixed to `M\d+` in the same commit as the row.
+
+**`runEvals` takes an injected `userHome`**, for the reason `DoctorInput.userHome` does: the reachability probe walks the runtime skills directories, and a test must not read the machine's real ones. `makeCliFixture` grew a temp `userHome`, a `runtimeSkills` seed and an `evalSuite` flag to match.
+
+**`fakeViews.planEvals` defaults to `hasSuite: true`.** Defaulting to the state R11.22 exists for put two unrelated enqueue tests on the surface path; the pre-flight is a branch on a fact about the skill, so the fake models the ordinary skill and R11.22's own cases override.
+
+**`index.md` already carried this plan's row**, added when the plan was written, so Task 1's work there was the `design_tui.md` description line alone.
 
 ## Changelog
 

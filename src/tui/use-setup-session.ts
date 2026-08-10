@@ -1,10 +1,11 @@
 import { useEffect, useReducer, useRef, useState } from 'react'
 import { useInput, usePaste } from 'ink'
 import {
-  CATALOGUE,
+  SELECTABLE_CATALOGUE,
   SETUP_ORDER,
   canEnter,
   entryBlockedReason,
+  expandSelection,
   initialSetupState,
   setupReducer,
   type InstallState,
@@ -191,7 +192,11 @@ export function useSetupSession({
     if (!next) return
     if (next === 'install-and-verify' && canEnter(state, next)) {
       dispatch({ type: 'enter', state: next })
-      void installAll(state.selected)
+      // R3.8 as amended: skill-upper is a dependent, not a choice, so it is
+      // added here rather than in `state.selected` — the list on screen stays
+      // what the user picked, and `stageToolsFor` drops it anyway, having no
+      // adapter.
+      void installAll(expandSelection(state.selected))
       return
     }
     if (next === 'done') {
@@ -266,7 +271,7 @@ export function useSetupSession({
         return
       }
       if (input === 'j' || key.downArrow) {
-        setCursor((c) => Math.min(CATALOGUE.length - 1, c + 1))
+        setCursor((c) => Math.min(SELECTABLE_CATALOGUE.length - 1, c + 1))
         return
       }
       if (input === 'k' || key.upArrow) {
@@ -274,7 +279,7 @@ export function useSetupSession({
         return
       }
       if (input === ' ') {
-        const spec = CATALOGUE[cursor]
+        const spec = SELECTABLE_CATALOGUE[cursor]
         if (spec) dispatch({ type: 'toggle', toolId: spec.id })
       }
     }

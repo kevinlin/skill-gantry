@@ -4,7 +4,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { installAndLock, installTool, toolRoot, verifyTool } from '../../src/core/tools/install.js'
 import { loadToolLock } from '../../src/core/config/config.js'
-import { CATALOGUE, SKILLHONE_TOOL_ID, catalogueEntry } from '../../src/core/tools/catalogue.js'
+import {
+  CATALOGUE,
+  SKILLHONE_TOOL_ID,
+  SKILL_UPPER_TOOL_ID,
+  catalogueEntry,
+} from '../../src/core/tools/catalogue.js'
 import { defaultExec } from '../../src/core/tools/exec.js'
 import { verifyGitSkill } from '../../src/core/tools/git-skill.js'
 import { getAdapter } from '../../src/core/adapters/registry.js'
@@ -144,5 +149,34 @@ describe('installTool against real indexes', () => {
     const after = await stat(site).catch(() => null)
     if (before === null) expect(after).toBeNull()
     else expect(after?.mtimeMs).toBe(before.mtimeMs)
+  }, 900_000)
+
+  it('really clones skill-upper at the release tag, links it, and builds no venv', async () => {
+    const spec = catalogueEntry(SKILL_UPPER_TOOL_ID)!
+    if (spec.install.kind !== 'git-skill') throw new Error('skill-upper is not a git-skill entry')
+
+    const h = await home()
+    const userHome = await home()
+    await mkdir(join(userHome, '.agents', 'skills'), { recursive: true })
+    const entry = await installTool(h, spec, { userHome })
+
+    const dir = join(toolRoot(h), SKILL_UPPER_TOOL_ID)
+    // R3.11: the linked skill directory, not an interpreter — a path a
+    // verification can check and R6.13's prompt can name.
+    expect(entry.bin).toBe(join(dir, 'repo', 'skills', SKILL_UPPER_TOOL_ID))
+    // R3.3 keeps the two apart, and a tag pin is where that matters: the
+    // request is `v0.7.0` and the resolution is the sha it names. SkillHone's
+    // case above cannot show it, its pin already being a sha.
+    expect(entry.requestedPin).toBe(spec.install.pin)
+    expect(entry.resolvedVersion).toMatch(/^[0-9a-f]{40}$/)
+    expect(entry.links).toEqual([join(userHome, '.agents', 'skills', SKILL_UPPER_TOOL_ID)])
+    // The probe this milestone was written against: the tag really carries the
+    // skill. A fixture cannot answer that, which is why this case is here.
+    await expect(stat(join(entry.bin, 'SKILL.md'))).resolves.toBeTruthy()
+    // No venv is built at all, so verification is two facts rather than three.
+    await expect(stat(join(dir, '.venv'))).rejects.toThrow()
+    await expect(
+      verifyGitSkill(dir, entry.links ?? [], entry.resolvedVersion, defaultExec, false),
+    ).resolves.toBe(entry.resolvedVersion)
   }, 900_000)
 })

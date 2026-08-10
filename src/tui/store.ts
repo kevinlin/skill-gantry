@@ -40,7 +40,14 @@ export type Screen = (typeof SCREENS)[number]
 export interface PaletteCommand {
   id: string
   label: string
-  action: { kind: 'screen'; screen: Screen } | { kind: 'quit' } | { kind: 'refresh' }
+  action:
+    | { kind: 'screen'; screen: Screen }
+    | { kind: 'quit' }
+    | { kind: 'refresh' }
+    // R11.22: opens a prompt surface for the selected skill. A fourth kind
+    // rather than a sixth screen, because it opens a modal over whatever is up
+    // rather than replacing `state.screen`.
+    | { kind: 'prompt'; prompt: PromptKind }
 }
 
 export const PALETTE_COMMANDS: readonly PaletteCommand[] = [
@@ -49,6 +56,14 @@ export const PALETTE_COMMANDS: readonly PaletteCommand[] = [
     label: `go to ${screen}`,
     action: { kind: 'screen' as const, screen },
   })),
+  {
+    id: 'evals',
+    // Unconditional on the suite's state: a surface reachable only when the
+    // file is missing would be unreachable the moment it had done its job, and
+    // a thin suite is the case a maintainer most wants to extend.
+    label: "compose or extend the selected skill's eval suite",
+    action: { kind: 'prompt', prompt: 'evals' },
+  },
   { id: 'refresh', label: 'reload this screen from the ledger', action: { kind: 'refresh' } },
   { id: 'quit', label: 'quit SkillGantry', action: { kind: 'quit' } },
 ]
@@ -175,17 +190,44 @@ export interface SuppressSlot {
  * has to be asked for before a job can be built.
  */
 /**
- * R11.21. What the optimise surface holds, which is a document and a scroll —
- * no target, no toggle, no error, because the pane builds no job and writes no
- * byte. That is also what puts it below every write pane in §14.2's order.
+ * R11.21 and R11.22. What a prompt surface holds, which is a document and a
+ * scroll — no target, no toggle, no error, because the pane builds no job and
+ * writes no byte. That is also what puts it below every write pane in §14.2's
+ * order.
+ *
+ * One slot for both kinds because nothing in the pane was ever about
+ * optimisation: it renders a scrolled document, copies it with `y`, and closes
+ * on `esc`. `DiffBody`, shared by `ReviewPane` and `SuppressPane`, is the
+ * precedent — two renderers of one frame is the divergence `tokens.ts` records
+ * from when five modules each owned severity colour.
  */
-export interface OptimiseSlot {
+export interface PromptSlot {
+  /** Which stage's mark the surface clears, and what its title says. */
+  kind: PromptKind
   skillId: string
-  /** The finished R6.12 body, for the clipboard. */
+  /** The finished R6.12 or R6.13 body, for the clipboard. */
   prompt: string
   /** Split once, because the pane renders it and the scroll clamp counts it. */
   lines: readonly string[]
   offset: number
+}
+
+export type PromptKind = 'optimise' | 'evals'
+
+/**
+ * The stage each kind's mark occupies, so `end-prompt` clears exactly one and
+ * the two cannot disagree about which. `evals` is `evaluate` because that is
+ * the rail column the user marked to get here.
+ */
+export const PROMPT_STAGE: Readonly<Record<PromptKind, Stage>> = {
+  optimise: 'optimise',
+  evals: 'evaluate',
+}
+
+/** The pane's title, from the slot rather than from the component. */
+export const PROMPT_TITLE: Readonly<Record<PromptKind, string>> = {
+  optimise: 'Optimise',
+  evals: 'Eval suite',
 }
 
 export interface ReleaseSlot {
@@ -270,7 +312,8 @@ export interface AppState {
   /** R11.16's acceptance, awaiting its reason or its confirmation. */
   suppress: SuppressSlot | null
   release: ReleaseSlot | null
-  optimise: OptimiseSlot | null
+  /** R11.21's and R11.22's shared surface; `kind` says which opened it. */
+  prompt: PromptSlot | null
   screen: Screen
   palette: { open: boolean; query: string; selected: number }
   /**
@@ -472,9 +515,9 @@ export type Action =
   | { type: 'release-error'; message: string }
   | { type: 'end-release' }
   // R11.21. No field action and no error action: the pane collects nothing.
-  | { type: 'begin-optimise'; skillId: string; prompt: string }
-  | { type: 'scroll-optimise'; delta: number; viewport: number }
-  | { type: 'end-optimise' }
+  | { type: 'begin-prompt'; kind: PromptKind; skillId: string; prompt: string }
+  | { type: 'scroll-prompt'; delta: number; viewport: number }
+  | { type: 'end-prompt' }
   | { type: 'flash'; message: string; tone?: FlashTone }
   | { type: 'clear-flash' }
 
@@ -552,7 +595,7 @@ export function initialState(skills: readonly SkillRef[], concurrency: number): 
     displacedReviews: 0,
     suppress: null,
     release: null,
-    optimise: null,
+    prompt: null,
     screen: 'work',
     palette: { open: false, query: '', selected: 0 },
     dashboard: null,
@@ -1114,33 +1157,36 @@ export function reducer(state: AppState, action: Action): AppState {
         // advertised. Skill marks are a separate axis and are left alone.
         markedStages: state.markedStages.filter((stage) => stage !== 'release'),
       }
-    case 'begin-optimise': {
+    case 'begin-prompt': {
       const lines = action.prompt.split('\n')
       return {
         ...state,
-        optimise: { skillId: action.skillId, prompt: action.prompt, lines, offset: 0 },
+        prompt: { kind: action.kind, skillId: action.skillId, prompt: action.prompt, lines, offset: 0 },
       }
     }
-    case 'scroll-optimise': {
-      const slot = state.optimise
+    case 'scroll-prompt': {
+      const slot = state.prompt
       if (slot === null) return state
       const max = Math.max(0, slot.lines.length - action.viewport)
       return {
         ...state,
-        optimise: { ...slot, offset: Math.min(max, Math.max(0, slot.offset + action.delta)) },
+        prompt: { ...slot, offset: Math.min(max, Math.max(0, slot.offset + action.delta)) },
       }
     }
-    case 'end-optimise':
+    case 'end-prompt': {
       // The mark goes with the surface, `end-release`'s rule for its reason: a
       // mark that survives `esc` means the next `r` reopens this pane over
       // whatever has been marked since, with nothing on screen naming the
-      // keystroke that would free the user.
+      // keystroke that would free the user. The kind decides which stage's
+      // mark goes, so the two surfaces cannot clear each other's.
+      const cleared = state.prompt === null ? null : PROMPT_STAGE[state.prompt.kind]
       return {
         ...state,
-        optimise: null,
-        markedStages: state.markedStages.filter((stage) => stage !== 'optimise'),
+        prompt: null,
+        markedStages: state.markedStages.filter((stage) => stage !== cleared),
         markedSkills: [],
       }
+    }
     case 'end-suppress':
       return { ...state, suppress: null }
     case 'stage-remove-repo': {

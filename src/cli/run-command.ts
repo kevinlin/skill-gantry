@@ -13,6 +13,7 @@ import type { SkillRef, Stage } from '../core/types.js'
 import { runDoctor } from './doctor-command.js'
 import { runFix, type FixOptions } from './fix-command.js'
 import { runOptimise, type OptimiseOptions } from './optimise-command.js'
+import { runEvals, type EvalsOptions } from './evals-command.js'
 import { runSuppress, type SuppressOptions } from './suppress-command.js'
 import { detectInterrupted, formatInterrupted, runRecover } from './recover-command.js'
 import { runRelease, type ReleaseOptions } from './release-command.js'
@@ -269,6 +270,18 @@ export function buildProgram(deps: CliDeps): GantryProgram {
       // stdout", not "did the skill pass". Reusing R12.2's meaning would make a
       // clean skill and an uninstalled optimiser indistinguishable.
       program.exitCode = await runOptimise(deps, selector, opts)
+    })
+
+  program
+    .command('evals')
+    .description("print the coding-agent prompt for authoring a skill's eval suite")
+    .argument('<skill>', 'skill id or bare name')
+    .option('--json', 'emit one JSON document')
+    .action(async (selector: string, opts: EvalsOptions) => {
+      // R12.9, sharing R12.6's and R12.8's meaning: the code answers "is there
+      // a prompt on stdout", so a skill with a passing suite and one whose
+      // runner is not installed stay distinguishable.
+      program.exitCode = await runEvals(deps, selector, opts)
     })
 
   program

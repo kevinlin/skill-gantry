@@ -56,11 +56,17 @@ export interface CliFixtureSpec {
   lockTools?: readonly string[]
   /** Writes one recorded run under the sidecar. */
   seedRun?: 'suppressed-and-actionable'
+  /** Writes `declawed/evals/eval.yaml`, which is what the gate's argv names. */
+  evalSuite?: boolean
+  /** Runtime skills directories to create under the fixture's user home. */
+  runtimeSkills?: readonly string[]
 }
 
 export interface CliFixture {
   home: string
   repo: string
+  /** A temp stand-in for `homedir()`, so no probe reaches the real one. */
+  userHome: string
   runsRoot: string
   /** The seeded run's id, or null when `seedRun` was not asked for. */
   runId: string | null
@@ -82,7 +88,20 @@ export async function makeCliFixture(spec: CliFixtureSpec = {}): Promise<CliFixt
   const { workspacePath } = await import('../../src/core/discovery/discover.js')
 
   const home = await mkdtemp(join(tmpdir(), 'sg-cli-'))
-  const repo = await makeRepo({ files: { 'declawed/SKILL.md': SKILL_MD_FULL('declawed') } })
+  const userHome = await mkdtemp(join(tmpdir(), 'sg-user-'))
+  for (const name of spec.runtimeSkills ?? []) {
+    const dir = join(userHome, '.agents', 'skills', name)
+    await mkdir(dir, { recursive: true })
+    await writeFile(join(dir, 'SKILL.md'), `---\nname: ${name}\n---\n`)
+  }
+  const repo = await makeRepo({
+    files: {
+      'declawed/SKILL.md': SKILL_MD_FULL('declawed'),
+      ...(spec.evalSuite === true
+        ? { 'declawed/evals/eval.yaml': 'engine:\n  name: claude_code\ncases: []\n' }
+        : {}),
+    },
+  })
   await saveConfig(home, DEFAULT_CONFIG)
   await registerRepo(home, repo)
 
@@ -177,6 +196,7 @@ export async function makeCliFixture(spec: CliFixtureSpec = {}): Promise<CliFixt
   return {
     home,
     repo,
+    userHome,
     runsRoot,
     runId,
     out,

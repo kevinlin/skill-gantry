@@ -21,6 +21,7 @@ import {
 import { doctor } from '../core/tools/doctor.js'
 import type { SkillRef } from '../core/types.js'
 import type { GantryViews, SettingsCredential, SettingsView } from '../tui/views.js'
+import { planEvalsFor } from './evals-command.js'
 import { planOptimiseFor } from './optimise-command.js'
 import { type CliDeps, discoverAll } from './run-command.js'
 
@@ -172,6 +173,10 @@ export function createGantryViews(deps: CliDeps): GantryViews {
     planOptimise: async (skillId) => {
       const skill = await skillById(skillId)
       return planOptimiseFor(deps.home, skill)
+    },
+    planEvals: async (skillId) => {
+      const skill = await skillById(skillId)
+      return planEvalsFor(deps.home, skill)
     },
     planSuppression: async (request) => {
       const skill = await skillById(request.skillId)

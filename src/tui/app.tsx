@@ -20,7 +20,7 @@ import { ConfirmPane } from './components/ConfirmPane.js'
 import { Dashboard } from './components/Dashboard.js'
 import { DetailPane } from './components/DetailPane.js'
 import { Issues } from './components/Issues.js'
-import { OptimisePane } from './components/OptimisePane.js'
+import { PromptPane } from './components/PromptPane.js'
 import { Palette } from './components/Palette.js'
 import { Settings } from './components/Settings.js'
 import { ReleaseTargetPane } from './components/ReleaseTargetPane.js'
@@ -41,7 +41,7 @@ import { osc52 } from './osc52.js'
 import { LogPump } from './log-buffer.js'
 import { detailRows, outputWindow, resumedGates, settingsRows } from './rows.js'
 import { useSetupSession } from './use-setup-session.js'
-import { PANELS, initialState, paletteMatches, reducer, selectedSkill } from './store.js'
+import { PANELS, initialState, paletteMatches, reducer, selectedSkill, type PromptKind } from './store.js'
 import type { Action, AppState, FindingRow, FlashTone, SkillRow } from './store.js'
 import {
   type GantryViews,
@@ -481,6 +481,20 @@ export function App({
   }
 
   /**
+   * R11.21's and R11.22's one entry. Both ports return the finished body, so
+   * this decides nothing beyond which one to ask; the refusal — SkillHone
+   * unlocked, skill-up unlocked, skill-upper reachable nowhere — reaches the
+   * same guard-then-flash shape `y`, `o` and `s` already use.
+   */
+  const openPrompt = (kind: PromptKind, skillId: string): void => {
+    const plan = kind === 'optimise' ? views.planOptimise(skillId) : views.planEvals(skillId)
+    void plan.then(
+      (preview) => dispatch({ type: 'begin-prompt', kind, skillId, prompt: preview.prompt }),
+      (err: unknown) => flash((err as Error).message, 'bad'),
+    )
+  }
+
+  /**
    * The one place a release job is built. It refuses rather than enqueues when
    * the target does not resolve, because an unresolvable target reaches §12.4
    * row 3 and fails — and a job whose only possible outcome is that failure is
@@ -668,12 +682,13 @@ export function App({
       }
       return
     }
-    // Fifth: R11.21's surface, whose keys destroy nothing — it builds no job
-    // and writes no byte, which is why it sits below all three write panes and
-    // above the setup screen. The render order below carries the same order.
-    if (state.optimise) {
-      const slot = state.optimise
-      if (key.escape) dispatch({ type: 'end-optimise' })
+    // Fifth: R11.21's and R11.22's shared surface, whose keys destroy nothing —
+    // it builds no job and writes no byte, which is why it sits below all three
+    // write panes and above the setup screen. The render order below carries
+    // the same order.
+    if (state.prompt) {
+      const slot = state.prompt
+      if (key.escape) dispatch({ type: 'end-prompt' })
       else if (plain && input === 'y') {
         const seq = osc52(slot.prompt)
         if (seq === null) {
@@ -685,12 +700,12 @@ export function App({
           // and forces a clear-and-re-render, flickering the frame for a
           // sequence that renders nothing.
           stdout.write(seq)
-          flash(`optimise prompt copied · ${slot.skillId}`)
+          flash(`${slot.kind} prompt copied · ${slot.skillId}`)
         }
       } else if ((plain && input === 'j') || key.downArrow) {
-        dispatch({ type: 'scroll-optimise', delta: 1, viewport: reviewRows })
+        dispatch({ type: 'scroll-prompt', delta: 1, viewport: reviewRows })
       } else if ((plain && input === 'k') || key.upArrow) {
-        dispatch({ type: 'scroll-optimise', delta: -1, viewport: reviewRows })
+        dispatch({ type: 'scroll-prompt', delta: -1, viewport: reviewRows })
       }
       return
     }
@@ -750,6 +765,14 @@ export function App({
         } else if (chosen?.action.kind === 'refresh') {
           dispatch({ type: 'refresh-views' })
           dispatch({ type: 'palette-close' })
+        } else if (chosen?.action.kind === 'prompt') {
+          // R11.22: the selected skill, whatever the suite's state. A surface
+          // reachable only when the file is missing would be unreachable the
+          // moment it had done its job.
+          const target = selectedSkill(state)?.skillId
+          dispatch({ type: 'palette-close' })
+          if (target === undefined) flash('no skill selected')
+          else openPrompt(chosen.action.prompt, target)
         } else if (chosen?.action.kind === 'quit') exit()
         else close()
       } else if (key.downArrow || (key.ctrl && input === 'n')) {
@@ -1107,19 +1130,52 @@ export function App({
           return
         }
         const only = ids[0]
-        if (only !== undefined) {
-          void views.planOptimise(only).then(
-            (preview) => dispatch({ type: 'begin-optimise', skillId: only, prompt: preview.prompt }),
-            (err: unknown) => flash((err as Error).message, 'bad'),
-          )
-        }
+        if (only !== undefined) openPrompt('optimise', only)
         return
       }
-      const specs = chosen
-        .flatMap((id) => (id ? [byId.current.get(id)] : []))
-        .flatMap((skill) => (skill ? [{ skill, stages: wanted }] : []))
-      if (specs.length > 0) queue.enqueue(specs)
-      dispatch({ type: 'clear-marks' })
+      // One call rather than two copies of it: the suite-present path below
+      // reaches the same enqueue, and two copies is how one of them comes to
+      // build a different batch.
+      const enqueue = (): void => {
+        const specs = chosen
+          .flatMap((id) => (id ? [byId.current.get(id)] : []))
+          .flatMap((skill) => (skill ? [{ skill, stages: wanted }] : []))
+        if (specs.length > 0) queue.enqueue(specs)
+        dispatch({ type: 'clear-marks' })
+      }
+      // R11.22. The evaluate gate cannot start without `evals/eval.yaml`, so a
+      // skill carrying none reaches the surface that hands over the prompt for
+      // authoring one rather than a run whose only outcome is
+      // errored/missing-artefact. One skill only: the prompt is per-skill by
+      // construction, and N port reads to build N prompts nobody asked for is
+      // the wrong trade — a suite-less skill inside a batch still errors, and
+      // `:evals` on the selection is the recovery.
+      const evalIds = chosen.filter((id): id is string => id !== undefined)
+      const soleSkill = evalIds.length === 1 ? evalIds[0] : undefined
+      if (wanted.includes('evaluate') && soleSkill !== undefined) {
+        void views.planEvals(soleSkill).then(
+          (preview) => {
+            if (preview.hasSuite) {
+              enqueue()
+              return
+            }
+            // Refused rather than resolved, §14.9's rule and for its reason:
+            // both resolutions of a mixed mark lie about what the marks asked
+            // for, and dropping the others silently is the failure release
+            // shipped with.
+            if (wanted.length > 1) {
+              flash(`${soleSkill} has no eval suite · unmark the others to compose one`, 'bad')
+              return
+            }
+            openPrompt('evals', soleSkill)
+          },
+          // A pre-flight that cannot answer must not silently enqueue a run the
+          // gate cannot start, so the refusal names the tool and stops.
+          (err: unknown) => flash((err as Error).message, 'bad'),
+        )
+        return
+      }
+      enqueue()
       return
     }
     if (plain && input === 'x') {
@@ -1151,14 +1207,8 @@ export function App({
   // §14.2 orders the modals by what a keystroke can destroy, and this pane's
   // keys destroy nothing: it builds no job and writes no byte. Below the three
   // write panes, above the palette.
-  if (state.optimise) {
-    return (
-      <OptimisePane
-        optimise={state.optimise}
-        flash={state.flash}
-        layout={layout}
-      />
-    )
+  if (state.prompt) {
+    return <PromptPane prompt={state.prompt} flash={state.flash} layout={layout} />
   }
   if (state.palette.open) return <PaletteScreen state={state} />
   // R11.18: after the palette and the two write panes above, per §14.2's order

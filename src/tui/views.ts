@@ -269,6 +269,12 @@ export interface GantryViews {
   planRelease(skillId: string): Promise<ReleasePreviewView>
   /** R11.21's pre-flight, read when the surface opens. Rejects when SkillHone is not locked. */
   planOptimise(skillId: string): Promise<OptimisePreviewView>
+  /**
+   * R11.22's pre-flight, read when `r` resolves `evaluate` and when `:evals`
+   * fires. Rejects when skill-up is not locked or skill-upper is reachable
+   * nowhere, naming the tool and `skillgantry setup`.
+   */
+  planEvals(skillId: string): Promise<EvalPreviewView>
   /** Rechecks the preimage and renames. Rejects with `preimage-drift` on drift. */
   applySuppression(): Promise<void>
   /** Removes the staged temp file. Safe to call when nothing is staged. */
@@ -319,5 +325,19 @@ export interface ReleasePreviewView {
 export interface OptimisePreviewView {
   skill: SkillRef
   prompt: string
+  missing: readonly string[]
+}
+
+/**
+ * R11.22's pre-flight. The port returns the finished body rather than its
+ * ingredients, `planOptimise`'s rule and for its reason: the pane renders and
+ * decides nothing. `hasSuite` is what the `r` pre-flight branches on, and it is
+ * `evals/eval.yaml` specifically — the file the evaluate stage's argv names,
+ * not the directory beside it.
+ */
+export interface EvalPreviewView {
+  skill: SkillRef
+  prompt: string
+  hasSuite: boolean
   missing: readonly string[]
 }

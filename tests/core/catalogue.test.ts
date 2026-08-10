@@ -3,10 +3,14 @@ import {
   CATALOGUE,
   PRESETS,
   RELEASE_TOOL_ID,
+  SELECTABLE_CATALOGUE,
   SKILLHONE_TOOL_ID,
+  SKILL_UPPER_TOOL_ID,
+  SKILL_UP_TOOL_ID,
   catalogueEntry,
   catalogueIds,
   expandPreset,
+  expandSelection,
   toolsForStage,
 } from '../../src/core/tools/catalogue.js'
 import { getAdapter } from '../../src/core/adapters/registry.js'
@@ -72,8 +76,10 @@ describe('presets', () => {
     expect(new Set(stages).size).toBe(stages.length)
   })
 
-  it('makes everything the whole catalogue', () => {
-    expect([...PRESETS.everything].sort()).toEqual([...catalogueIds()].sort())
+  it('makes everything the whole selectable catalogue', () => {
+    expect([...PRESETS.everything].sort()).toEqual(
+      SELECTABLE_CATALOGUE.map((spec) => spec.id).sort(),
+    )
   })
 
   it('offers per-stage choice', () => {
@@ -103,5 +109,50 @@ describe('the skillhone entry', () => {
     expect(PRESETS.minimal).not.toContain(SKILLHONE_TOOL_ID)
     expect(PRESETS.recommended).toContain(SKILLHONE_TOOL_ID)
     expect(PRESETS.everything).toContain(SKILLHONE_TOOL_ID)
+  })
+})
+
+describe('the skill-upper entry', () => {
+  it('is installable but selectable by no stage — R3.11', () => {
+    const spec = catalogueEntry(SKILL_UPPER_TOOL_ID)
+    expect(spec?.install.kind).toBe('git-skill')
+    // R3.5b: `AdapterStageExecutor.plan()` throws `unknown tool` on an id the
+    // registry does not hold, which would fail every evaluate run.
+    expect(spec?.stage).toBeNull()
+    expect(spec?.versionArgv).toEqual([])
+  })
+
+  it('declares no requirements file, so no venv is built', () => {
+    const spec = catalogueEntry(SKILL_UPPER_TOOL_ID)
+    if (spec?.install.kind !== 'git-skill') throw new Error('wrong kind')
+    expect(spec.install.requirements).toBeUndefined()
+    expect(spec.install.skills).toEqual([SKILL_UPPER_TOOL_ID])
+    expect(spec.runtime).toBe('none')
+  })
+
+  it('pins the skill-up release tag, so the two halves cannot drift apart', () => {
+    const upper = catalogueEntry(SKILL_UPPER_TOOL_ID)
+    const runner = catalogueEntry(SKILL_UP_TOOL_ID)
+    if (upper?.install.kind !== 'git-skill') throw new Error('wrong kind')
+    expect(upper.install.repo).toBe('alibaba/skill-up')
+    expect(upper.install.pin).toBe(runner?.install.pin)
+  })
+
+  it('is offered by no preset and on no selectable row — R3.8', () => {
+    for (const preset of Object.values(PRESETS)) {
+      expect(preset).not.toContain(SKILL_UPPER_TOOL_ID)
+    }
+    expect(SELECTABLE_CATALOGUE.map((spec) => spec.id)).not.toContain(SKILL_UPPER_TOOL_ID)
+    expect(catalogueIds()).toContain(SKILL_UPPER_TOOL_ID)
+  })
+
+  it('follows skill-up into the install set, and only then', () => {
+    expect(expandSelection([SKILL_UP_TOOL_ID])).toContain(SKILL_UPPER_TOOL_ID)
+    expect(expandSelection(['skillspector'])).not.toContain(SKILL_UPPER_TOOL_ID)
+    // Idempotent: a re-entered wizard stages its own previous expansion.
+    expect(expandSelection([SKILL_UP_TOOL_ID, SKILL_UPPER_TOOL_ID])).toEqual([
+      SKILL_UP_TOOL_ID,
+      SKILL_UPPER_TOOL_ID,
+    ])
   })
 })

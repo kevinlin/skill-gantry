@@ -14,7 +14,7 @@ Which milestone owns which requirement is a separate question, answered only by 
 |---|---|---|
 | [requirements.md](requirements.md) | Requirements | Numbered R* requirements with milestone ownership table |
 | [design.md](design.md) | Design | Module map, stage contract, outcome model, ledger schema, sidecar layout |
-| [design_tui.md](design_tui.md) | Design | design.md §14 through §14.8, under their own numbers: the Ink store, the responsive row budget, Settings, fix-prompt copy, run rehydration, the Work screen, accepting a finding, the full-length detail view |
+| [design_tui.md](design_tui.md) | Design | design.md §14 through §14.12, under their own numbers: the Ink store, the responsive row budget, Settings, fix-prompt copy, run rehydration, the Work screen, accepting a finding, the full-length detail view, the release target, the two prompt surfaces, and the setup repo step |
 | [decision-log.md](decision-log.md) | Supporting | D* decisions the requirements derive from |
 
 ## Plans
@@ -31,7 +31,7 @@ Which milestone owns which requirement is a separate question, answered only by 
 | [plan_m3-setup-repo-edit.md](plan_m3-setup-repo-edit.md) | M3 (extension) | Shipped | The setup repo step shows and edits what is registered (R3.12): the id-preserving `withRepoPath`, `updateRepo` on the driver, a cursor over the registered list, and a verdict that tells this repo's path from another's |
 | [plan_m4.md](plan_m4.md) | M4 | Shipped, compacted | Three remaining adapters, shared parsers, rule-class map, cross-tool merge |
 | [plan_m4-skillhone-optimise.md](plan_m4-skillhone-optimise.md) | M4 | Shipped | SkillHone and the optimise action (R3.10, R6.12, R11.21, R12.8; amending R3.1, R3.5, R3.8, R7.3, R11.20): a `git-skill` install driver for a tool published as an agent-skill bundle, its managed venv and per-skill symlinks, the `~/.skillhone/settings.json` that install composes from the credential file, and a rail mark that opens a coding-agent prompt built from recorded evidence instead of enqueuing a run |
-| [plan_m4-skillup-first-eval.md](plan_m4-skillup-first-eval.md) | M4 | Planned | skill-up's first eval suite (R3.11, R6.13, R11.22, R12.9; amending R3.5, R3.8, R11.21): skill-upper catalogued as a `git-skill` bundle with no dependencies, doctor's report of an unmanaged skill link, and a rail mark on `evaluate` that hands over a coding-agent prompt for authoring `evals/` instead of starting a gate that cannot run |
+| [plan_m4-skillup-first-eval.md](plan_m4-skillup-first-eval.md) | M4 | Shipped | skill-up's first eval suite (R3.11, R6.13, R11.22, R12.9; amending R3.5, R3.8, R11.21): skill-upper catalogued as a `git-skill` bundle with no dependencies, doctor's report of an unmanaged skill link, and a rail mark on `evaluate` that hands over a coding-agent prompt for authoring `evals/` instead of starting a gate that cannot run |
 | [plan_m5.md](plan_m5.md) | M5 | Shipped, compacted | Mutation isolation, journalled apply, release stage, retirement |
 | [plan_m5-tui-release-target.md](plan_m5-tui-release-target.md) | M5 (extension) | Shipped | Release from the terminal (R11.19, R11.20): the target surface, the `planRelease` port, the rail's runnability guard, and `plan()` inside the stage's failure boundary |
 | [plan_m6.md](plan_m6.md) | M6 | Shipped, compacted; extension planned | Statistics queries, Dashboard, Issues, Tools and Settings screens, the command palette. Extended in place with editable Settings (R11.7, R11.8) — shipped |

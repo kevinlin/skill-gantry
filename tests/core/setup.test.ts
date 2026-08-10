@@ -8,7 +8,13 @@ import {
   setupReducer,
   stageToolsFor,
 } from '../../src/core/tools/setup.js'
-import { SKILLHONE_TOOL_ID, expandPreset } from '../../src/core/tools/catalogue.js'
+import {
+  SKILLHONE_TOOL_ID,
+  SKILL_UPPER_TOOL_ID,
+  SKILL_UP_TOOL_ID,
+  expandPreset,
+  expandSelection,
+} from '../../src/core/tools/catalogue.js'
 import type { RuntimeStatus } from '../../src/core/tools/runtimes.js'
 
 const probed: RuntimeStatus[] = [
@@ -108,6 +114,29 @@ describe('stageToolsFor', () => {
     // guard holds even where the runnable filter would not have caught it.
     const stageTools = stageToolsFor(selected, () => true)
     expect(Object.values(stageTools).flat()).not.toContain(SKILLHONE_TOOL_ID)
+  })
+
+  it('installs skill-upper with skill-up and never writes it into stageTools — R3.11', () => {
+    const withRunner = expandSelection([SKILL_UP_TOOL_ID, 'skillspector'])
+    expect(withRunner).toContain(SKILL_UPPER_TOOL_ID)
+    // Same guard as SkillHone's above, and the same reason: `stage: null` is
+    // what keeps it out, asserted with the permissive predicate so the guard
+    // holds even where the runnable filter would have caught it anyway.
+    expect(Object.values(stageToolsFor(withRunner, () => true)).flat()).not.toContain(
+      SKILL_UPPER_TOOL_ID,
+    )
+  })
+
+  it('installs neither when skill-up is deselected', () => {
+    const without = expandSelection(['skillspector', 'skill-lint'])
+    expect(without).not.toContain(SKILL_UPPER_TOOL_ID)
+    expect(without).not.toContain(SKILL_UP_TOOL_ID)
+  })
+
+  it('leaves stageTools unchanged either way', () => {
+    const runnable = () => true
+    const bare = ['skillspector', SKILL_UP_TOOL_ID]
+    expect(stageToolsFor(expandSelection(bare), runnable)).toEqual(stageToolsFor(bare, runnable))
   })
 })
 

@@ -67,6 +67,8 @@ export interface FakeViews extends GantryViews {
   readonly releasePlans: string[]
   /** Skill ids the optimise surface pre-flighted, in order. */
   readonly optimisePlans: string[]
+  /** Skill ids the eval-bootstrap pre-flight resolved, in order. */
+  readonly evalPlans: string[]
 }
 
 /**
@@ -86,6 +88,7 @@ export function fakeViews(
   const suppressResolutions: Array<'apply' | 'discard'> = []
   const releasePlans: string[] = []
   const optimisePlans: string[] = []
+  const evalPlans: string[] = []
   return {
     actions,
     opened,
@@ -93,6 +96,7 @@ export function fakeViews(
     suppressResolutions,
     releasePlans,
     optimisePlans,
+    evalPlans,
     openPath: async (path) => {
       opened.push(path)
     },
@@ -121,6 +125,21 @@ export function fakeViews(
       const skill = releaseSkills.find((candidate) => candidate.id === skillId)
       if (skill === undefined) throw new Error(`no skill ${skillId}`)
       return { skill, prompt: `# Optimise: ${skill.name}\n\n- Skill directory: \`${skill.dir}\`\n`, missing: [] }
+    },
+    // Defaults to a suite being present, so `r` on `evaluate` enqueues the way
+    // it always has. R11.22's own cases override with `hasSuite: false`: the
+    // pre-flight is a branch on a fact about the skill, and defaulting to the
+    // rarer half would put every unrelated enqueue test on the surface path.
+    planEvals: async (skillId) => {
+      evalPlans.push(skillId)
+      const skill = releaseSkills.find((candidate) => candidate.id === skillId)
+      if (skill === undefined) throw new Error(`no skill ${skillId}`)
+      return {
+        skill,
+        prompt: `# Extend the eval suite for ${skill.name}\n\n- Skill directory: \`${skill.dir}\`\n`,
+        hasSuite: true,
+        missing: [],
+      }
     },
     planSuppression: async (request) => {
       suppressions.push(request)

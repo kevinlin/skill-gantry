@@ -57,6 +57,7 @@ export type {
 export { isNativeStage } from './stages/types.js'
 export { buildFixPrompt, type FixPromptInput } from './stages/fix-prompt.js'
 export { buildOptimisePrompt, type OptimisePromptInput } from './stages/optimise-prompt.js'
+export { buildEvalPrompt, type EvalPromptInput } from './stages/eval-prompt.js'
 export {
   STAGE_ORDER,
   fixPromptPathFor,
@@ -69,10 +70,14 @@ export {
   CATALOGUE,
   PRESETS,
   RELEASE_TOOL_ID,
+  SELECTABLE_CATALOGUE,
   SKILLHONE_TOOL_ID,
+  SKILL_UPPER_TOOL_ID,
+  SKILL_UP_TOOL_ID,
   catalogueEntry,
   catalogueIds,
   expandPreset,
+  expandSelection,
   toolsForStage,
   type GitSkillSpec,
   type PresetName,
@@ -80,6 +85,7 @@ export {
   type ToolSpec,
 } from './tools/catalogue.js'
 export { installTool, toolRoot, verifyTool } from './tools/install.js'
+export { defaultExec, type Exec } from './tools/exec.js'
 export {
   RUNTIME_SKILL_DIRS,
   detectSkillDirs,

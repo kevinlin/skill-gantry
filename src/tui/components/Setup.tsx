@@ -2,7 +2,7 @@ import { Box, Text, useWindowSize } from 'ink'
 import { setupBodyRows, setupWidth, truncate } from '../layout.js'
 import { ACCENT, STATUS } from '../tokens.js'
 import {
-  CATALOGUE,
+  SELECTABLE_CATALOGUE,
   SETUP_ORDER,
   missingRuntimesFor,
   type ConfigureOutcome,
@@ -340,11 +340,11 @@ export function Setup({
           (() => {
             // The hint row is spent out of the same allocation as the list, per
             // §14.1's first rule, and so is the overflow footnote.
-            const window = listWindow(CATALOGUE.length, cursor, body - 1)
+            const window = listWindow(SELECTABLE_CATALOGUE.length, cursor, body - 1)
             return (
               <Box flexDirection="column">
                 <Text dimColor>1 minimal · 2 recommended · 3 everything · space toggles</Text>
-                {CATALOGUE.slice(window.from, window.to).map((spec, offset) => {
+                {SELECTABLE_CATALOGUE.slice(window.from, window.to).map((spec, offset) => {
                   const index = window.from + offset
                   return (
                     <Text key={spec.id}>
