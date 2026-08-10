@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { renderInk } from '../helpers/render-ink.js'
+import { renderInk, waitForFrame } from '../helpers/render-ink.js'
 import { SetupApp } from '../../src/tui/setup-app.js'
 import { Setup } from '../../src/tui/components/Setup.js'
 import { initialSetupState, type RepoEntry, type SetupDriver } from '../../src/core/index.js'
@@ -71,6 +71,25 @@ describe('setup wizard', () => {
     const ink = renderInk(<SetupApp driver={driver} />)
     await ink.settle(40)
     expect(ink.lastFrame()).toContain('curl -LsSf … | sh')
+    ink.unmount()
+  })
+
+  it('labels each tool with the stage it serves, not with what may select it', async () => {
+    const { driver } = fakeDriver()
+    const ink = renderInk(<SetupApp driver={driver} />)
+    await ink.settle(40)
+    ink.stdin.send('\r') // probe-runtimes -> select-tools
+    await waitForFrame(ink, (f) => f.includes('SkillHone'))
+
+    const row = ink
+      .lastFrame()
+      .split('\n')
+      .find((line) => line.includes('SkillHone'))
+    // SkillHone is catalogued `stage: null` so it can never reach `stageTools`,
+    // which the list used to read as "selected by no stage, so a release gate".
+    expect(row).toContain('(optimise)')
+    expect(ink.lastFrame()).toContain('skills (vercel-labs) (release)')
+    expect(ink.lastFrame()).not.toContain('release gate')
     ink.unmount()
   })
 

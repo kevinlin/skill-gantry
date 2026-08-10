@@ -32,8 +32,20 @@ export interface GitSkillSpec {
 export interface ToolSpec {
   id: string
   displayName: string
-  /** null for the release installer: it is invoked by a stage, selected by none. */
+  /**
+   * The stage whose `stageTools` may select this tool, `null` when none may:
+   * the release installer, which release invokes directly, and a `git-skill`
+   * bundle, which has no adapter to parse it.
+   */
   stage: Stage | null
+  /**
+   * The lifecycle stage the tool serves — every catalogue entry serves exactly
+   * one, including the three `stage` cannot name. Separate from `stage` because
+   * that field answers "may a run select it", not "what is it for": SkillHone
+   * serves optimise and must still never reach `stageTools`. Reading `stage`
+   * for a label is what made the wizard call SkillHone a release gate.
+   */
+  serves: Stage
   runtime: Runtime
   install: InstallSpec | GitSkillSpec
   versionArgv: readonly string[]
@@ -72,6 +84,7 @@ export const CATALOGUE: readonly ToolSpec[] = [
     id: 'skill-lint',
     displayName: 'skill-lint',
     stage: 'validate',
+    serves: 'validate',
     runtime: 'npm',
     install: { kind: 'npm-prefix', spec: 'skill-lint', pin: '0.2.0', binName: 'skill-lint' },
     versionArgv: ['--version'],
@@ -80,6 +93,7 @@ export const CATALOGUE: readonly ToolSpec[] = [
     id: 'skill-up',
     displayName: 'skill-up (Alibaba)',
     stage: 'evaluate',
+    serves: 'evaluate',
     runtime: 'none',
     install: {
       kind: 'gh-release',
@@ -95,6 +109,7 @@ export const CATALOGUE: readonly ToolSpec[] = [
     id: 'skill-scanner',
     displayName: 'skill-scanner',
     stage: 'security',
+    serves: 'security',
     runtime: 'uv',
     install: { kind: 'uv-tool', spec: 'skill-scanner', pin: '0.3.3', binName: 'skill-scanner' },
     versionArgv: ['--version'],
@@ -103,6 +118,7 @@ export const CATALOGUE: readonly ToolSpec[] = [
     id: 'skillspector',
     displayName: 'SkillSpector (NVIDIA)',
     stage: 'security',
+    serves: 'security',
     runtime: 'uv',
     install: {
       kind: 'uv-tool',
@@ -116,6 +132,7 @@ export const CATALOGUE: readonly ToolSpec[] = [
     id: RELEASE_TOOL_ID,
     displayName: 'skills (vercel-labs)',
     stage: null,
+    serves: 'release',
     runtime: 'npm',
     install: { kind: 'npm-prefix', spec: 'skills', pin: '1.5.21', binName: 'skills' },
     versionArgv: ['--version'],
@@ -128,6 +145,7 @@ export const CATALOGUE: readonly ToolSpec[] = [
     // state that could report it missing would be the only one in the system.
     runtime: 'uv',
     stage: null,
+    serves: 'optimise',
     install: {
       kind: 'git-skill',
       repo: 'Tencent/SkillHone',
@@ -153,6 +171,9 @@ export const CATALOGUE: readonly ToolSpec[] = [
     // the bundle is SKILL.md, two .tmpl assets, references/ and its own evals/.
     runtime: 'none',
     stage: null,
+    // It authors the suites skill-up runs, so it serves the same stage its
+    // companion does — which is also why R3.8 makes it follow that selection.
+    serves: 'evaluate',
     install: {
       kind: 'git-skill',
       repo: 'alibaba/skill-up',

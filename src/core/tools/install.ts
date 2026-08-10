@@ -37,6 +37,14 @@ export async function verifyTool(
   return match[0]
 }
 
+/**
+ * What installing needs off a `ToolSpec`, which is less than the catalogue
+ * carries: no driver reads `stage`, `serves`, `displayName` or `runtime`.
+ * Naming the subset is what lets `installAndLock` build a spec for a tool that
+ * is not catalogued at all without inventing a lifecycle stage for it.
+ */
+export type InstallableTool = Pick<ToolSpec, 'id' | 'install' | 'versionArgv'>
+
 export interface InstallToolOptions extends GhReleaseOptions {
   exec?: Exec
   /** Where `git-skill` looks for runtime skills directories; tests point it at a temp home. */
@@ -46,7 +54,7 @@ export interface InstallToolOptions extends GhReleaseOptions {
 /** Where a driver placed the executable, and what integrity it could prove. */
 async function drive(
   dir: string,
-  spec: ToolSpec,
+  spec: InstallableTool,
   options: InstallToolOptions,
 ): Promise<{ bin: string; integrity: string; links?: string[]; resolvedVersion?: string }> {
   switch (spec.install.kind) {
@@ -80,7 +88,7 @@ async function drive(
 
 export async function installTool(
   home: string,
-  spec: ToolSpec,
+  spec: InstallableTool,
   options: InstallToolOptions = {},
 ): Promise<ToolLockEntry> {
   const dir = join(toolRoot(home), spec.id)
@@ -116,9 +124,6 @@ export async function installAndLock(
 ): Promise<ToolLockEntry> {
   return installTool(home, {
     id: spec.id,
-    displayName: spec.id,
-    stage: null,
-    runtime: 'uv',
     install: { kind: 'uv-tool', spec: spec.spec, pin: spec.pin, binName: spec.binName },
     versionArgv,
   })
