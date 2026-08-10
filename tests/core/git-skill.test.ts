@@ -25,22 +25,33 @@ const SPEC: GitSkillSpec & { id: string } = {
   requirements: 'skills/skillhone/assets/requirements.txt',
 }
 
+/** skill-upper's shape: SKILL.md, templates and references, and no Python. */
+const BARE_SPEC: GitSkillSpec & { id: string } = {
+  id: 'skill-upper',
+  kind: 'git-skill',
+  repo: 'alibaba/skill-up',
+  pin: 'v0.7.0',
+  skills: ['skill-upper'],
+}
+
 /** Records argv and stands in for git and uv; materialises what a clone would. */
-const fakeExec = (repoDir: string, calls: string[][]): Exec => {
+const fakeExec = (repoDir: string, calls: string[][], spec = SPEC): Exec => {
   return async (bin, argv) => {
     calls.push([bin, ...argv])
     if (bin === 'git' && argv[0] === 'clone') {
-      for (const name of SPEC.skills) await mkdir(join(repoDir, 'skills', name), { recursive: true })
-      await mkdir(join(repoDir, 'skills', 'skillhone', 'assets'), { recursive: true })
-      await writeFile(
-        join(repoDir, 'skills', 'skillhone', 'assets', 'requirements.txt'),
-        'PyYAML\n',
-      )
-      for (const name of SPEC.skills) {
+      for (const name of spec.skills) {
+        await mkdir(join(repoDir, 'skills', name), { recursive: true })
         await writeFile(join(repoDir, 'skills', name, 'SKILL.md'), `---\nname: ${name}\n---\n`)
       }
+      if (spec.requirements !== undefined) {
+        await mkdir(join(repoDir, 'skills', 'skillhone', 'assets'), { recursive: true })
+        await writeFile(
+          join(repoDir, 'skills', 'skillhone', 'assets', 'requirements.txt'),
+          'PyYAML\n',
+        )
+      }
     }
-    if (bin === 'git' && argv.includes('rev-parse')) return { stdout: `${SPEC.pin}\n`, stderr: '' }
+    if (bin === 'git' && argv.includes('rev-parse')) return { stdout: `${spec.pin}\n`, stderr: '' }
     return { stdout: '', stderr: '' }
   }
 }
@@ -88,6 +99,29 @@ describe('gitSkillInstall', () => {
     expect(await readlink(link)).toBe(join(dir, 'repo', 'skills', 'skillhone-optimization'))
   })
 
+  it('skips the venv entirely for a bundle with no requirements — R3.11', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'sg-home-'))
+    await mkdir(join(home, '.agents', 'skills'), { recursive: true })
+    const dir = await mkdtemp(join(tmpdir(), 'sg-tool-'))
+    const calls: string[][] = []
+
+    const out = await gitSkillInstall(
+      dir,
+      BARE_SPEC,
+      fakeExec(join(dir, 'repo'), calls, BARE_SPEC),
+      home,
+    )
+
+    // Not one uv invocation reaches the injected Exec: building an empty venv
+    // would install a runtime the tool never uses.
+    expect(calls.filter((call) => call[0] === 'uv')).toEqual([])
+    // The linked skill directory, which a verification can check and R6.13's
+    // prompt can name — an interpreter that was never built can do neither.
+    expect(out.bin).toBe(join(dir, 'repo', 'skills', 'skill-upper'))
+    expect(out.links).toEqual([join(home, '.agents', 'skills', 'skill-upper')])
+    expect(out.sha).toBe(BARE_SPEC.pin)
+  })
+
   it('refuses an existing entry that is not our symlink, rather than clobbering it', async () => {
     const home = await mkdtemp(join(tmpdir(), 'sg-home-'))
     await mkdir(join(home, '.agents', 'skills', 'skillhone-optimization'), { recursive: true })
@@ -118,6 +152,26 @@ describe('verifyGitSkill', () => {
 
     await expect(verifyGitSkill(dir, [], SPEC.pin, exec)).rejects.toThrow(/HEAD is/)
   })
+
+  it('probes no interpreter for a bundle that declared no requirements — R3.11', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'sg-home-'))
+    const dir = await mkdtemp(join(tmpdir(), 'sg-tool-'))
+    await mkdir(join(dir, 'repo', 'skills', 'skill-upper'), { recursive: true })
+    await mkdir(join(home, 'skills'), { recursive: true })
+    const link = join(home, 'skills', 'skill-upper')
+    await symlink(join(dir, 'repo', 'skills', 'skill-upper'), link)
+
+    const calls: string[][] = []
+    const exec: Exec = async (bin, argv) => {
+      calls.push([bin, ...argv])
+      return { stdout: `${BARE_SPEC.pin}\n`, stderr: '' }
+    }
+
+    expect(await verifyGitSkill(dir, [link], BARE_SPEC.pin, exec, false)).toBe(BARE_SPEC.pin)
+    // Two facts, not three: probing a python that was never built would report
+    // every such install `unverifiable`.
+    expect(calls.map((call) => call[0])).toEqual(['git'])
+  })
 })
 
 describe('gitSkillUninstall', () => {
@@ -131,6 +185,23 @@ describe('gitSkillUninstall', () => {
     await gitSkillUninstall(dir, [link])
 
     await expect(readlink(link)).rejects.toThrow()
+  })
+
+  it('leaves no link behind for a bundle installed without a venv', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'sg-home-'))
+    await mkdir(join(home, '.agents', 'skills'), { recursive: true })
+    const dir = await mkdtemp(join(tmpdir(), 'sg-tool-'))
+
+    const out = await gitSkillInstall(
+      dir,
+      BARE_SPEC,
+      fakeExec(join(dir, 'repo'), [], BARE_SPEC),
+      home,
+    )
+    await gitSkillUninstall(dir, out.links)
+
+    for (const link of out.links) await expect(readlink(link)).rejects.toThrow()
+    await expect(stat(dir)).rejects.toThrow()
   })
 
   it('removes the settings file it wrote — R3.10 applying R3.1 to a second out-of-root write', async () => {

@@ -122,6 +122,17 @@ export async function gitSkillInstall(
     }
   }
 
+  // A bundle with no requirements takes neither the venv nor an interpreter:
+  // building an empty one would install a runtime the tool never uses and leave
+  // `verifyGitSkill` probing a python no code path reaches — design §5.2.
+  if (spec.requirements === undefined) {
+    // The linked skill directory inside the clone, which is a path a
+    // verification can check and R6.13's prompt can name. Recording nothing is
+    // worse in both directions: `checkLockedTool` reads `bin` before it
+    // branches, and the prompt has to say where the authoring skill is.
+    return { bin: join(repoDir, 'skills', spec.skills[0] ?? ''), links, sha }
+  }
+
   await exec('uv', ['venv', venv])
   await exec('uv', ['pip', 'install', '--python', interpreter, '-r', join(repoDir, spec.requirements)])
 
@@ -132,12 +143,17 @@ export async function gitSkillInstall(
  * Three facts, because nothing in the bundle answers a version argv and
  * `verifyTool`'s semver regex rejects a commit sha. Returns the sha, which is
  * what the lock records as `resolvedVersion`.
+ *
+ * Two facts for a bundle that declared no requirements: there is no
+ * interpreter to run, and probing one that was never built would report every
+ * such install as `unverifiable` — design §5.2.
  */
 export async function verifyGitSkill(
   dir: string,
   links: readonly string[],
   sha: string,
   exec: Exec,
+  hasInterpreter = true,
 ): Promise<string> {
   const repoDir = join(dir, 'repo')
   const head = (await exec('git', ['-C', repoDir, 'rev-parse', 'HEAD'])).stdout.trim()
@@ -145,7 +161,7 @@ export async function verifyGitSkill(
   for (const link of links) {
     if (!(await exists(link))) throw new Error(`${link} does not resolve`)
   }
-  await exec(join(dir, '.venv', 'bin', 'python'), ['--version'])
+  if (hasInterpreter) await exec(join(dir, '.venv', 'bin', 'python'), ['--version'])
   return sha
 }
 

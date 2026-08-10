@@ -15,12 +15,18 @@ export interface GitSkillSpec {
   kind: 'git-skill'
   /** `owner/name`, cloned over https. */
   repo: string
-  /** A commit sha — upstream publishes no tags. */
+  /** A commit sha where upstream publishes no tags, otherwise a release tag. */
   pin: string
   /** Directory names under the repo's `skills/`, each symlinked individually. */
   skills: readonly string[]
-  /** Repo-relative path to the pip requirements file. */
-  requirements: string
+  /**
+   * Repo-relative path to the pip requirements file, absent for a bundle with
+   * no runtime dependencies at all. That the field was mandatory was a fact
+   * about SkillHone rather than about the kind: skill-upper is SKILL.md,
+   * templates and references, and building an empty venv to satisfy the field
+   * would install a runtime the tool never uses — design §5.1a.
+   */
+  requirements?: string
 }
 
 export interface ToolSpec {
@@ -38,6 +44,17 @@ export const RELEASE_TOOL_ID = 'skills'
 
 /** R3.5 as amended: optimise's member, published as a skill bundle, not a CLI. */
 export const SKILLHONE_TOOL_ID = 'skillhone'
+
+/**
+ * R3.11: skill-up's authoring companion, which owns the eval templates and the
+ * judge guidance R6.13's prompt hands over. Selected by no stage and by no
+ * preset — R3.8 as amended makes it follow skill-up into the install set,
+ * because a guide for a binary the machine does not have is not a choice.
+ */
+export const SKILL_UPPER_TOOL_ID = 'skill-upper'
+
+/** R3.11: the tool whose selection drags skill-upper in with it. */
+export const SKILL_UP_TOOL_ID = 'skill-up'
 
 /**
  * Every entry was probed against its real index before being written here, and
@@ -129,7 +146,37 @@ export const CATALOGUE: readonly ToolSpec[] = [
     // `git-skill` to verify by three facts instead — design §5.2.
     versionArgv: [],
   },
+  {
+    id: SKILL_UPPER_TOOL_ID,
+    displayName: 'skill-upper (Alibaba)',
+    // No requirements file, so no venv is built and `uv` is never invoked:
+    // the bundle is SKILL.md, two .tmpl assets, references/ and its own evals/.
+    runtime: 'none',
+    stage: null,
+    install: {
+      kind: 'git-skill',
+      repo: 'alibaba/skill-up',
+      // The release tag, not a commit sha as SkillHone's is: one pin for both
+      // halves of one upstream project cannot drift against itself, and
+      // guidance documenting flags the locked binary does not have is worse
+      // than guidance that lags a skill fix by a release. Probed at this tag.
+      pin: 'v0.7.0',
+      skills: [SKILL_UPPER_TOOL_ID],
+    },
+    versionArgv: [],
+  },
 ]
+
+/**
+ * What the wizard offers and what `everything` expands to. skill-upper is
+ * absent: R3.8 as amended makes it follow skill-up into the install set rather
+ * than being chosen, so a row for it would let a user install a guide for a
+ * binary they do not have. `CATALOGUE` stays the install, verify and lock
+ * authority — this is the selection view of it.
+ */
+export const SELECTABLE_CATALOGUE: readonly ToolSpec[] = CATALOGUE.filter(
+  (spec) => spec.id !== SKILL_UPPER_TOOL_ID,
+)
 
 const BY_ID = new Map(CATALOGUE.map((spec) => [spec.id, spec]))
 
@@ -159,9 +206,26 @@ export type PresetName = 'minimal' | 'recommended' | 'everything'
  * would install and then error on every real input. Decision-log section 10.
  */
 export const PRESETS: Readonly<Record<PresetName, readonly string[]>> = {
-  minimal: ['skill-up', 'skillspector', RELEASE_TOOL_ID],
-  recommended: ['skill-lint', 'skill-up', 'skillspector', SKILLHONE_TOOL_ID, RELEASE_TOOL_ID],
-  everything: catalogueIds(),
+  minimal: [SKILL_UP_TOOL_ID, 'skillspector', RELEASE_TOOL_ID],
+  recommended: [
+    'skill-lint',
+    SKILL_UP_TOOL_ID,
+    'skillspector',
+    SKILLHONE_TOOL_ID,
+    RELEASE_TOOL_ID,
+  ],
+  everything: SELECTABLE_CATALOGUE.map((spec) => spec.id),
+}
+
+/**
+ * R3.8 as amended: skill-upper is not chosen, it follows skill-up. One rule
+ * over the selection rather than an entry in three presets, so per-stage
+ * choice picks it up too — a fourth listing would be a fourth place to forget.
+ */
+export function expandSelection(selected: readonly string[]): readonly string[] {
+  return selected.includes(SKILL_UP_TOOL_ID) && !selected.includes(SKILL_UPPER_TOOL_ID)
+    ? [...selected, SKILL_UPPER_TOOL_ID]
+    : selected
 }
 
 export function expandPreset(name: PresetName): readonly ToolSpec[] {

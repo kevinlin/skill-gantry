@@ -1,4 +1,4 @@
-import { readFile, readdir, stat } from 'node:fs/promises'
+import { lstat, readFile, readdir, readlink, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { loadToolLock } from '../config/config.js'
@@ -9,7 +9,7 @@ import type { SkillRef } from '../types.js'
 import type { ToolLockEntry } from '../config/schema.js'
 import { CATALOGUE, SKILLHONE_TOOL_ID, catalogueEntry } from './catalogue.js'
 import { type Exec, defaultExec } from './exec.js'
-import { verifyGitSkill } from './git-skill.js'
+import { RUNTIME_SKILL_DIRS, verifyGitSkill } from './git-skill.js'
 import { toolRoot, verifyTool } from './install.js'
 import { type RuntimeStatus, probeRuntimes, runtimesFor } from './runtimes.js'
 import {
@@ -38,6 +38,13 @@ export type ToolDriftKind =
   | 'skillhone-config-missing'
   | 'skillhone-config-unmanaged'
   | 'skillhone-config-stale'
+  // R3.11, on the same rule. A runtime skills directory holding one of a
+  // bundle's skills through a link SkillGantry did not create: the agent has
+  // the skill, it is simply not ours, so it is reported and left. The two
+  // failing states beside it already have a kind — a catalogued, selected tool
+  // with no lock entry is `unlocked`, and a link we made that has gone dangling
+  // fails `verifyGitSkill` into `missing` — and neither describes this one.
+  | 'skill-link-unmanaged'
 
 /** The four kinds R3.9 names are the ones that fail the report. */
 const FAILING: ReadonlySet<ToolDriftKind> = new Set<ToolDriftKind>([
@@ -114,12 +121,19 @@ async function checkLockedTool(
   // Three facts rather than a version argv — §5.2 — because `verifyTool`'s
   // semver regex rejects a commit sha and a skill bundle answers no argv.
   if (entry.installKind === 'git-skill') {
+    const spec = catalogueEntry(toolId)?.install
     try {
       const sha = await verifyGitSkill(
         join(toolRoot(home), toolId),
         entry.links ?? [],
         entry.resolvedVersion,
         exec,
+        // A bundle that declared no requirements built no venv, so probing one
+        // would report every such install `unverifiable`. Read from the
+        // catalogue rather than from the lock: the lock records where `bin`
+        // landed, and the question here is whether an interpreter was ever
+        // meant to exist.
+        spec?.kind !== 'git-skill' || spec.requirements !== undefined,
       )
       return { kind: 'ok', actualVersion: sha, detail: '' }
     } catch (err) {
@@ -241,10 +255,48 @@ async function checkSkillhoneConfig(
   return null
 }
 
+/**
+ * R3.11. Every bundled skill a runtime directory holds through something that
+ * is not a link into our tool root: a foreign copy, or a plain directory the
+ * user installed themselves. Read-only, and non-failing — the agent has the
+ * skill, it is simply not ours, and failing a report on a machine that is fine
+ * is how a doctor report stops being read.
+ */
+async function unmanagedSkillLinks(home: string, userHome: string): Promise<ToolFinding[]> {
+  const findings: ToolFinding[] = []
+  for (const spec of CATALOGUE) {
+    if (spec.install.kind !== 'git-skill') continue
+    const ours = join(toolRoot(home), spec.id)
+    for (const runtime of RUNTIME_SKILL_DIRS) {
+      for (const name of spec.install.skills) {
+        const link = join(userHome, runtime, 'skills', name)
+        // lstat, not stat: a dangling link still occupies the name, and one of
+        // ours that has gone dangling is `missing` on the entry above rather
+        // than a second finding here.
+        const entry = await lstat(link).catch(() => null)
+        if (entry === null) continue
+        const target = entry.isSymbolicLink() ? await readlink(link).catch(() => null) : null
+        if (target !== null && target.startsWith(ours)) continue
+        findings.push({
+          toolId: spec.id,
+          kind: 'skill-link-unmanaged',
+          expectedVersion: null,
+          actualVersion: null,
+          detail:
+            `${link} → ${target ?? 'a directory of its own'} was not created by SkillGantry — ` +
+            'remove it and re-run `skillgantry setup` to install the pinned copy',
+        })
+      }
+    }
+  }
+  return findings
+}
+
 export async function doctor(input: DoctorInput): Promise<DoctorReport> {
   const lock = await loadToolLock(input.home)
 
   const exec = input.exec ?? defaultExec
+  const userHome = input.userHome ?? homedir()
 
   const tools: ToolFinding[] = []
   for (const [toolId, entry] of Object.entries(lock.tools)) {
@@ -280,13 +332,11 @@ export async function doctor(input: DoctorInput): Promise<DoctorReport> {
           'npm install -g @anthropic-ai/claude-code',
       })
     }
-    const config = await checkSkillhoneConfig(
-      input.home,
-      input.userHome ?? homedir(),
-      bundle,
-    )
+    const config = await checkSkillhoneConfig(input.home, userHome, bundle)
     if (config) tools.push({ toolId: SKILLHONE_TOOL_ID, ...config })
   }
+
+  tools.push(...(await unmanagedSkillLinks(input.home, userHome)))
 
   for (const dir of await installedDirs(input.home)) {
     if (lock.tools[dir]) continue
