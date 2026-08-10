@@ -110,7 +110,12 @@ describe('Work screen', () => {
     ui.stdin.send('?')
     await ui.settle()
     expect(ui.lastFrame()).toContain('SkillGantry — keys')
-    expect(ui.lastFrame()).toContain('skills → stages → output → queue')
+    // The binding, not its description. This line held the four-stop wording
+    // verbatim, which is how that row went on teaching a cycle §14.6 had
+    // reduced to three: a frame assertion over prose pins the prose, and what
+    // this case is about is that the list rendered at all. `help-keys.test.ts`
+    // owns whether the row says the right thing, and counts the stops for it.
+    expect(ui.lastFrame()).toContain('tab, shift-tab')
 
     ui.stdin.send('') // esc
     await ui.settle()

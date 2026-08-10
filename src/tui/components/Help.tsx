@@ -21,7 +21,7 @@ export const KEYS: readonly (readonly [string, string])[] = [
   [':', 'command palette: any screen, refresh, quit'],
   ['esc', 'back to Work, or close what is open'],
   ['? / q', 'this help · quit'],
-  ['tab, shift-tab', 'Work: focus skills → stages → output → queue'],
+  ['tab, shift-tab', 'Work: focus skills → rail and output → queue'],
   ['h / l, ← / →', 'Work: the lifecycle rail, or out to / into a repo'],
   ['space', 'Work: mark the selected skill or stage'],
   ['r / x', 'Work: run every marked skill and stage · cancel a job'],

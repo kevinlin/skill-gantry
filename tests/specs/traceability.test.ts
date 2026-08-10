@@ -83,3 +83,24 @@ describe('R13.7 traceability', () => {
     expect([...claimed].filter((id) => !ids.includes(id))).toEqual([])
   })
 })
+
+/**
+ * The header stated the revision and so did the running paragraph, and nothing
+ * checked that the two agreed — so the header sat at "revision 3" while the
+ * body reached 24, and every reader who trusted the front matter was reading a
+ * document twenty-one revisions out of date. Two records of one fact is the
+ * duplication the milestone table's own note refuses; this is the check that
+ * makes them one.
+ */
+describe('the requirements front matter', () => {
+  it('states the revision the body has actually reached', async () => {
+    const requirements = await readFile('docs/specs/requirements.md', 'utf8')
+    const header = /^\*\*Status:\*\* revision (\d+)/m.exec(requirements)
+    expect(header).not.toBeNull()
+
+    // Every amendment marker in the body, which is where a revision is spent.
+    const marked = [...requirements.matchAll(/\(rev (\d+)\)/g)].map((m) => Number(m[1]))
+    expect(marked.length).toBeGreaterThan(0)
+    expect(Number(header?.[1])).toBe(Math.max(...marked))
+  })
+})

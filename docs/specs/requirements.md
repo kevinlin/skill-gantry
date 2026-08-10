@@ -1,7 +1,7 @@
 # SkillGantry — Requirements
 
 **Date:** 2026-08-01
-**Status:** revision 3, incorporating [design-review-r2.md](design-review-r2.md)
+**Status:** revision 24 (revision 3 incorporated [design-review-r2.md](design-review-r2.md))
 **Layer:** requirements (layer 1 of 3: requirements → [design](design.md) → plan)
 **Traces to:** [decision-log.md](decision-log.md)
 

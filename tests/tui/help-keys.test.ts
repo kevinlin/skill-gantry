@@ -2,7 +2,7 @@ import stringWidth from 'string-width'
 import { describe, expect, it } from 'vitest'
 import { CHROME_ROWS, KEY_COLUMN, KEYS } from '../../src/tui/components/Help.js'
 import { innerWidth, layoutFor } from '../../src/tui/layout.js'
-import { PANELS } from '../../src/tui/store.js'
+import { FOCUSES, PANELS } from '../../src/tui/store.js'
 
 /**
  * There was no test over `KEYS` as data, which is how it came to advertise
@@ -27,6 +27,18 @@ describe('the help screen binding list', () => {
   it('names as many output tabs as PANELS has', () => {
     const tabs = KEYS.find(([key]) => key.startsWith('1 –'))
     expect(tabs?.[0]).toBe(`1 – ${PANELS.length}`)
+  })
+
+  /**
+   * The same failure as the tab count, from the other direction: §14.6 merged
+   * the rail and the output pane into one zone and left this row still walking
+   * the user through four stops, so the screen taught a cycle the key had not
+   * made since M7. Counted rather than matched on wording, because the row's
+   * job is to name the stops and only their number is `FOCUSES`' to decide.
+   */
+  it('walks as many focus stops as FOCUSES has', () => {
+    const cycle = KEYS.find(([key]) => key.startsWith('tab'))
+    expect(cycle?.[1].split('→')).toHaveLength(FOCUSES.length)
   })
 
   // The four the list omitted, and the two this extension adds. Named
