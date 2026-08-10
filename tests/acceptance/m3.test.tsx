@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { chmod, mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import {
   DEFAULT_CONFIG,
+  canonicalisePath,
   loadConfig,
   loadToolLock,
+  registerRepo,
   saveConfig,
   saveToolLock,
 } from '../../src/core/config/config.js'
@@ -109,6 +111,77 @@ describe('M3 exit criterion: a clean machine reaches a verified toolchain throug
       ruleMap: { applied: RULE_CLASS_MAP_VERSION, current: RULE_CLASS_MAP_VERSION },
     })
     expect(report.failed).toBe(false)
+    ink.unmount()
+  })
+})
+
+describe('M3 exit criterion: the repo state names what is registered and moves it in place', () => {
+  it('replaces a repo path under the id it already had, against a real config file', async () => {
+    const h = await home()
+    const from = await makeRepo({ files: { 'declawed/SKILL.md': SKILL_MD('declawed') } })
+    const to = await makeRepo({ files: { 'declawed/SKILL.md': SKILL_MD('declawed') } })
+
+    // Registered the way `registerRepo` does it, so the id under test is the
+    // one the real write path derives.
+    await registerRepo(h, from)
+    const before = await loadConfig(h)
+    const id = before.repos[0]!.id
+
+    // Only the network is stubbed, as above: the config write under test is the
+    // real `updateRepo` reached through the real driver.
+    const real = buildSetupDriver(h)
+    const driver: SetupDriver = {
+      ...real,
+      probe: async () => [{ runtime: 'uv', present: true, version: '0.7.12', installCommand: 'x' }],
+      install: async (toolId) => {
+        const bin = await fakeInstalled(h, toolId, '1.0.0')
+        const lock = await loadToolLock(h)
+        await saveToolLock(h, {
+          ...lock,
+          tools: {
+            ...lock.tools,
+            [toolId]: {
+              installKind: 'uv-tool',
+              requestedPin: 'v1.0.0',
+              resolvedVersion: '1.0.0',
+              bin,
+              integrity: 'n/a',
+              installedAt: new Date().toISOString(),
+              verifiedAt: new Date().toISOString(),
+            },
+          },
+        })
+      },
+    }
+
+    const ink = renderInk(<SetupApp driver={driver} repos={before.repos} />)
+    await waitForFrame(ink, (frame) => frame.includes('0.7.12'))
+    ink.stdin.send('\r')
+    await waitForFrame(ink, (frame) => frame.includes('Select tools'))
+    ink.stdin.send('1')
+    await waitForFrame(ink, (frame) => frame.includes('* skills (vercel-labs)'))
+    ink.stdin.send('\r')
+    await waitForFrame(ink, (frame) => frame.includes('● skills '))
+    ink.stdin.send('\r')
+    await waitForFrame(ink, (frame) => frame.includes('Credentials and repo'))
+    expect(ink.lastFrame()).toContain(id)
+    expect(ink.lastFrame()).toContain('+ register another')
+
+    ink.stdin.send('\x1b[A') // onto the registered repo, prefilling its path
+    await waitForFrame(ink, (frame) => frame.includes(basename(from)))
+    // Cleared by length rather than by a fixed count: the prefill is the
+    // canonical path, which on macOS is the typed one under /private.
+    for (let i = 0; i < before.repos[0]!.path.length; i += 1) ink.stdin.send('\x7f')
+    for (const ch of to) ink.stdin.send(ch)
+    await waitForFrame(ink, (frame) => frame.includes(basename(to)))
+    ink.stdin.send('\r')
+    await waitForFrame(ink, (frame) => frame.includes('Toolchain verified'))
+
+    const after = await loadConfig(h)
+    expect(after.repos).toHaveLength(1)
+    // The id it was registered under, and the path it now points at.
+    expect(after.repos[0]?.id).toBe(id)
+    expect(after.repos[0]?.path).toBe(await canonicalisePath(to))
     ink.unmount()
   })
 })

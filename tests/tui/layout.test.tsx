@@ -1,7 +1,13 @@
 import { readFile } from 'node:fs/promises'
 import type { ReactElement } from 'react'
 import { describe, expect, it } from 'vitest'
-import { VERSION, type JobRecord, type SkillRef } from '../../src/core/index.js'
+import {
+  VERSION,
+  initialSetupState,
+  type JobRecord,
+  type SkillRef,
+} from '../../src/core/index.js'
+import { Setup } from '../../src/tui/components/Setup.js'
 import { StatusBar } from '../../src/tui/components/StatusBar.js'
 import { Work } from '../../src/tui/components/Work.js'
 import { MIN_COLUMNS, MIN_ROWS, layoutFor, truncate, windowFor } from '../../src/tui/layout.js'
@@ -363,6 +369,44 @@ describe('every M6 screen fits its terminal — §14.1', () => {
       ui.stdin.send('\r')
       ui.stdin.send('3')
       await ui.settle(60)
+      const size = measure(ui.lastFrame())
+      ui.unmount()
+      expect(size.rows).toBeLessThanOrEqual(rows)
+      expect(size.columns).toBeLessThanOrEqual(columns)
+    })
+
+    // R3.12 put unbounded content on a step that had none, so the list is what
+    // gives way — §14.1's first rule, and the reason the step windows at all.
+    it(`fits the setup repo step with a long list at ${columns}x${rows}`, async () => {
+      const repos = Array.from({ length: 12 }, (_, n) => ({
+        id: `repo-${n}`,
+        path: `/home/u/dev/a-fairly-long-skills-repo-path-${n}`,
+        name: `repo-${n}`,
+        isGit: n % 2 === 0,
+      }))
+      const state = {
+        ...initialSetupState(),
+        state: 'credentials-and-repo' as const,
+        credentials: { present: true, warnings: [] },
+      }
+      const ui = renderInk(
+        <Setup
+          state={state}
+          cursor={0}
+          draftPath="/home/u/dev/typing-a-new-one"
+          inspection={{
+            resolved: '/home/u/dev/typing-a-new-one',
+            isDirectory: true,
+            alreadyRegistered: false,
+            skillCount: 4,
+            isGit: true,
+          }}
+          repos={repos}
+          repoCursor={repos.length}
+        />,
+        { columns, rows },
+      )
+      await ui.settle()
       const size = measure(ui.lastFrame())
       ui.unmount()
       expect(size.rows).toBeLessThanOrEqual(rows)

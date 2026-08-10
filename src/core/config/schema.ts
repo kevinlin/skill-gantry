@@ -7,6 +7,11 @@ export const repoSchema = z.object({
   isGit: z.boolean(),
 })
 
+/** One registered repo. Named because the wizard and the Settings screen both
+    render a list of them, and `GantryConfig['repos'][number]` in three
+    signatures is a shape nobody can search for. */
+export type RepoEntry = z.infer<typeof repoSchema>
+
 export const stageToolsSchema = z.object({
   validate: z.array(z.string()).default([]),
   evaluate: z.array(z.string()).default([]),

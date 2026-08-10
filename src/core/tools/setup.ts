@@ -215,6 +215,12 @@ export interface SetupDriver {
   /** Read-only: what a typed path resolves to, before the user commits it. */
   inspectRepo(path: string): Promise<RepoInspection>
   registerRepo(path: string): Promise<void>
+  /**
+   * R3.12: move a repo the user selected from the registered list. Separate
+   * from `registerRepo`, which refuses a duplicate — and the path being
+   * corrected is registered by definition.
+   */
+  updateRepo(repoId: string, path: string): Promise<void>
   /** Locked and verified per the lockfile; a re-entered wizard skips these. */
   installedTools(): Promise<readonly string[]>
 }

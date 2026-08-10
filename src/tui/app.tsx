@@ -90,6 +90,7 @@ function SetupScreen({
   const locked = state.settings?.lockedTools ?? []
   const session = useSetupSession({
     driver,
+    repos: config?.repos ?? [],
     seed: {
       selected: [...new Set([...Object.values(config?.stageTools ?? {}).flat(), ...locked])],
       installed: Object.fromEntries(locked.map((id) => [id, 'ok' as const])),
@@ -98,11 +99,19 @@ function SetupScreen({
     // Resolved here rather than in the hook: staging needs the canonical path
     // and the git flag, and this is the caller that needs them — the CLI's
     // `registerRepo` does its own inspection and must not pay for a second.
-    onRepo: async (path) => {
+    onRepo: async (path, replacing) => {
       const result = await driver.inspectRepo(path)
       if (!result.isDirectory) throw new Error(`no such directory: ${result.resolved}`)
+      const entry = { path: result.resolved, isGit: result.isGit }
+      if (replacing !== null) {
+        // No duplicate refusal here: the repo being replaced holds this path by
+        // definition when the field was prefilled, and `withRepoPath` still
+        // refuses a path any *other* repo holds.
+        dispatch({ type: 'stage-repo-path', repoId: replacing, entry })
+        return
+      }
       if (result.alreadyRegistered) throw new Error(`already registered: ${result.resolved}`)
-      dispatch({ type: 'stage-repo', entry: { path: result.resolved, isGit: result.isGit } })
+      dispatch({ type: 'stage-repo', entry })
     },
     onExit: () => dispatch({ type: 'set-screen', screen: 'settings' }),
   })
@@ -113,6 +122,8 @@ function SetupScreen({
       draftPath={session.path}
       inspection={session.inspection}
       error={session.error}
+      repos={config?.repos ?? []}
+      repoCursor={session.repoCursor}
       exitLabel="settings"
     />
   )

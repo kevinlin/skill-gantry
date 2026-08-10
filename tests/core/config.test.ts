@@ -9,6 +9,7 @@ import {
   loadConfig,
   registerRepo,
   saveConfig,
+  updateRepo,
 } from '../../src/core/config/config.js'
 import { withRepo } from '../../src/core/config/edit.js'
 import { SKILL_MD, makeRepo } from '../helpers/tmp-repo.js'
@@ -121,6 +122,56 @@ describe('registerRepo', () => {
     await registerRepo(h, join(one, 'skills'))
     const cfg = await registerRepo(h, join(two, 'skills'))
     expect(cfg.repos.map((r) => r.id)).toEqual(['skills', 'skills-2'])
+  })
+})
+
+describe('updateRepo', () => {
+  it('moves a repo to a new path under the id it already had', async () => {
+    const h = await home()
+    const from = await makeRepo({ files: { 'a/SKILL.md': SKILL_MD('a') } })
+    const to = await makeRepo({ files: { 'b/SKILL.md': SKILL_MD('b') } })
+    const { repos } = await registerRepo(h, from)
+    const id = repos[0]?.id as string
+
+    const cfg = await updateRepo(h, id, to)
+    expect(cfg.repos).toHaveLength(1)
+    expect(cfg.repos[0]?.id).toBe(id)
+    expect(cfg.repos[0]?.path).toBe(await canonicalisePath(to))
+    expect((await loadConfig(h)).repos[0]?.path).toBe(await canonicalisePath(to))
+  })
+
+  it('refuses a path that is not a directory, naming it', async () => {
+    const h = await home()
+    const root = await makeRepo({ files: { 'a/SKILL.md': SKILL_MD('a') } })
+    const { repos } = await registerRepo(h, root)
+    await expect(updateRepo(h, repos[0]?.id as string, '/tmp/definitely-not-here-9f3a')).rejects.toThrow(
+      /no such directory/,
+    )
+  })
+
+  it('refuses a path another repo already holds', async () => {
+    const h = await home()
+    const one = await makeRepo({ files: { 'a/SKILL.md': SKILL_MD('a') } })
+    const two = await makeRepo({ files: { 'b/SKILL.md': SKILL_MD('b') } })
+    await registerRepo(h, one)
+    const cfg = await registerRepo(h, two)
+    await expect(updateRepo(h, cfg.repos[1]?.id as string, one)).rejects.toThrow(
+      /already registered/,
+    )
+  })
+
+  it('accepts the repo its own path, so a prefilled field can be submitted', async () => {
+    const h = await home()
+    const root = await makeRepo({ files: { 'a/SKILL.md': SKILL_MD('a') } })
+    const { repos } = await registerRepo(h, root)
+    const cfg = await updateRepo(h, repos[0]?.id as string, root)
+    expect(cfg.repos).toEqual(repos)
+  })
+
+  it('refuses an id that is not registered', async () => {
+    const h = await home()
+    const root = await makeRepo({ files: { 'a/SKILL.md': SKILL_MD('a') } })
+    await expect(updateRepo(h, 'nope', root)).rejects.toThrow('no such repo: nope')
   })
 })
 

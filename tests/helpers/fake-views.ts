@@ -145,15 +145,19 @@ export interface FakeSetupDriver extends SetupDriver {
   /** Selections and repos the wizard tried to write, so a test can assert it did not. */
   readonly saved: string[][]
   readonly registered: string[]
+  /** R3.12's replacements, as `[repoId, path]`. */
+  readonly updated: Array<[string, string]>
 }
 
 /** No spawn, no filesystem: the wizard's effects as resolved promises. */
 export function fakeSetupDriver(over: Partial<SetupDriver> = {}): FakeSetupDriver {
   const saved: string[][] = []
   const registered: string[] = []
+  const updated: Array<[string, string]> = []
   return {
     saved,
     registered,
+    updated,
     probe: async () => [
       { runtime: 'uv' as const, present: true, version: '0.7.12', installCommand: 'curl uv | sh' },
     ],
@@ -173,6 +177,9 @@ export function fakeSetupDriver(over: Partial<SetupDriver> = {}): FakeSetupDrive
     }),
     registerRepo: async (path) => {
       registered.push(path)
+    },
+    updateRepo: async (repoId, path) => {
+      updated.push([repoId, path])
     },
     ...over,
   }

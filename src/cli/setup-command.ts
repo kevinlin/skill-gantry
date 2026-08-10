@@ -16,6 +16,7 @@ import {
   saveToolLock,
   skillhoneSettings,
   stageToolsFor,
+  updateRepo,
   writeSkillhoneSettings,
   type SetupDriver,
 } from '../core/index.js'
@@ -104,6 +105,10 @@ export function buildSetupDriver(home: string, userHome: string = homedir()): Se
       await registerRepo(home, path)
     },
 
+    updateRepo: async (repoId, path) => {
+      await updateRepo(home, repoId, path)
+    },
+
     installedTools: async () => {
       const lock = await loadToolLock(home)
       // Verified, not merely present: an entry that will not run is exactly what
@@ -116,5 +121,8 @@ export function buildSetupDriver(home: string, userHome: string = homedir()): Se
 }
 
 export async function startSetup(options: SetupOptions): Promise<void> {
-  await renderSetup({ driver: buildSetupDriver(options.home) })
+  // R3.12's list, read once. It cannot go stale: the wizard is a forward walk,
+  // and a repo that registers or moves takes it straight to `done`.
+  const { repos } = await loadConfig(options.home)
+  await renderSetup({ driver: buildSetupDriver(options.home), repos })
 }

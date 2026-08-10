@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { renderInk } from '../helpers/render-ink.js'
 import { SetupApp } from '../../src/tui/setup-app.js'
-import type { SetupDriver } from '../../src/core/index.js'
+import { Setup } from '../../src/tui/components/Setup.js'
+import { initialSetupState, type RepoEntry, type SetupDriver } from '../../src/core/index.js'
 
 function fakeDriver(over: Partial<SetupDriver> = {}): { driver: SetupDriver; installed: string[] } {
   const installed: string[] = []
@@ -24,6 +25,7 @@ function fakeDriver(over: Partial<SetupDriver> = {}): { driver: SetupDriver; ins
       isGit: true,
     }),
     registerRepo: async () => {},
+    updateRepo: async () => {},
     installedTools: async () => [],
     ...over,
   }
@@ -31,8 +33,8 @@ function fakeDriver(over: Partial<SetupDriver> = {}): { driver: SetupDriver; ins
 }
 
 /** Drives the wizard to the repo step, which is the last one before `done`. */
-async function atRepoStep(driver: SetupDriver) {
-  const ink = renderInk(<SetupApp driver={driver} />)
+async function atRepoStep(driver: SetupDriver, repos: readonly RepoEntry[] = []) {
+  const ink = renderInk(<SetupApp driver={driver} repos={repos} />)
   await ink.settle(40)
   ink.stdin.send('\r') // probe-runtimes -> select-tools
   await ink.settle(20)
@@ -282,6 +284,163 @@ describe('setup wizard — add repo', () => {
     const ink = await atRepoStep(driver)
     expect(ink.lastFrame()).toContain('step 4 of 5')
     expect(ink.lastFrame()).not.toContain('(credentials-and-repo)')
+    ink.unmount()
+  })
+
+  it('says nothing about a registered list on a clean machine', async () => {
+    const { driver } = fakeDriver()
+    const ink = await atRepoStep(driver)
+    expect(ink.lastFrame()).not.toContain('registered')
+    expect(ink.lastFrame()).toContain('enter register · esc back · ctrl-d finish without a repo')
+    ink.unmount()
+  })
+})
+
+/** R3.12. */
+describe('setup wizard — the registered repos', () => {
+  const zapac: RepoEntry = {
+    id: 'zapac',
+    path: '/home/u/dev/zapac-agent-skills',
+    name: 'zapac-agent-skills',
+    isGit: true,
+  }
+  const demos: RepoEntry = { id: 'demos', path: '/home/u/dev/demos', name: 'demos', isGit: false }
+
+  it('names every repo already registered', async () => {
+    const { driver } = fakeDriver()
+    const ink = await atRepoStep(driver, [zapac, demos])
+    const frame = ink.lastFrame()
+    expect(frame).toContain('registered')
+    expect(frame).toContain('zapac')
+    expect(frame).toContain('/home/u/dev/zapac-agent-skills')
+    expect(frame).toContain('demos')
+    expect(frame).toContain('+ register another')
+    ink.unmount()
+  })
+
+  it('starts on the add slot, so the field is empty and enter still registers', async () => {
+    const registered: string[] = []
+    const { driver } = fakeDriver({ registerRepo: async (p) => void registered.push(p) })
+    const ink = await atRepoStep(driver, [zapac])
+    expect(ink.lastFrame()).toContain('type or paste a path')
+    await type(ink, '/tmp/new')
+    ink.stdin.send('\r')
+    await ink.settle(80)
+    expect(registered).toEqual(['/tmp/new'])
+    ink.unmount()
+  })
+
+  it('prefills the field with the repo the cursor moves onto', async () => {
+    const { driver } = fakeDriver()
+    const ink = await atRepoStep(driver, [zapac, demos])
+    ink.stdin.send('[A') // up, onto demos
+    await ink.settle(200)
+    expect(ink.lastFrame()).toContain('/home/u/dev/demos')
+    ink.stdin.send('[A') // up again, onto zapac
+    await ink.settle(200)
+    expect(ink.lastFrame()).toContain('/home/u/dev/zapac-agent-skills')
+    ink.unmount()
+  })
+
+  it('calls updateRepo with that repo id, never registerRepo', async () => {
+    const registered: string[] = []
+    const updated: Array<[string, string]> = []
+    const { driver } = fakeDriver({
+      registerRepo: async (p) => void registered.push(p),
+      updateRepo: async (id, p) => void updated.push([id, p]),
+    })
+    const ink = await atRepoStep(driver, [zapac, demos])
+    ink.stdin.send('[A') // onto demos, prefilling its path
+    await ink.settle(200)
+    ink.stdin.send('') // one backspace: /home/u/dev/demo
+    await ink.settle(200)
+    ink.stdin.send('\r')
+    await ink.settle(80)
+
+    expect(updated).toEqual([['demos', '/home/u/dev/demo']])
+    expect(registered).toEqual([])
+    expect(ink.lastFrame()).toContain('Done')
+    ink.unmount()
+  })
+
+  it('reads a repo its own path as unchanged rather than as a duplicate', async () => {
+    const { driver } = fakeDriver({
+      inspectRepo: async (path) => ({
+        resolved: path,
+        isDirectory: true,
+        alreadyRegistered: true,
+        skillCount: 20,
+        isGit: true,
+      }),
+    })
+    const ink = await atRepoStep(driver, [zapac, demos])
+    ink.stdin.send('[A') // onto demos, whose own path is now in the field
+    await ink.settle(200)
+    expect(ink.lastFrame()).toContain('unchanged')
+    expect(ink.lastFrame()).not.toContain('already registered')
+    ink.unmount()
+  })
+
+  it('still refuses a path another repo holds', async () => {
+    const { driver } = fakeDriver({
+      inspectRepo: async (path) => ({
+        resolved: path,
+        isDirectory: true,
+        alreadyRegistered: true,
+        skillCount: 20,
+        isGit: true,
+      }),
+    })
+    const ink = await atRepoStep(driver, [zapac, demos])
+    ink.stdin.send('[A') // onto demos
+    await ink.settle(200)
+    await type(ink, '2') // /home/u/dev/demos2 — a path demos does not hold
+    expect(ink.lastFrame()).toContain('error: already registered')
+    ink.unmount()
+  })
+
+  it('names the key that saves, and the one that chooses', async () => {
+    const { driver } = fakeDriver()
+    const ink = await atRepoStep(driver, [zapac])
+    expect(ink.lastFrame()).toContain('enter register · ↑/↓ choose')
+    ink.stdin.send('[A')
+    await ink.settle(200)
+    expect(ink.lastFrame()).toContain('enter save · ↑/↓ choose')
+    ink.unmount()
+  })
+
+  // §14.1: the list is the content that gives way, and at the floor it gives
+  // way entirely — but it says so, because the arrows still move a cursor.
+  it('collapses to a count where the list will not fit, rather than going quiet', async () => {
+    const state = {
+      ...initialSetupState(),
+      state: 'credentials-and-repo' as const,
+      credentials: { present: true, warnings: [] },
+    }
+    const ink = renderInk(
+      <Setup state={state} cursor={0} repos={[zapac, demos]} repoCursor={2} />,
+      { columns: 50, rows: 14 },
+    )
+    await ink.settle(20)
+    const frame = ink.lastFrame()
+    expect(frame).toContain('2 registered · ↑/↓ choose')
+    expect(frame).not.toContain('+ register another')
+    ink.unmount()
+  })
+
+  it('does not delete when the field is emptied over a repo', async () => {
+    const updated: Array<[string, string]> = []
+    const { driver } = fakeDriver({ updateRepo: async (id, p) => void updated.push([id, p]) })
+    const ink = await atRepoStep(driver, [demos])
+    ink.stdin.send('[A')
+    await ink.settle(200)
+    for (let i = 0; i < demos.path.length; i += 1) ink.stdin.send('')
+    await ink.settle(200)
+    ink.stdin.send('\r')
+    await ink.settle(80)
+
+    expect(updated).toEqual([])
+    expect(ink.lastFrame()).toContain('type a repo path first')
     ink.unmount()
   })
 })

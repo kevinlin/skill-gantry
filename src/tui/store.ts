@@ -4,6 +4,7 @@ import {
   isBumpLevel,
   resolveTargetVersion,
   withRepo,
+  withRepoPath,
   withScalar,
   withStageTools,
   withoutRepo,
@@ -432,6 +433,7 @@ export type Action =
   | { type: 'stage-remove-repo'; repoId: string }
   | { type: 'stage-selection'; selected: readonly string[] }
   | { type: 'stage-repo'; entry: { path: string; isGit: boolean } }
+  | { type: 'stage-repo-path'; repoId: string; entry: { path: string; isGit: boolean } }
   | { type: 'open-confirm' }
   | { type: 'close-confirm' }
   | { type: 'discard-staged' }
@@ -1159,6 +1161,15 @@ export function reducer(state: AppState, action: Action): AppState {
       } catch (err) {
         // Registering a path twice is the user's mistake, not a crash: the
         // screen says so and the staging is left as it was.
+        return { ...state, viewError: (err as Error).message }
+      }
+    }
+    case 'stage-repo-path': {
+      const base = state.staged ?? state.settings?.config
+      if (!base) return state
+      try {
+        return { ...state, staged: withRepoPath(base, action.repoId, action.entry) }
+      } catch (err) {
         return { ...state, viewError: (err as Error).message }
       }
     }

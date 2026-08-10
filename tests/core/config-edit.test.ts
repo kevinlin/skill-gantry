@@ -3,6 +3,7 @@ import { DEFAULT_CONFIG } from '../../src/core/config/config.js'
 import {
   configChanges,
   withRepo,
+  withRepoPath,
   withScalar,
   withStageTools,
   withoutRepo,
@@ -53,6 +54,47 @@ describe('withoutRepo', () => {
 
   it('is a no-op for an id that is not registered', () => {
     expect(withoutRepo(base, 'nope').repos).toEqual([])
+  })
+})
+
+describe('withRepoPath', () => {
+  const two = withRepo(withRepo(base, { path: '/a/x', isGit: false }), {
+    path: '/b/y',
+    isGit: false,
+  })
+
+  it('keeps the id and the position while moving the path', () => {
+    const next = withRepoPath(two, 'x', { path: '/moved/renamed', isGit: true })
+    expect(next.repos).toEqual([
+      { id: 'x', path: '/moved/renamed', name: 'renamed', isGit: true },
+      { id: 'y', path: '/b/y', name: 'y', isGit: false },
+    ])
+  })
+
+  it('rejects an id that is not registered, naming it', () => {
+    expect(() => withRepoPath(two, 'nope', { path: '/c/z', isGit: false })).toThrow(
+      'no such repo: nope',
+    )
+  })
+
+  it('rejects a path another repo already holds, naming it', () => {
+    expect(() => withRepoPath(two, 'x', { path: '/b/y', isGit: false })).toThrow(
+      'already registered: /b/y',
+    )
+  })
+
+  it('accepts the repo its own path, so a prefilled field can be submitted', () => {
+    expect(withRepoPath(two, 'x', { path: '/a/x', isGit: true }).repos[0]).toEqual({
+      id: 'x',
+      path: '/a/x',
+      name: 'x',
+      isGit: true,
+    })
+  })
+
+  it('leaves the input untouched', () => {
+    withRepoPath(two, 'x', { path: '/moved/x', isGit: false })
+    expect(two.repos[0]?.path).toBe('/a/x')
   })
 })
 
@@ -120,6 +162,20 @@ describe('configChanges', () => {
     expect(configChanges(one, withoutRepo(one, 'skills'))).toEqual([
       { kind: 'remove', path: 'repos[skills]', before: '/a/skills', after: null },
     ])
+  })
+
+  it('reports a repo whose path moved under the same id', () => {
+    const one = withRepo(base, { path: '/a/skills', isGit: true })
+    expect(configChanges(one, withRepoPath(one, 'skills', { path: '/b/skills', isGit: true }))).toEqual([
+      { kind: 'change', path: 'repos[skills]', before: '/a/skills', after: '/b/skills' },
+    ])
+  })
+
+  it('reports nothing when a repo is restaged at the path it already had', () => {
+    const one = withRepo(base, { path: '/a/skills', isGit: true })
+    expect(configChanges(one, withRepoPath(one, 'skills', { path: '/a/skills', isGit: true }))).toEqual(
+      [],
+    )
   })
 
   it('reports a stage tool list as one row, not one row per tool', () => {

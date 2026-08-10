@@ -2,10 +2,10 @@ import { mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join, resolve, sep } from 'node:path'
 import { countSkills, isGitRepo } from '../discovery/discover.js'
-import { withRepo } from './edit.js'
+import { withRepo, withRepoPath } from './edit.js'
 import { type GantryConfig, type ToolLock, configSchema, toolLockSchema } from './schema.js'
 
-export type { GantryConfig, ToolLock, ToolLockEntry } from './schema.js'
+export type { GantryConfig, RepoEntry, ToolLock, ToolLockEntry } from './schema.js'
 
 export const DEFAULT_CONFIG: GantryConfig = {
   version: 1,
@@ -104,6 +104,27 @@ export async function registerRepo(home: string, repoPath: string): Promise<Gant
   // The id and duplicate rules live in `withRepo` so the staged edit path and
   // this one cannot disagree about what registering means.
   const next = withRepo(config, { path, isGit })
+  await saveConfig(home, next)
+  return next
+}
+
+/**
+ * R3.12: move an already-registered repo, which `registerRepo` cannot do — it
+ * refuses a duplicate, and the path a user is correcting is registered by
+ * definition. Same shape as `registerRepo` so the two cannot drift: one
+ * inspection, the same two refusals by name, one save. `withRepoPath` owns the
+ * id rule, which is why the ledger's foreign key survives a rename.
+ */
+export async function updateRepo(
+  home: string,
+  repoId: string,
+  repoPath: string,
+): Promise<GantryConfig> {
+  const { resolved: path, isDirectory, isGit } = await inspectRepo(home, repoPath)
+  if (!isDirectory) throw new Error(`no such directory: ${path}`)
+
+  const config = await loadConfig(home)
+  const next = withRepoPath(config, repoId, { path, isGit })
   await saveConfig(home, next)
   return next
 }

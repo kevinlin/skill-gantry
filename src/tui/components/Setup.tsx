@@ -6,6 +6,7 @@ import {
   SETUP_ORDER,
   missingRuntimesFor,
   type ConfigureOutcome,
+  type RepoEntry,
   type RepoInspection,
   type SetupState,
   type SetupStateName,
@@ -70,6 +71,10 @@ export interface SetupProps {
   draftPath?: string
   inspection?: RepoInspection | null
   error?: string | null
+  /** R3.12: what is already registered, from whichever caller owns the config. */
+  repos?: readonly RepoEntry[]
+  /** Indexes `[...repos, <register another>]`; `repos.length` is that slot. */
+  repoCursor?: number
   /**
    * What `q` does for this caller. `skillgantry setup` ends the process; the
    * same wizard inside a session returns to Settings, and a footer that
@@ -110,16 +115,50 @@ function StepRail({ current }: { current: SetupStateName }): React.ReactElement 
   )
 }
 
+/**
+ * Rows this step spends outside the registered list: the credentials line, the
+ * two blanks that separate the blocks, the list's own heading, the field, and
+ * the verdict's two. The list is the only unbounded content here, so it is what
+ * gives way — §14.1's first rule, applied to a step that until R3.12 had
+ * nothing to window.
+ *
+ * The verdict's two are reserved whether or not anything is typed. A list that
+ * reflowed on the first keystroke is the frame shifting under the cursor that
+ * §14.4 records the cost of, and the field is there to be typed into.
+ */
+const REPO_FIXED_ROWS = 7
+
+/**
+ * Below this the list cannot be drawn at all: `listWindow` spends one row on
+ * its own footnote, so two is the least that shows one entry and admits to the
+ * rest. At 50×14 the step's fixed rows already fill its allocation.
+ */
+const REPO_LIST_MIN = 2
+
 function RepoStep({
   state,
   draftPath,
   inspection,
+  repos,
+  repoCursor,
+  body,
 }: {
   state: SetupState
   draftPath: string
   inspection: RepoInspection | null
+  repos: readonly RepoEntry[]
+  repoCursor: number
+  body: number
 }): React.ReactElement {
   const typed = draftPath.length > 0
+  const warnings = state.credentials?.warnings ?? []
+  // The trailing slot is `+ register another`, so adding is a position rather
+  // than a mode and one `enter` handler serves both.
+  const slots = repos.length + 1
+  const budget = body - REPO_FIXED_ROWS - warnings.length
+  const showList = repos.length > 0 && budget >= REPO_LIST_MIN
+  const window = listWindow(slots, repoCursor, budget)
+  const idWidth = Math.max(0, ...repos.map((repo) => repo.id.length))
   return (
     <Box flexDirection="column">
       <Text>
@@ -130,12 +169,52 @@ function RepoStep({
           <Text color={STATUS.warn}>no .env yet</Text>
         )}
       </Text>
-      {(state.credentials?.warnings ?? []).map((warning) => (
+      {warnings.map((warning) => (
         <Text key={warning} color={STATUS.warn}>
           {'  '}
           {warning}
         </Text>
       ))}
+
+      {/* One row where the block will not fit, rather than nothing: the cursor
+          still moves and still prefills the field, and a list that vanished
+          silently would make both read as a broken key. */}
+      {repos.length > 0 && !showList && (
+        <Text dimColor wrap="truncate">
+          {repos.length} registered · ↑/↓ choose
+        </Text>
+      )}
+
+      {/* Absent on a clean machine, which keeps that frame exactly what it was. */}
+      {showList && (
+        <Box marginTop={1} flexDirection="column">
+          <Text dimColor>registered</Text>
+          {Array.from({ length: window.to - window.from }, (_, offset) => {
+            const index = window.from + offset
+            const repo = repos[index]
+            const here = index === repoCursor
+            return (
+              <Text key={repo?.id ?? '+'} wrap="truncate">
+                {here ? '▸' : ' '}{' '}
+                {repo ? (
+                  <>
+                    {repo.id.padEnd(idWidth)} <Text dimColor>{repo.isGit ? 'git   ' : 'no git'}</Text>{' '}
+                    {repo.path}
+                  </>
+                ) : (
+                  <Text dimColor>+ register another</Text>
+                )}
+              </Text>
+            )
+          })}
+          {window.hidden > 0 && (
+            <Text dimColor>
+              {'  '}
+              {window.hidden} more · ↑/↓
+            </Text>
+          )}
+        </Box>
+      )}
 
       <Box marginTop={1}>
         <Text dimColor>repo path </Text>
@@ -148,13 +227,26 @@ function RepoStep({
         {!typed && <Text dimColor> type or paste a path, ~ is expanded</Text>}
       </Box>
 
-      {typed && inspection && <Verdict inspection={inspection} />}
+      {typed && inspection && (
+        <Verdict inspection={inspection} selected={repos[repoCursor] ?? null} />
+      )}
     </Box>
   )
 }
 
-function Verdict({ inspection }: { inspection: RepoInspection }): React.ReactElement {
+function Verdict({
+  inspection,
+  selected,
+}: {
+  inspection: RepoInspection
+  selected: RepoEntry | null
+}): React.ReactElement {
   const { resolved, isDirectory, alreadyRegistered, skillCount } = inspection
+  // The path under the cursor is registered by definition, so the duplicate
+  // rule would report a prefilled field as broken before the user typed
+  // anything. The list answers which repo holds it, so `RepoInspection` needs
+  // no id: a boolean widened into one would be a second home for that rule.
+  const own = selected !== null && selected.path === resolved
   return (
     <Box flexDirection="column">
       <Text dimColor>{'          → '}{resolved}</Text>
@@ -162,8 +254,10 @@ function Verdict({ inspection }: { inspection: RepoInspection }): React.ReactEle
         {'          '}
         {!isDirectory ? (
           <Text color={STATUS.bad}>error: no such directory</Text>
-        ) : alreadyRegistered ? (
+        ) : alreadyRegistered && !own ? (
           <Text color={STATUS.bad}>error: already registered</Text>
+        ) : own ? (
+          <Text dimColor>unchanged</Text>
         ) : skillCount === 0 ? (
           <Text color={STATUS.warn}>warning: no skills found here — enter registers it anyway</Text>
         ) : (
@@ -176,12 +270,27 @@ function Verdict({ inspection }: { inspection: RepoInspection }): React.ReactEle
   )
 }
 
+/**
+ * Three phrasings rather than one truncated superset: §14.1's footer rule
+ * refuses to cut the row that names the keys, and `enter register` and `enter
+ * save` are different promises anyway. With no repos there is nothing to
+ * choose between, so that row is exactly what it always was.
+ */
+function repoHint(repoCount: number, repoCursor: number): string {
+  if (repoCount === 0) return 'enter register · esc back · ctrl-d finish without a repo'
+  return repoCursor >= repoCount
+    ? 'enter register · ↑/↓ choose · esc back · ctrl-d finish'
+    : 'enter save · ↑/↓ choose · esc back · ctrl-d finish'
+}
+
 export function Setup({
   state,
   cursor,
   draftPath = '',
   inspection = null,
   error = null,
+  repos = [],
+  repoCursor = 0,
   exitLabel = 'quit',
 }: SetupProps): React.ReactElement {
   const missing = missingRuntimesFor(state.selected, state.runtimes)
@@ -283,7 +392,16 @@ export function Setup({
             )
           })()}
 
-        {onRepo && <RepoStep state={state} draftPath={draftPath} inspection={inspection} />}
+        {onRepo && (
+          <RepoStep
+            state={state}
+            draftPath={draftPath}
+            inspection={inspection}
+            repos={repos}
+            repoCursor={repoCursor}
+            body={body}
+          />
+        )}
 
         {state.state === 'done' && (
           <Text color={STATUS.ok}>
@@ -313,7 +431,7 @@ export function Setup({
             state.state === 'done'
               ? `q ${exitLabel}`
               : onRepo
-                ? 'enter register · esc back · ctrl-d finish without a repo'
+                ? repoHint(repos.length, repoCursor)
                 : `enter advance · b back · p re-probe · q ${exitLabel}`,
             width - 2,
           )}

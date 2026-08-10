@@ -39,6 +39,38 @@ export function withRepo(
   }
 }
 
+/**
+ * Moves a registered repo to a new path, **keeping its id and its position**.
+ * The id survives because `skills.repo_id` is a foreign key into `repos(id)`
+ * and `withRepo` derives an id from the basename: remove-then-add across a
+ * directory rename would hand the repo a new id and orphan every run and issue
+ * recorded under the old one — the continuity a removal is documented to keep.
+ *
+ * The repo's own path is accepted rather than refused, because the wizard
+ * prefills the field with it and submitting an unchanged path must not be an
+ * error (R3.12).
+ */
+export function withRepoPath(
+  config: GantryConfig,
+  repoId: string,
+  entry: { path: string; isGit: boolean },
+): GantryConfig {
+  if (!config.repos.some((repo) => repo.id === repoId)) {
+    throw new Error(`no such repo: ${repoId}`)
+  }
+  if (config.repos.some((repo) => repo.id !== repoId && repo.path === entry.path)) {
+    throw new Error(`already registered: ${entry.path}`)
+  }
+  return {
+    ...config,
+    repos: config.repos.map((repo) =>
+      repo.id === repoId
+        ? { ...repo, path: entry.path, name: basename(entry.path), isGit: entry.isGit }
+        : repo,
+    ),
+  }
+}
+
 export function withoutRepo(config: GantryConfig, repoId: string): GantryConfig {
   return { ...config, repos: config.repos.filter((repo) => repo.id !== repoId) }
 }
@@ -131,8 +163,14 @@ export function configChanges(current: GantryConfig, staged: GantryConfig): Conf
     }
   }
   for (const [id, repo] of currentRepos) {
-    if (!stagedRepos.has(id)) {
+    const next = stagedRepos.get(id)
+    if (!next) {
       out.push({ kind: 'remove', path: `repos[${id}]`, before: repo.path, after: null })
+    } else if (next.path !== repo.path) {
+      // `withRepoPath` keeps the id, so a moved repo is neither an add nor a
+      // remove. Without this row the change set of a path edit is empty and the
+      // confirmation pane reports that nothing changed.
+      out.push({ kind: 'change', path: `repos[${id}]`, before: repo.path, after: next.path })
     }
   }
 

@@ -20,12 +20,15 @@ export {
   loadConfig,
   loadToolLock,
   registerRepo,
+  updateRepo,
   type GantryConfig,
+  type RepoEntry,
   type RepoInspection,
 } from './config/config.js'
 export {
   configChanges,
   withRepo,
+  withRepoPath,
   withScalar,
   withStageTools,
   withoutRepo,

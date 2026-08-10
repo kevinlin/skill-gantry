@@ -155,6 +155,50 @@ describe('the setup states as a screen', () => {
     expect(ui.lastFrame()).toContain('/tmp/qbp-skills')
     ui.unmount()
   })
+
+  // R3.12: the screen's list is the staged document, and its edit stages a
+  // change row rather than writing — the whole point of §14.2's second caller.
+  it('stages a repo path edit under the same id, writing nothing', async () => {
+    const applied: unknown[] = []
+    const view = {
+      ...VIEW,
+      config: {
+        ...VIEW.config,
+        repos: [{ id: 'demos', path: '/tmp/demos', name: 'demos', isGit: false }],
+      },
+    }
+    const ui = await settingsScreen(
+      fakeViews({
+        settings: async () => view,
+        applyConfig: async (next) => void applied.push(next),
+      }),
+    )
+
+    await type(ui, ':setup\r')
+    await type(ui, '\r')
+    await type(ui, '1')
+    await type(ui, '\r')
+    await ui.settle(120)
+    await type(ui, '\r')
+    expect(ui.lastFrame()).toContain('Credentials and repo')
+    // The list is on screen, and the cursor starts on the add slot.
+    expect(ui.lastFrame()).toContain('demos')
+
+    await type(ui, '[A') // onto demos, prefilling /tmp/demos
+    await type(ui, '-moved')
+    await type(ui, '\r')
+
+    expect(applied).toEqual([])
+    await type(ui, 'q') // the wizard's own leave binding, back to Settings
+    await type(ui, 'c')
+
+    // One change row under the id the repo already had — not a remove and an
+    // add, which is what would orphan its recorded runs.
+    expect(ui.lastFrame()).toContain('repos[demos]')
+    expect(ui.lastFrame()).toContain('/tmp/demos-moved')
+    expect(applied).toEqual([])
+    ui.unmount()
+  })
 })
 
 describe('the confirmation pane', () => {
