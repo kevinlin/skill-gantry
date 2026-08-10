@@ -359,3 +359,41 @@ The optimise stage acquires an *action*, not a run. §14.9 built the release sur
 **Precedence** slots after `ConfirmPane` and before the setup screen. §14.2 orders the modals by what a keystroke can destroy, and this pane's keys destroy nothing: it builds no job and writes no byte. The key handler and the render branch carry the same order, because two orderings of one precedence is how a keystroke reaches a pane the user is not looking at.
 
 **R11.20's refusal becomes conditional, not withdrawn.** `runnable` gains `optimise` only when SkillHone is locked, which `src/cli/tui-command.ts` reads from the lock it already opens and passes down as `optimiseReady`. Not installed, and the mark still flashes `skillhone not installed · run skillgantry setup`, using the same guard-then-flash shape `y`, `o` and `s` already use. That preserves exactly what R11.20 was written to prevent, a mark that enqueues a run whose first stage cannot plan, while ending the case where the column is permanently dead. The condition is a fact about the lock rather than about `stageTools`, and it must be: SkillHone is catalogued with `stage: null` precisely so it can never reach `stageTools`, so a guard reading the configuration there would refuse a tool that is installed and working.
+
+### 14.12 The setup repo step
+
+*Satisfies R3.12.*
+
+§14.2 made the wizard re-enterable as a screen and seeded its tool selection, on the grounds that an empty `selected` renders a configured machine as unconfigured. The repo half of the same state was left as it was written for a clean machine: an empty field, and no statement of what is registered. Every consequence follows from that one omission. A user with a repo already registered met a screen that named none of it. Retyping the saved path to correct a move was refused — `error: already registered` — so the wizard had no route to a repo that had been renamed. And the *reason* it had none is that `withRepo` throws on a duplicate path (§5.3), which is correct for the operation the step could perform and simply the wrong operation.
+
+```
+SkillGantry setup — Credentials and repo   step 4 of 5
+● Runtimes ● Tools ● Install ▸ Repo ○ Done
+
+credentials ~/.skillgantry/.env found
+
+registered
+   zapac    git     /Users/…/zapac-agent-skills
+ ▸ demos    no git  /Users/…/demos
+   + register another
+
+repo path ▏/Users/…/demos▕
+          → /Users/kevin/dev/demos
+          unchanged
+
+enter save · ↑/↓ choose · esc back · ctrl-d finish
+```
+
+**The list is a parameter, not reducer state.** §5.3 gives the reason from the core side; the consequence here is that `Setup` takes `repos` and `repoCursor` the way it already takes `draftPath`, `inspection` and `error` — session facts the hook owns, rendered by a component that decides nothing. `skillgantry setup` reads the list once through `loadConfig` in `startSetup`; §14.2's screen passes `state.staged ?? state.settings?.config`, which it holds already and which is *live*, so a repo staged earlier in the same session appears. The CLI's snapshot cannot go stale for the reason the wizard is a forward walk: a successful submit moves it to `done`.
+
+**The cursor's last slot is `+ register another`, and it starts there.** Indexing `[...repos, <new>]` makes "add" a position rather than a mode, so one `enter` handler serves both and there is no second key to learn. Starting on the new slot is what keeps a clean machine's frame byte-identical to the one that shipped — with no repos there is no list, no heading and no changed hint — and keeps the existing add flow, including its acceptance test, untouched. Starting on the first repo would have prefilled the field on every re-entry, making the common action (add) the one that needs a keystroke first.
+
+**`↑`/`↓`, and deliberately not `j`/`k`.** This is the one state where a single letter is not a command (§5.3), because a path contains `j`, `k`, `b`, `p` and `q` — which is why the whole `credentials-and-repo` branch of `useInput` sits above the letter commands. The arrows are unbound here and are the only keys that can move a cursor without being typed. `esc` and `ctrl-d` keep their meanings; nothing is rebound.
+
+**Moving the cursor rewrites the field.** Landing on a repo sets the draft to its path; landing on the new slot clears it. That is what "modify inline" costs at this grain: the field is the editor, so a half-typed path is lost when the cursor moves. Predictable and cheap to undo, and the alternative — a per-slot draft buffer — is state proportional to the repo count for a wizard the user is walking through once.
+
+**The verdict tells "this repo" from "another repo".** `inspection.alreadyRegistered` is a boolean about the typed path, and the path under the cursor is registered by definition, so rendering it as `error: already registered` would make a prefilled field look broken before the user had typed anything. The component has both `inspection.resolved` and the list, so it compares them and renders a dim `unchanged` for the selected repo's own path while any *other* repo's path keeps the error. `RepoInspection` gains no field: a caller that holds the list can answer this, and a boolean widened into an id would be a second place for the duplicate rule to live.
+
+**Enter never deletes.** An empty field keeps the message it already had, in both slots. Removal is Settings' `d`, behind §14.2's change set, and it stays there: the wizard is a forward walk with no confirmation surface, and a destructive key beside a free-text field is where a stray keystroke costs the most.
+
+**Row budget.** The step had no windowing, having had no unbounded content; the list is unbounded, so it takes the same `listWindow()` the tool list and the install list use, against `setupBodyRows(rows, extras)` less this step's fixed rows — credentials, its warnings, the heading, the blank, the field and the two verdict rows. §14.1's first rule holds unchanged: the `N more` footnote is spent out of the list's allocation, never appended below it. The hint has three phrasings rather than one truncated superset, each measured against `width - 2`, because §14.1's footer rule refuses to cut the row that names the keys — and the phrasing changes with the slot anyway, `enter register` and `enter save` being different promises.
