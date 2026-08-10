@@ -14,11 +14,23 @@ import {
   toolsForStage,
 } from '../../src/core/tools/catalogue.js'
 import { getAdapter } from '../../src/core/adapters/registry.js'
+import { STAGE_ORDER } from '../../src/core/workspace/layout.js'
 
 describe('catalogue', () => {
   it('holds the release installer, which no stage selects', () => {
     const skills = catalogueEntry(RELEASE_TOOL_ID)
     expect(skills?.stage).toBeNull()
+    expect(skills?.serves).toBe('release')
+  })
+
+  // The wizard's tool list labels a row from `serves`. When it read `stage` and
+  // fell back to a constant, every null-stage entry after the first was
+  // mislabelled — SkillHone, an optimise tool, was shown as a release gate.
+  it('says what every entry serves, and never contradicts what selects it', () => {
+    for (const spec of CATALOGUE) {
+      expect(STAGE_ORDER).toContain(spec.serves)
+      if (spec.stage !== null) expect(spec.serves).toBe(spec.stage)
+    }
   })
 
   it('gives every entry a runtime, an install spec and a version argv', () => {
@@ -69,10 +81,10 @@ describe('presets', () => {
     for (const id of rec) expect(all).toContain(id)
   })
 
+  // `serves`, not `stage`: the design's claim is about the whole preset, and
+  // reading `stage` dropped the three entries no stage selects from the check.
   it('gives recommended at most one tool per stage', () => {
-    const stages = expandPreset('recommended')
-      .map((s) => s.stage)
-      .filter((s): s is NonNullable<typeof s> => s !== null)
+    const stages = expandPreset('recommended').map((s) => s.serves)
     expect(new Set(stages).size).toBe(stages.length)
   })
 
@@ -94,6 +106,8 @@ describe('the skillhone entry', () => {
     // R3.5b: an id the adapter registry does not hold fails every run of the
     // stage that selects it, so a bundle with no parser must reach no stage.
     expect(spec?.stage).toBeNull()
+    // It is still an optimise tool, and every surface that names one says so.
+    expect(spec?.serves).toBe('optimise')
     expect(spec?.versionArgv).toEqual([])
   })
 

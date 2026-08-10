@@ -260,7 +260,11 @@ For a git repo the run additionally records `gitCommit` (HEAD) and `gitDirty` (w
 
 *Satisfies R3.5, R3.5a, R3.11.*
 
-`src/core/tools/catalogue.ts` holds one `ToolSpec` per installable tool: id, display name, the stage that selects it (`null` for vercel `skills`, which release invokes and no stage selects), the runtime its driver needs, its install spec and its version argv.
+`src/core/tools/catalogue.ts` holds one `ToolSpec` per installable tool: id, display name, the stage that selects it, the stage it serves, the runtime its driver needs, its install spec and its version argv.
+
+**`stage` and `serves` are two questions, and the entries that answer them differently are the whole point.** `stage` is "may a run select this tool", and is `null` for three entries — vercel `skills`, which release invokes directly, and the two `git-skill` bundles, which have no adapter to parse them. `serves` is "what is this tool for", and every entry has one. They agree wherever `stage` is non-null, which a catalogue test asserts. Reading `stage` where `serves` was meant is how the setup wizard came to label SkillHone a release gate: `null` had exactly one member when the tool list was written, so it fell back to a constant, and the two entries added since inherited vercel `skills`' label. Any surface naming a tool's stage to a user reads `serves`; only `stageToolsFor` reads `stage`.
+
+Installing reads neither. `installTool` takes `InstallableTool`, the id, install spec and version argv that the drivers actually use, so a caller installing a tool the catalogue does not hold — `installAndLock` — has no lifecycle stage to invent for it.
 
 The catalogue exists separately from the adapter registry because installability and runnability are not the same property. Vercel `skills` is installable with no adapter, and M4's three adapters carry parsers for tools M3 already installs. The catalogue is the authority for installing, verifying and locking; the adapter registry is the authority for what a run may select. `AdapterManifest.install` is retained as documentation and kept in step by a test asserting the two agree for every tool holding both.
 

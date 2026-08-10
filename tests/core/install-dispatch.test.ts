@@ -3,17 +3,13 @@ import { mkdtemp, chmod, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { loadToolLock } from '../../src/core/config/config.js'
-import type { ToolSpec } from '../../src/core/tools/catalogue.js'
 import type { Exec } from '../../src/core/tools/exec.js'
-import { installTool, toolRoot } from '../../src/core/tools/install.js'
+import { type InstallableTool, installTool, toolRoot } from '../../src/core/tools/install.js'
 
 const home = (): Promise<string> => mkdtemp(join(tmpdir(), 'sg-dispatch-'))
 
-const NPM_TOOL: ToolSpec = {
+const NPM_TOOL: InstallableTool = {
   id: 'skill-lint',
-  displayName: 'skill-lint',
-  stage: 'validate',
-  runtime: 'npm',
   install: { kind: 'npm-prefix', spec: 'skill-lint', pin: '0.100.0', binName: 'skill-lint' },
   versionArgv: ['--version'],
 }
@@ -80,9 +76,6 @@ describe('installTool', () => {
       h,
       {
         id: 'skillhone',
-        displayName: 'SkillHone',
-        stage: null,
-        runtime: 'uv',
         install: {
           kind: 'git-skill',
           repo: 'Tencent/SkillHone',

@@ -350,7 +350,10 @@ export function Setup({
                     <Text key={spec.id}>
                       {index === cursor ? '▸' : ' '}
                       {state.selected.includes(spec.id) ? '*' : ' '} {spec.displayName}{' '}
-                      <Text dimColor>({spec.stage ?? 'release gate'})</Text>
+                      {/* `serves`, never `stage`: three entries carry a null
+                          stage so they cannot reach `stageTools`, and a
+                          fallback here labelled all three release gates. */}
+                      <Text dimColor>({spec.serves})</Text>
                     </Text>
                   )
                 })}
