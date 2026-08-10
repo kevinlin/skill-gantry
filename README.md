@@ -6,6 +6,10 @@
 
 <p align="center">A terminal orchestrator for people who maintain agent skills.</p>
 
+<p align="center">
+  <img src="assets/tui-screenshot/skillgantry-user-journey.gif" alt="SkillGantry terminal app: marking a skill, running the validate → evaluate → security gates, and reading the findings" width="900">
+</p>
+
 ---
 
 You maintain a repo of agent skills that other people use. Before you ship a change you want to know it lints, its evals still pass, no scanner has found anything nasty, and the archive a consumer receives actually installs. Today that is five CLIs, five output formats, and a note somewhere about which ones you ran.
