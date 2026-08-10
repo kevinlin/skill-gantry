@@ -70,7 +70,7 @@ Sections, in order. Values in brackets come from `FixPromptInput`.
 
 `fix-prompt.md`, beside `stage.json` in the stage directory. Per stage, not per tool — a fan-out security stage with two scanners is one job for the agent.
 
-Design §9's tree ([design.md:577-598](docs/specs/design.md#L577-L598)) gains one line:
+Design §9's tree ([design.md:577-598](design.md#L577-L598)) gains one line:
 
 ```
         03-security/
@@ -148,22 +148,22 @@ Amend in this branch — the specs are the source of truth and code follows them
 
 **requirements.md** — preamble gains a revision-9 sentence. Three ids, each declared at the **end** of its section, because ranges expand in declaration order and an id inserted inside `R6.1–R6.6` or `R12.1–R12.3` would be silently swallowed by M1's range.
 
-- **R6.10**, after R6.8 ([:122](docs/specs/requirements.md#L122)) — a stage that produced at least one finding MUST write a coding-agent fix prompt beside its `stage.json` naming the skill dir, repo root, commit and dirty flag, digest, every tool report, the `stage.json`, and each finding's severity / rule class / native id / location / message; MUST instruct the agent to read the tool's report before editing and judge each finding's validity; MUST instruct it to stop and report rather than change code it judges correct; MUST forbid any write under a workspace directory. SkillGantry MUST NOT apply the prompt itself. *Rationale:* the six-field record drops the SARIF `properties` a scanner uses to explain and qualify a finding, and both findings in run `019fcd9e` were unsafe to apply. *Verify:* a zero-finding stage writes none; a row-12b `passed` stage writes one; the prompt names the real skill dir rather than a materialised candidate.
-- **R11.9**, after R11.8 ([:216](docs/specs/requirements.md#L216)) — the Work screen MUST offer one key that copies the selected stage's fix prompt via OSC 52 and MUST display the path whether or not the copy was emitted, naming which of the three unavailable cases applies; the action MUST NOT change any panel's row allocation. *Rationale:* Terminal.app and tmux without passthrough ignore OSC 52 silently, so an action reporting only success is one a user cannot trust.
-- **R12.6**, after R12.5b ([:225](docs/specs/requirements.md#L225)) — a fix prompt MUST be obtainable headlessly for a recorded run, defaulting to the most recent finalised run and accepting an explicit run id and stage; MUST NOT write to the repo or the sidecar; its exit code MUST report whether a prompt was produced, not whether the skill passed. *Rationale:* R12.2 binds `run`'s code to stage outcomes, and reusing that meaning would make a clean skill indistinguishable from a failed lookup.
+- **R6.10**, after R6.8 ([:122](requirements.md#L122)) — a stage that produced at least one finding MUST write a coding-agent fix prompt beside its `stage.json` naming the skill dir, repo root, commit and dirty flag, digest, every tool report, the `stage.json`, and each finding's severity / rule class / native id / location / message; MUST instruct the agent to read the tool's report before editing and judge each finding's validity; MUST instruct it to stop and report rather than change code it judges correct; MUST forbid any write under a workspace directory. SkillGantry MUST NOT apply the prompt itself. *Rationale:* the six-field record drops the SARIF `properties` a scanner uses to explain and qualify a finding, and both findings in run `019fcd9e` were unsafe to apply. *Verify:* a zero-finding stage writes none; a row-12b `passed` stage writes one; the prompt names the real skill dir rather than a materialised candidate.
+- **R11.9**, after R11.8 ([:216](requirements.md#L216)) — the Work screen MUST offer one key that copies the selected stage's fix prompt via OSC 52 and MUST display the path whether or not the copy was emitted, naming which of the three unavailable cases applies; the action MUST NOT change any panel's row allocation. *Rationale:* Terminal.app and tmux without passthrough ignore OSC 52 silently, so an action reporting only success is one a user cannot trust.
+- **R12.6**, after R12.5b ([:225](requirements.md#L225)) — a fix prompt MUST be obtainable headlessly for a recorded run, defaulting to the most recent finalised run and accepting an explicit run id and stage; MUST NOT write to the repo or the sidecar; its exit code MUST report whether a prompt was produced, not whether the skill passed. *Rationale:* R12.2 binds `run`'s code to stage outcomes, and reusing that meaning would make a clean skill indistinguishable from a failed lookup.
 
-**Milestone ownership** ([:254](docs/specs/requirements.md#L254)) — M6's row becomes `R6.10, R7.6, R8.9, R11.3, R11.7, R11.8, R11.9, R12.6`, exit criteria extended by one clause. M6 is the precedent: rev 8 extended this same shipped row with R11.7/R11.8. Appending leaves M1's `R6.1–R6.6` and `R12.1–R12.3`, M2's R11 ranges and M3/M5's explicit R12 ids untouched.
+**Milestone ownership** ([:254](requirements.md#L254)) — M6's row becomes `R6.10, R7.6, R8.9, R11.3, R11.7, R11.8, R11.9, R12.6`, exit criteria extended by one clause. M6 is the precedent: rev 8 extended this same shipped row with R11.7/R11.8. Appending leaves M1's `R6.1–R6.6` and `R12.1–R12.3`, M2's R11 ranges and M3/M5's explicit R12 ids untouched.
 
 **design.md**
 
 | Section | Change |
 |---|---|
-| §9 tree ([:577-598](docs/specs/design.md#L577-L598)) | add the `fix-prompt.md` line |
+| §9 tree ([:577-598](design.md#L577-L598)) | add the `fix-prompt.md` line |
 | new §9.4 "Fix prompt" | `*Satisfies R6.10.*` — filename, findings-based trigger, why row 12b counts, why it points at the report, why `input.skill` and not `ctx.skill` |
 | new §14.3 "Copying a fix prompt" | `*Satisfies R11.9.*` — `y`, its place in the precedence order, the OSC-52 sequence and why the write lives in `src/tui/`, the StatusBar flash, why the Findings pane gains no footnote |
-| §15 ([:1201-1213](docs/specs/design.md#L1201-L1213)) | label gains `R12.6`; command block gains the `fix` line; a paragraph on the exit-code divergence and on resolving from the sidecar rather than the ledger |
+| §15 ([:1201-1213](design.md#L1201-L1213)) | label gains `R12.6`; command block gains the `fix` line; a paragraph on the exit-code divergence and on resolving from the sidecar rather than the ledger |
 | §16 | four new rows |
-| §17 ([:1277](docs/specs/design.md#L1277)) | `R6 artefacts` → `9, 9.1, 9.2, 9.4` |
+| §17 ([:1277](design.md#L1277)) | `R6 artefacts` → `9, 9.1, 9.2, 9.4` |
 | §3 | **no change** — the point of choosing `stages` |
 | new §18.4 | one row, matching §18.1–§18.3's shape |
 

@@ -8,7 +8,7 @@
 
 ## Global constraints
 
-All constraints from [plan_m1.md](plan_m1.md) through [plan_m9.md](plan_m9.md) hold. The ones this work exercises: one write path per document (`registerRepo`/`updateRepo` for the CLI, `applyConfig` for the screen), the setup states are shared and not reimplemented, `src/tui/**` may not spawn or open the ledger, §14.1's row budget holds on a step that until now had no unbounded content.
+All constraints from [plan_m1.md](plan_m1.md) through [plan_m8.md](plan_m8.md) hold. The ones this work exercises: one write path per document (`registerRepo`/`updateRepo` for the CLI, `applyConfig` for the screen), the setup states are shared and not reimplemented, `src/tui/**` may not spawn or open the ledger, §14.1's row budget holds on a step that until now had no unbounded content.
 
 ---
 

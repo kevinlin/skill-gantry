@@ -55,5 +55,5 @@ Which milestone owns which requirement is a separate question, answered only by 
 | File | Description |
 |---|---|
 | [meta/convention.md](meta/convention.md) | Naming and structure convention reference (used by spec-lint) |
-| [meta/lint-report-2026-08-02.md](meta/lint-report-2026-08-02.md) | spec-lint findings, 2026-08-02. Point-in-time; not a contract |
 | [meta/lint-report-2026-08-09.md](meta/lint-report-2026-08-09.md) | spec-lint findings, 2026-08-09. Point-in-time; not a contract |
+| [meta/lint-report-2026-08-11.md](meta/lint-report-2026-08-11.md) | spec-lint findings, 2026-08-11. Point-in-time; not a contract |
