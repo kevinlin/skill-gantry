@@ -2164,7 +2164,7 @@ Expected: lint, build, test and acceptance all PASS.
 Change this file's **Status** line to `revision 1, shipped` and add a Changelog entry.
 
 ```bash
-git add tests docs/specs/plan_m9-skillhone-optimise.md
+git add tests docs/specs/plan_m4-skillhone-optimise.md
 git commit -m "test(acceptance): cover the M9 exit criteria
 
 One named case per clause: install and uninstall, doctor's non-failing

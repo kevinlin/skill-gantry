@@ -29,6 +29,7 @@ Which milestone owns which requirement is a separate question, answered only by 
 | [plan_m3.md](plan_m3.md) | M3 | Shipped | Tools module: catalogue, three drivers, setup wizard, doctor |
 | [plan_m3-promptfoo-removal.md](plan_m3-promptfoo-removal.md) | M3 (M4 prereq) | Shipped | Drop promptfoo from the catalogue — it evaluates prompts declared in a config, has no notion of a skill, so it is removed rather than deferred |
 | [plan_m4.md](plan_m4.md) | M4 | Shipped, compacted | Three remaining adapters, shared parsers, rule-class map, cross-tool merge |
+| [plan_m4-skillhone-optimise.md](plan_m4-skillhone-optimise.md) | M4 | Shipped | SkillHone and the optimise action (R3.10, R6.12, R11.21, R12.8; amending R3.1, R3.5, R3.8, R7.3, R11.20): a `git-skill` install driver for a tool published as an agent-skill bundle, its managed venv and per-skill symlinks, the `~/.skillhone/settings.json` that install composes from the credential file, and a rail mark that opens a coding-agent prompt built from recorded evidence instead of enqueuing a run |
 | [plan_m5.md](plan_m5.md) | M5 | Shipped, compacted | Mutation isolation, journalled apply, release stage, retirement |
 | [plan_m5-tui-release-target.md](plan_m5-tui-release-target.md) | M5 (extension) | Shipped | Release from the terminal (R11.19, R11.20): the target surface, the `planRelease` port, the rail's runnability guard, and `plan()` inside the stage's failure boundary |
 | [plan_m6.md](plan_m6.md) | M6 | Shipped, compacted; extension planned | Statistics queries, Dashboard, Issues, Tools and Settings screens, the command palette. Extended in place with editable Settings (R11.7, R11.8) — shipped |
@@ -38,8 +39,6 @@ Which milestone owns which requirement is a separate question, answered only by 
 | [plan_m7.md](plan_m7.md) | M7 | Shipped, compacted | Work screen overhaul (R11.11–R11.15, amended R11.9): the D23 palette, a titled panel border that funds the row budget, three focus zones, the Overview card and its height-driven tiers, a Findings cursor with inline evidence, the Issues tab, and `openPath` |
 | [plan_m7-work-screen-navigation.md](plan_m7-work-screen-navigation.md) | M7 (extension) | Shipped | Work screen navigation and the detail view (R11.18, amended R11.11–R11.14): arrow aliases, a view-selection key that focuses the pane it names, the Issues tab's own cursor, the dashboard key on every Overview tier, and `enter` for a full-length finding or issue |
 | [plan_m8.md](plan_m8.md) | M8 | Shipped | Accept a finding from the terminal (R4.16, R8.16, R10.12, R11.16, R11.17, R12.7): a declarative baseline spec on the manifest, a narrow diff-confirm-recheck-rename write path, `s` on the Issues screen and the Findings pane, and the gate re-run the acceptance invalidates |
-
-| [plan_m9-skillhone-optimise.md](plan_m9-skillhone-optimise.md) | M9 | Shipped | SkillHone and the optimise action (R3.10, R6.12, R11.21, R12.8; amending R3.1, R3.5, R3.8, R7.3, R11.20): a `git-skill` install driver for a tool published as an agent-skill bundle, its managed venv and per-skill symlinks, the `~/.skillhone/settings.json` that install composes from the credential file, and a rail mark that opens a coding-agent prompt built from recorded evidence instead of enqueuing a run |
 
 ## Reviews (historical)
 
