@@ -14,7 +14,7 @@ Which milestone owns which requirement is a separate question, answered only by 
 |---|---|---|
 | [requirements.md](requirements.md) | Requirements | Numbered R* requirements with milestone ownership table |
 | [design.md](design.md) | Design | Module map, stage contract, outcome model, ledger schema, sidecar layout |
-| [design_tui.md](design_tui.md) | Design | design.md §14 through §14.8, under their own numbers: the Ink store, the responsive row budget, Settings, fix-prompt copy, run rehydration, the Work screen, accepting a finding, the full-length detail view |
+| [design_tui.md](design_tui.md) | Design | design.md §14 through §14.11, under their own numbers: the Ink store, the responsive row budget, Settings, fix-prompt copy, run rehydration, the Work screen, accepting a finding, the full-length detail view, the release target, and the two prompt surfaces |
 | [decision-log.md](decision-log.md) | Supporting | D* decisions the requirements derive from |
 
 ## Plans

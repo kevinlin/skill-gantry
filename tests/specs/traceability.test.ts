@@ -44,7 +44,9 @@ describe('R13.7 traceability', () => {
 
     const owner = new Map<string, string>()
     const twice: string[] = []
-    for (const row of requirements.matchAll(/^\| (M\d) \| ([^|]+) \|/gm)) {
+    // `M\d+`, not `M\d`: the milestone reached two digits at M10, and a
+    // single-digit class silently matched no row at all rather than failing.
+    for (const row of requirements.matchAll(/^\| (M\d+) \| ([^|]+) \|/gm)) {
       const milestone = row[1] as string
       for (const token of tokensOf(row[2] as string)) {
         for (const id of expand(token, ids)) {

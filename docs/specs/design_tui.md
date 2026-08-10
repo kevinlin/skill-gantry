@@ -359,3 +359,30 @@ The optimise stage acquires an *action*, not a run. §14.9 built the release sur
 **Precedence** slots after `ConfirmPane` and before the setup screen. §14.2 orders the modals by what a keystroke can destroy, and this pane's keys destroy nothing: it builds no job and writes no byte. The key handler and the render branch carry the same order, because two orderings of one precedence is how a keystroke reaches a pane the user is not looking at.
 
 **R11.20's refusal becomes conditional, not withdrawn.** `runnable` gains `optimise` only when SkillHone is locked, which `src/cli/tui-command.ts` reads from the lock it already opens and passes down as `optimiseReady`. Not installed, and the mark still flashes `skillhone not installed · run skillgantry setup`, using the same guard-then-flash shape `y`, `o` and `s` already use. That preserves exactly what R11.20 was written to prevent, a mark that enqueues a run whose first stage cannot plan, while ending the case where the column is permanently dead. The condition is a fact about the lock rather than about `stageTools`, and it must be: SkillHone is catalogued with `stage: null` precisely so it can never reach `stageTools`, so a guard reading the configuration there would refuse a tool that is installed and working.
+
+### 14.11 The eval bootstrap surface
+
+*Satisfies R11.22.*
+
+§14.10 built the pane that exists because there is no job at all. This is the pane that exists because the job has no input: `evaluate` is configured, skill-up is locked, and the skill carries no `evals/eval.yaml` — so the run reaches `errored`/`missing-artefact` and the rail says what failed without saying what to do about it.
+
+**One pane, two kinds.** `OptimiseSlot` becomes `PromptSlot` carrying a `kind` and a title, `begin-optimise` / `scroll-optimise` / `end-optimise` become `begin-prompt` / `scroll-prompt` / `end-prompt`, and `OptimisePane` becomes `PromptPane` taking its title from the slot. Nothing in that component was ever about optimisation: it renders a scrolled document, copies it with `y`, and closes on `esc`. `DiffBody`, shared by `ReviewPane` and `SuppressPane`, is the precedent in shape and in reason — two renderers of one frame is the divergence `tokens.ts` records from when five modules each owned severity colour. `end-prompt` clears the mark for the kind's own stage, which is the one place the two differ, and the precedence slot is unchanged: after `ConfirmPane`, before the setup screen, since neither kind destroys anything.
+
+**The pre-flight sits in the `r` handler beside release's and optimise's**, and unlike theirs it is conditional on a read rather than on the marks alone:
+
+| Marks | Suite | Behaviour |
+|---|---|---|
+| `evaluate` ∈ wanted, one skill | present | enqueue exactly as today |
+| `evaluate` alone, one skill | absent | open the surface, enqueue nothing |
+| `evaluate` with other stages, one skill | absent | refuse and name: `<skill> has no eval suite · unmark the others to compose one` |
+| `evaluate` ∈ wanted, several skills | — | enqueue as today |
+
+The enqueue tail of the handler is lifted into a local function so the suite-present path and the ordinary path are one call rather than two copies — two copies of an enqueue is how one of them comes to build a different batch. Refusing the mixed mark rather than resolving it is §14.9's rule and its reason: both resolutions lie about what the marks asked for, and the one release shipped with, dropping the others, is how a user re-running the failing gate that was blocking their release got the release surface back with no word that `evaluate` had been discarded.
+
+**Only when one skill is marked.** A batch is not pre-checked, so a suite-less skill inside one still errors at evaluate exactly as today. The prompt is per-skill by construction, N port reads to build N prompts nobody asked for is the wrong trade, and `:evals` on the selected skill is the recovery.
+
+**`:evals` joins `PALETTE_COMMANDS`** with a fourth `action` kind beside `screen`, `quit` and `refresh`, and opens the surface for the selected skill **whatever the suite's state**. A surface reachable only when the file is missing would be unreachable the moment it had done its job, and a thin suite is the case a maintainer most wants to extend.
+
+**`planEvals` on the views port**, returning the finished body beside `hasSuite` and the missing-dependency list. `planRelease`, `planSuppression` and `planOptimise` are the precedent in shape and in reason: a read that runs before the user has committed to anything, implemented in `src/cli/` because it needs the lock and the filesystem, and returning the finished document so the pane renders and decides nothing. Its rejection — skill-up unlocked, or skill-upper reachable in no runtime directory — reaches the same guard-then-flash shape `y`, `o` and `s` use, naming the tool and `skillgantry setup`.
+
+Reachability is `detectSkillDirs(userHome, spec).some(d => d.holds)` rather than a lock lookup, because a foreign copy is still a copy the agent can load — the same fact §5.3 reports as `skill-link-unmanaged` and declines to fail on.

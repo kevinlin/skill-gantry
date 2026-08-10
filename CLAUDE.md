@@ -33,7 +33,7 @@ pnpm vitest run tests/core/reconcile.test.ts -t 'closes only when every detector
 
 Adapter fixtures are regenerated, not hand-edited: `scripts/capture-fixtures.sh <skills-repo>`. It refuses to run unless the installed tool matches the pinned version, so fixtures and pins cannot drift apart.
 
-Design §15 is the CLI surface: six subcommands plus a root action, all built by `buildProgram(deps)` in `src/cli/run-command.ts`.
+Design §15 is the CLI surface: ten subcommands plus a root action, all built by `buildProgram(deps)` in `src/cli/run-command.ts`.
 
 ## Specs are the source of truth
 
