@@ -126,16 +126,18 @@ export function fakeViews(
       if (skill === undefined) throw new Error(`no skill ${skillId}`)
       return { skill, prompt: `# Optimise: ${skill.name}\n\n- Skill directory: \`${skill.dir}\`\n`, missing: [] }
     },
-    // Defaults to a skill with no suite, which is the state R11.22 exists for.
-    // A test wanting the enqueue path overrides this with hasSuite: true.
+    // Defaults to a suite being present, so `r` on `evaluate` enqueues the way
+    // it always has. R11.22's own cases override with `hasSuite: false`: the
+    // pre-flight is a branch on a fact about the skill, and defaulting to the
+    // rarer half would put every unrelated enqueue test on the surface path.
     planEvals: async (skillId) => {
       evalPlans.push(skillId)
       const skill = releaseSkills.find((candidate) => candidate.id === skillId)
       if (skill === undefined) throw new Error(`no skill ${skillId}`)
       return {
         skill,
-        prompt: `# Author the eval suite for ${skill.name}\n\n- Skill directory: \`${skill.dir}\`\n`,
-        hasSuite: false,
+        prompt: `# Extend the eval suite for ${skill.name}\n\n- Skill directory: \`${skill.dir}\`\n`,
+        hasSuite: true,
         missing: [],
       }
     },
