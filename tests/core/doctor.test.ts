@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { chmod, mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { RULE_CLASS_MAP_VERSION } from '../../src/core/adapters/rule-classes.js'
@@ -11,6 +11,11 @@ import { doctor } from '../../src/core/tools/doctor.js'
 import type { Exec } from '../../src/core/tools/exec.js'
 import { toolRoot } from '../../src/core/tools/install.js'
 import { runtimesFor } from '../../src/core/tools/runtimes.js'
+import {
+  skillhoneSettings,
+  skillhoneSettingsPath,
+  writeSkillhoneSettings,
+} from '../../src/core/tools/skillhone-settings.js'
 import { makeRepo, SKILL_MD } from '../helpers/tmp-repo.js'
 
 const entry = (over: Partial<ToolLockEntry> = {}): ToolLockEntry => ({
@@ -215,5 +220,133 @@ describe('doctor on a git-skill bundle', () => {
     })
 
     expect(report.tools.find((row) => row.toolId === SKILLHONE_TOOL_ID)?.kind).toBe('version-drift')
+  })
+})
+
+describe('doctor on the SkillHone settings file (R3.10)', () => {
+  const SHA = 'c'.repeat(40)
+  const TOKEN = 'sk-0123456789abcdef0123456789abcdef'
+  const ENV_VARS: Record<string, string> = {
+    ANTHROPIC_BASE_URL: 'https://gateway.test/anthropic',
+    ANTHROPIC_AUTH_TOKEN: TOKEN,
+    ANTHROPIC_MODEL: 'a-model',
+  }
+  const envText = (vars: Record<string, string>): string =>
+    `${Object.entries(vars)
+      .map(([key, value]) => `${key}=${value}`)
+      .join('\n')}\n`
+
+  /** Everything else resolves, so the settings file is the only thing at issue. */
+  const healthy: Exec = async (bin, argv) => {
+    if (bin === 'command') return { stdout: '/usr/bin/claude\n', stderr: '' }
+    if (argv.includes('rev-parse')) return { stdout: `${SHA}\n`, stderr: '' }
+    return { stdout: '', stderr: '' }
+  }
+
+  const seed = async (
+    h: string,
+    config?: { path: string; sha256: string; writtenAt: string },
+  ): Promise<void> => {
+    const dir = join(toolRoot(h), SKILLHONE_TOOL_ID)
+    const link = join(dir, 'repo', 'skills', 'skillhone')
+    await mkdir(link, { recursive: true })
+    const bin = await fakeBin(join(dir, '.venv', 'bin'), 'python', 'echo "Python 3.13.0"')
+    await writeFile(join(h, '.env'), envText(ENV_VARS))
+    await saveToolLock(h, {
+      version: 1,
+      tools: {
+        [SKILLHONE_TOOL_ID]: entry({
+          installKind: 'git-skill',
+          requestedPin: SHA,
+          resolvedVersion: SHA,
+          bin,
+          links: [link],
+          ...(config ? { config } : {}),
+        }),
+      },
+    })
+  }
+
+  const run = async (h: string, userHome: string) =>
+    doctor({
+      home: h,
+      skills: [],
+      ledgerLifecycle: new Map(),
+      ruleMap: CURRENT,
+      userHome,
+      exec: healthy,
+    })
+
+  const kinds = (report: Awaited<ReturnType<typeof doctor>>): string[] =>
+    report.tools.filter((row) => row.kind.startsWith('skillhone-config')).map((row) => row.kind)
+
+  it('names an absent file, and does not fail the report for it', async () => {
+    const h = await home()
+    const u = await home()
+    await seed(h)
+
+    const report = await run(h, u)
+    expect(kinds(report)).toEqual(['skillhone-config-missing'])
+    // R3.7's rule, as for skillhone-deps beside it: reported, never written.
+    expect(report.failed).toBe(false)
+  })
+
+  it('names a file it did not write rather than replacing it', async () => {
+    const h = await home()
+    const u = await home()
+    await seed(h)
+    await mkdir(join(u, '.skillhone'), { recursive: true })
+    await writeFile(skillhoneSettingsPath(u), '{"hand":"written"}\n')
+
+    const report = await run(h, u)
+    expect(kinds(report)).toEqual(['skillhone-config-unmanaged'])
+    expect(report.failed).toBe(false)
+    expect(await readFile(skillhoneSettingsPath(u), 'utf8')).toBe('{"hand":"written"}\n')
+  })
+
+  it('names a file edited since it was written', async () => {
+    const h = await home()
+    const u = await home()
+    const written = await writeSkillhoneSettings(u, skillhoneSettings(ENV_VARS)!)
+    if (written.kind !== 'written') throw new Error('expected a write')
+    await seed(h, { path: written.path, sha256: written.sha256, writtenAt: 'now' })
+    await writeFile(written.path, '{"edited":true}\n')
+
+    expect(kinds(await run(h, u))).toEqual(['skillhone-config-unmanaged'])
+  })
+
+  it('names its own file as stale once .env moves under it', async () => {
+    const h = await home()
+    const u = await home()
+    const written = await writeSkillhoneSettings(u, skillhoneSettings(ENV_VARS)!)
+    if (written.kind !== 'written') throw new Error('expected a write')
+    await seed(h, { path: written.path, sha256: written.sha256, writtenAt: 'now' })
+    // A rotated token: never-overwrite means nothing else would ever say so.
+    await writeFile(join(h, '.env'), envText({ ...ENV_VARS, ANTHROPIC_AUTH_TOKEN: 'sk-ffffffffffffffffffffffffffffffff' }))
+
+    const report = await run(h, u)
+    expect(kinds(report)).toEqual(['skillhone-config-stale'])
+    expect(report.failed).toBe(false)
+  })
+
+  it('says nothing about a file it wrote that still matches .env', async () => {
+    const h = await home()
+    const u = await home()
+    const written = await writeSkillhoneSettings(u, skillhoneSettings(ENV_VARS)!)
+    if (written.kind !== 'written') throw new Error('expected a write')
+    await seed(h, { path: written.path, sha256: written.sha256, writtenAt: 'now' })
+
+    expect(kinds(await run(h, u))).toEqual([])
+  })
+
+  it('never puts a credential in the report', async () => {
+    const h = await home()
+    const u = await home()
+    await seed(h)
+    await mkdir(join(u, '.skillhone'), { recursive: true })
+    await writeFile(skillhoneSettingsPath(u), `{"api_key":"${TOKEN}"}\n`)
+
+    const report = await run(h, u)
+    expect(JSON.stringify(report)).not.toContain(TOKEN)
   })
 })

@@ -158,6 +158,7 @@ export function fakeSetupDriver(over: Partial<SetupDriver> = {}): FakeSetupDrive
       { runtime: 'uv' as const, present: true, version: '0.7.12', installCommand: 'curl uv | sh' },
     ],
     install: async () => undefined,
+    configure: async () => ({ kind: 'skipped' as const }),
     installedTools: async () => [],
     saveSelection: async (selected) => {
       saved.push([...selected])

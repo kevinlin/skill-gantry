@@ -13,6 +13,7 @@ function fakeDriver(over: Partial<SetupDriver> = {}): { driver: SetupDriver; ins
     install: async (toolId) => {
       installed.push(toolId)
     },
+    configure: async () => ({ kind: 'skipped' }),
     saveSelection: async () => {},
     credentialStatus: async () => ({ present: true, warnings: [] }),
     inspectRepo: async (path) => ({
@@ -101,6 +102,55 @@ describe('setup wizard', () => {
     await ink.settle(120)
     expect(ink.lastFrame()).toContain('failed')
     expect(ink.lastFrame()).toContain('no such pin')
+    ink.unmount()
+  })
+
+  it('reports the tool-owned configuration on the install row, naming the path only', async () => {
+    const TOKEN = 'sk-0123456789abcdef0123456789abcdef'
+    const { driver } = fakeDriver({
+      configure: async () => ({
+        kind: 'written',
+        path: '/home/u/.skillhone/settings.json',
+        sha256: 'a'.repeat(64),
+      }),
+    })
+    const ink = renderInk(<SetupApp driver={driver} />)
+    await ink.settle(40)
+    ink.stdin.send('\r')
+    await ink.settle(20)
+    ink.stdin.send('1')
+    await ink.settle(20)
+    ink.stdin.send('\r')
+    await ink.settle(120)
+
+    expect(ink.lastFrame()).toContain('settings.json written')
+    // The path and never the document: the inline wizard leaves its frames in
+    // scrollback, which is the last place a credential should end up.
+    expect(ink.lastFrame()).not.toContain(TOKEN)
+    ink.unmount()
+  })
+
+  it('never configures a tool whose install failed', async () => {
+    const asked: string[] = []
+    const { driver } = fakeDriver({
+      install: async () => {
+        throw new Error('no such pin')
+      },
+      configure: async (toolId) => {
+        asked.push(toolId)
+        return { kind: 'skipped' }
+      },
+    })
+    const ink = renderInk(<SetupApp driver={driver} />)
+    await ink.settle(40)
+    ink.stdin.send('\r')
+    await ink.settle(20)
+    ink.stdin.send('1')
+    await ink.settle(20)
+    ink.stdin.send('\r')
+    await ink.settle(120)
+
+    expect(asked).toEqual([])
     ink.unmount()
   })
 

@@ -38,6 +38,16 @@ export const toolLockEntrySchema = z.object({
   integrity: z.string().min(1).default('n/a'),
   /** Absolute symlink paths a `git-skill` install created, so uninstall removes exactly them. */
   links: z.array(z.string()).optional(),
+  /**
+   * A tool-owned configuration file SkillGantry composed (R3.10). Recorded for
+   * the reason `links` is: it lives outside the tool root, so uninstall has to
+   * remove exactly it, and the digest is what tells an edited file from an
+   * untouched one. The digest and never the document — the file holds a
+   * credential, and a hash of it does not.
+   */
+  config: z
+    .object({ path: z.string(), sha256: z.string(), writtenAt: z.string() })
+    .optional(),
   installedAt: z.string(),
   verifiedAt: z.string().nullable(),
 })

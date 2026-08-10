@@ -228,10 +228,27 @@ For a git repo the run additionally records `gitCommit` (HEAD) and `gitDirty` (w
       "integrity": "n/a",
       "installedAt": "2026-08-01T09:12:03Z",
       "verifiedAt": "2026-08-01T09:12:05Z"
+    },
+    "skillhone": {
+      "installKind": "git-skill",
+      "requestedPin": "7d565839fb4dc74f9c77f09ace660e1c0484e048",
+      "resolvedVersion": "7d565839fb4dc74f9c77f09ace660e1c0484e048",
+      "bin": "/Users/…/.skillgantry/tools/skillhone/.venv/bin/python",
+      "integrity": "n/a",
+      "links": ["/Users/…/.claude/skills/skillhone"],
+      "config": {
+        "path": "/Users/…/.skillhone/settings.json",
+        "sha256": "9f2c…",
+        "writtenAt": "2026-08-10T11:43:00Z"
+      },
+      "installedAt": "2026-08-10T11:26:00Z",
+      "verifiedAt": "2026-08-10T11:26:04Z"
     }
   }
 }
 ```
+
+`links` and `config` are §5.4's, and both are here for one reason: they are the only writes that land outside the tool root, so the lock is what tells uninstall exactly which bytes to take back. Adding either kept `version` at 1, the schema being additive by construction.
 
 `bin` is the resolved absolute executable. The adapter manifest supplies arguments only; it never has to know how the executable was placed on disk. This closes the first review's observation that `uv-tool` and `gh-release` installs left the executable unidentified.
 
@@ -293,9 +310,27 @@ Presets: **Minimal** is skill-up plus skillspector — the two already present, 
 
 Every preset includes vercel `skills`, because the release stage cannot run its installability gate without it.
 
-Doctor reports four drift kinds per tool: `missing` (in lock, absent on disk), `unverifiable` (present, will not run), `version-drift` (runs, reports a version other than `resolvedVersion`), and `unlocked` (installed under the tool root but absent from the lock). Three further conditions are reported and do not fail the report: `integrity-unverified`, a lock entry recording `integrity: "none"` per §5.2; `lifecycle-drift` per §13; `rule-map-pending`, a ledger whose applied rule-map version trails the shipped one per §10.6; `skillhone-deps`, a managed venv whose interpreter cannot import the bundle's requirements; and `claude-cli-missing`, no `claude` on PATH, which `claude-agent-sdk` shells out to, so its absence surfaces not at install time but as a `FileNotFoundError` at the optimisation loop's first run. The last two are R3.7's probe-and-report rule applied to a tool's own runtime dependency rather than to a host runtime: named, never installed. None means a tool cannot run. `rule-map-pending` is resolved by `skillgantry doctor --migrate-rule-map`, which is the explicit trigger R8.14 requires — the migration never runs as a side effect of opening the ledger.
+Doctor reports four drift kinds per tool: `missing` (in lock, absent on disk), `unverifiable` (present, will not run), `version-drift` (runs, reports a version other than `resolvedVersion`), and `unlocked` (installed under the tool root but absent from the lock). Three further conditions are reported and do not fail the report: `integrity-unverified`, a lock entry recording `integrity: "none"` per §5.2; `lifecycle-drift` per §13; `rule-map-pending`, a ledger whose applied rule-map version trails the shipped one per §10.6; `skillhone-deps`, a managed venv whose interpreter cannot import the bundle's requirements; `claude-cli-missing`, no `claude` on PATH, which `claude-agent-sdk` shells out to, so its absence surfaces not at install time but as a `FileNotFoundError` at the optimisation loop's first run; and §5.4's three, `skillhone-config-missing`, `skillhone-config-unmanaged` and `skillhone-config-stale`. Those five are R3.7's probe-and-report rule applied to a tool's own runtime dependency and its own configuration rather than to a host runtime: named, never installed and never written. None means a tool cannot run. `rule-map-pending` is resolved by `skillgantry doctor --migrate-rule-map`, which is the explicit trigger R8.14 requires — the migration never runs as a side effect of opening the ledger.
 
 Doctor reads the skills it checks and the ledger's lifecycle column as data supplied by its caller, so `tools` needs neither discovery's I/O nor a sqlite dependency.
+
+### 5.4 Tool-owned configuration
+
+*Satisfies R3.10.* R7.3's one exception is written for this section and argued in it; §9.3 keeps R7.3.
+
+§5.2 installs a tool and §5.3 verifies it. SkillHone passed both and could not run: `optim.py`, `new.py` and `synth.py` each print `~/.skillhone/settings.json not found` and exit 1 before they read one environment variable. Every value that file needs was already in `~/.skillgantry/.env`, which the wizard reads one step later for its credential status — so the gap was not knowledge, it was that nothing composed the document. `skillhoneSettings(vars)` composes it and `writeSkillhoneSettings(userHome, doc)` writes it; the first is pure, which is what lets the whole mapping be asserted with no filesystem.
+
+**Why this is not a catalogue field.** `ToolSpec` holds six things and none of them is a settings shape. A declarative `SettingsSpec` would be a schema for one entry, and everything specific about this one argues against generalising it early: the four rules below are all facts about SkillHone's Python, not about tools in general. `AdapterManifest.baseline` is the precedent for the shape a second such tool should introduce — declared per tool, resolved outside the adapter — and the second tool is what should introduce it.
+
+**Four rules taken from the pinned checkout, because a later reader would otherwise re-derive them.** `SKILLHONE_HOME` does not move the file: `optim.py`, `new.py`, `synth.py` and `evaluation/template.py` all hardcode `Path.home()`, and only `status.py` and `seed.py` honour the variable, so relocating it would hide it from the three that need it most. The document is strict JSON: upstream's own `assets/settings.json` is JSON5 with `//` comments and only `status.py` reaches for a json5 parser, so a commented file is one every other reader rejects. A `/` in a model name switches SkillHone onto its LiteLLM loopback proxy, where the proxy's environment is the right operand of the merge and the profile's `env` block is discarded wholesale — so the block is emitted only for a slashless model, where it wins instead, which is the only way `ANTHROPIC_AUTH_TOKEN` reaches the agent at all, the direct branch deriving `ANTHROPIC_API_KEY` and nothing else. And every profile states its `sdk_model_alias`, because `template.py` defaults a missing one to `haiku` while `litellm_proxy.py` defaults the same profile to `opus`, so a profile without one names a model whose `ANTHROPIC_DEFAULT_*` key was never set. Keys the checkout has no reader for — `max_iterations`, `thinking_enabled`, `context_size`, the process-pool family — are not emitted, because configuration that changes nothing is worse than none: it reads as a setting someone tuned.
+
+**The credential is in the file, and R7.3 says so rather than being quietly bent.** SkillGantry never spawns SkillHone — R6.12 forbids it running the optimiser at all — so for this tool there is no spawn to inject at, and the env-var-name indirection upstream offers (`api_key_env`) would only move the problem to a shell SkillGantry does not own. The exception is therefore narrowed in R7.3 to the tool's own configuration path, so "SkillGantry writes no credential of its own" still holds exactly, and the file is owner-only inside an owner-only directory, the discipline §9.3 already gives the workspace root for the same reason.
+
+**Never overwritten.** An existing file is reported and left, because it holds the user's key and may have been tuned against a gateway this build knows nothing about; backing it up and replacing it was the alternative, and it makes setup a command that edits credentials the user did not ask it to touch. The cost is that a rotated token strands the file, which is exactly why `doctor` reports three conditions and not one: `skillhone-config-missing` is a re-run of setup, `skillhone-config-unmanaged` is a decision only the user can make about their own bytes, and `skillhone-config-stale` is the rotation case — ours, untouched, and no longer what the current `.env` would compose. Without that third one, never-overwriting would mean nothing in the system ever said the file had gone wrong.
+
+**The lock records the digest, never the document.** That is what lets uninstall tell an untouched file from an edited one and delete only the first — R3.1's rule for a write outside the tool root, which `links` already carries, with a preimage recheck on top because here the recheck guards a delete rather than a write. A hash of a credential is not a credential, which is what keeps the lock a file the user can read.
+
+**Nothing renders it.** The wizard's install row names the path, `doctor` names the path, and neither reads a value out of the document. This is not the redaction §9.3 applies to streams; it is a narrower rule, that the one surface which knows where the credential lives never quotes it — and the inline wizard is precisely where that matters, since its frames stay in the user's scrollback by design.
 
 ## 6. Stage execution contract
 
@@ -1388,7 +1423,7 @@ Fixture capture is a scripted, repeatable step tied to the pinned tool versions,
 | R1.1–R1.3, R1.5 | 1, 7 (`MetricKey`) |
 | R1.4, R1.6 retirement | 13 |
 | R2 discovery, config, candidate, digest | 4 |
-| R3 tool management | 5 |
+| R3 tool management | 5, 5.4 |
 | R4 adapters and classification | 6, 7, 7.1, 8.1 |
 | R5.1, R5.9, R5.11 | 8.2, 11.3 |
 | R5.2, R5.12–R5.14, R12.4 | 11.1, 11.4, 11.5 |
@@ -1419,6 +1454,7 @@ Every pass below is recorded in full somewhere else — the two reviews are thei
 | M6 | A generated coding-agent prompt as the deliverable for a stage that found something, rather than a fixer (§9.4, §14.3, §15); then a tool's own suppression file honoured from argv to Issues screen (§7, §8.1, §9.4, §10.1, §10.4–§10.7, §12.4, §14, §15) | [plan_m6-fix-prompts-for-stage-findings.md](plan_m6-fix-prompts-for-stage-findings.md), [plan_m6-respect-skillspector-baseline.md](plan_m6-respect-skillspector-baseline.md) |
 | M7 | The Work screen overhaul (§14.6), plus the in-place corrections to §14, §14.1 and §14.3 that measuring a rendered frame forced | [plan_m7.md](plan_m7.md) |
 | M8 | Writing the file M6 taught SkillGantry to read: a declared baseline on the manifest (§7), a narrow write path that keeps the diff, the preimage recheck and the atomic rename while omitting the sandbox, the journal and the crash marker with a reason each (§12.5, §4.4), and the two surfaces that reach it (§14.7, §15) | [plan_m8.md](plan_m8.md) |
+| M9 | SkillHone catalogued as a skill bundle rather than a CLI, which gave the optimise stage something behind it: the `git-skill` install kind and its three-fact verification (§5.1, §5.2, §5.3), the R6.12 prompt (§9.4a), the surface that presents it (§14.10) and the subcommand that prints it (§15); then, in revision 2, the configuration file that install left uncomposed (§5.1, §5.3, §5.4) | [plan_m9-skillhone-optimise.md](plan_m9-skillhone-optimise.md) |
 | M7 extension | Navigation, and the surface a truncating pane cannot be: a key that moves focus to what it selects rather than acting at a distance, both arrow pairs as aliases, the Issues tab's own cursor and a tagged query response, the dashboard key on every Overview tier that renders, and a full-length view of one finding or one issue (§14.2, §14.6, §14.8) | [plan_m7-work-screen-navigation.md](plan_m7-work-screen-navigation.md) |
 
 ## 19. Risks carried into implementation
