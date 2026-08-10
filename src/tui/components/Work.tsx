@@ -121,6 +121,9 @@ function SideBySide({ state, layout }: { state: AppState; layout: Layout }): Rea
           selected={state.selectedSkill}
           marked={state.markedSkills}
           focused={state.focus === 'skills'}
+          level={state.listLevel}
+          repos={state.repos}
+          selectedRepo={state.selectedRepo}
           width={layout.skillListWidth}
           height={layout.skillRows}
           chrome={layout.chrome}
@@ -168,6 +171,9 @@ function Stacked({ state, layout }: { state: AppState; layout: Layout }): React.
         selected={state.selectedSkill}
         marked={state.markedSkills}
         focused={state.focus === 'skills'}
+        level={state.listLevel}
+        repos={state.repos}
+        selectedRepo={state.selectedRepo}
         width={0}
         height={layout.skillRows}
         chrome={layout.chrome}

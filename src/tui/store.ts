@@ -93,6 +93,25 @@ export type Focus = (typeof FOCUSES)[number]
 export type SkillStatus = 'idle' | 'running' | 'passed' | 'failed' | 'errored'
 
 /**
+ * One registered repo, as a **range** into the flat `skills` array rather than
+ * as a second array (R11.23). `discoverAll` concatenates one walk per repo in
+ * `config.repos` order and `discoverSkills` sorts by id inside each, so a
+ * repo's skills are already contiguous by the time they reach `initialState` —
+ * which is what lets the second level be a window over `skills` instead of a
+ * restructuring of it, and lets `selectedSkill` keep meaning what it meant.
+ */
+export interface RepoRow {
+  repoId: string
+  label: string
+  /** First index in `AppState.skills` belonging to this repo. */
+  start: number
+  count: number
+}
+
+/** Which of R11.23's two levels the list column is showing. */
+export type ListLevel = 'repos' | 'skills'
+
+/**
  * A finding plus where it came from. §14.3 recorded that a finding on screen
  * "cannot be attributed to a stage at all" — but the reducer had `event.stage`
  * and `event.result` in hand the whole time, so the attribution was one field
@@ -271,6 +290,16 @@ export interface ReleaseSlot {
 export interface AppState {
   skills: SkillRow[]
   selectedSkill: number
+  /** R11.23's repo level, in the order `discoverAll` walked the repos. */
+  repos: readonly RepoRow[]
+  listLevel: ListLevel
+  /**
+   * The repo level's cursor. A chooser, not a selection: moving it changes
+   * nothing about which skill the rail and the output pane answer for, because
+   * re-pointing them would discard the user's place in the repo they left and
+   * spend a sidecar read per keypress on rows they are scrolling past.
+   */
+  selectedRepo: number
   selectedStage: number
   selectedJob: number
   markedSkills: string[]
@@ -420,6 +449,10 @@ export type Action =
   | { type: 'queue-event'; event: QueueEvent }
   | { type: 'log-flush'; lines: readonly string[]; dropped: number }
   | { type: 'select-skill'; delta: number }
+  /** R11.23's three level actions. `select-repo` moves a chooser and nothing else. */
+  | { type: 'select-repo'; delta: number }
+  | { type: 'enter-repo' }
+  | { type: 'leave-repo' }
   | { type: 'select-stage'; delta: number }
   | { type: 'select-job'; delta: number }
   | { type: 'toggle-skill-mark' }
@@ -573,10 +606,72 @@ const toRow = (skill: SkillRef): SkillRow => ({
   recordedLog: { lines: [], dropped: 0 },
 })
 
+/**
+ * R11.23's repo level, one pass over the array the cursor indexes. Read off the
+ * skills and not off `config.repos`, for two reasons: the ranges have to index
+ * that same array, and a registered repo holding no skill has no row to enter.
+ */
+export function repoGroups(skills: readonly SkillRef[]): RepoRow[] {
+  const groups: RepoRow[] = []
+  skills.forEach((skill, index) => {
+    const last = groups[groups.length - 1]
+    if (last && last.repoId === skill.repo.id) last.count += 1
+    else groups.push({ repoId: skill.repo.id, label: skill.repo.name, start: index, count: 1 })
+  })
+  return groups
+}
+
+/**
+ * `running` outranks every settled outcome, because something happening
+ * outranks any verdict — the same claim §14.4 makes for the turning mark.
+ */
+const STATUS_RANK: readonly SkillStatus[] = ['running', 'errored', 'failed', 'passed', 'idle']
+
+/**
+ * What a collapsed repo row says about what it hides. The marked flag is the
+ * one fact the level costs the user, and it rides the mark column the list
+ * already spends, so it costs no cell. Pure, beside `repoGroups`, so a repo
+ * row's content is assertable without rendering Ink.
+ */
+export function repoSummary(
+  skills: readonly SkillRow[],
+  marked: readonly string[],
+  repo: RepoRow,
+): { status: SkillStatus; marked: boolean; count: number } {
+  const rows = skills.slice(repo.start, repo.start + repo.count)
+  const worst = STATUS_RANK.find((status) => rows.some((row) => row.status === status)) ?? 'idle'
+  return {
+    status: worst,
+    marked: rows.some((row) => marked.includes(row.skillId)),
+    count: repo.count,
+  }
+}
+
+/**
+ * The slice of `skills` the skill level is showing (R11.23). One expression,
+ * read by `select-skill`'s clamp and by `SkillList`'s slice: two derivations of
+ * one window is how `j` comes to stop short of the end, which §14, §14.5 and
+ * §14.6 have each paid for once. With no repos, or one, it is the whole array —
+ * which is why a single-repo machine behaves exactly as it did before this.
+ */
+export const visibleSkills = (state: AppState): { start: number; count: number } => {
+  const repo = state.repos.find(
+    (row) => state.selectedSkill >= row.start && state.selectedSkill < row.start + row.count,
+  )
+  return repo ? { start: repo.start, count: repo.count } : { start: 0, count: state.skills.length }
+}
+
 export function initialState(skills: readonly SkillRef[], concurrency: number): AppState {
+  const repos = repoGroups(skills)
   return {
     skills: skills.map(toRow),
     selectedSkill: 0,
+    repos,
+    // One repo is not a choice, so charging every launch a keystroke to leave a
+    // one-row chooser is what the count decides here (R11.23). `h` still
+    // reaches that level; it is only the entry that follows the configuration.
+    listLevel: repos.length > 1 ? 'repos' : 'skills',
+    selectedRepo: 0,
     selectedStage: 0,
     selectedJob: 0,
     markedSkills: [],
@@ -847,15 +942,50 @@ export function reducer(state: AppState, action: Action): AppState {
       return onQueueEvent(state, action.event)
     case 'log-flush':
       return { ...state, log: { lines: action.lines, dropped: action.dropped } }
-    case 'select-skill':
+    case 'select-skill': {
+      // Clamped to the repo the level is showing, not to the whole array
+      // (R11.23): a cursor that walks out of the repo the title names is
+      // showing rows from a repo the panel says it is not showing.
+      const { start, count } = visibleSkills(state)
       return {
         ...state,
-        selectedSkill: clamp(state.selectedSkill + action.delta, state.skills.length),
+        selectedSkill: start + clamp(state.selectedSkill - start + action.delta, count),
         // Another skill's findings are another list; the offset and the cursor
         // were both about this one.
         outputOffset: null,
         selectedFinding: 0,
       }
+    }
+    case 'select-repo':
+      return { ...state, selectedRepo: clamp(state.selectedRepo + action.delta, state.repos.length) }
+    case 'enter-repo': {
+      const repo = state.repos[state.selectedRepo]
+      if (!repo) return { ...state, listLevel: 'skills' }
+      const inside =
+        state.selectedSkill >= repo.start && state.selectedSkill < repo.start + repo.count
+      // Keeping the selection when it is already in range is what makes `h`
+      // then `l` a round trip rather than a way to lose your place; the two
+      // resets belong to a selection that moved, and firing them on one that
+      // did not would jump a pane the user was mid-scroll.
+      return inside
+        ? { ...state, listLevel: 'skills' }
+        : {
+            ...state,
+            listLevel: 'skills',
+            selectedSkill: repo.start,
+            outputOffset: null,
+            selectedFinding: 0,
+          }
+    }
+    case 'leave-repo': {
+      // Lands on the repo holding the selected skill rather than on the first,
+      // so the way out is where the way in was. No skill state moves, which is
+      // what keeps the rail and the output pane answering for the same skill.
+      const index = state.repos.findIndex(
+        (row) => state.selectedSkill >= row.start && state.selectedSkill < row.start + row.count,
+      )
+      return { ...state, listLevel: 'repos', selectedRepo: index < 0 ? state.selectedRepo : index }
+    }
     case 'select-stage':
       return {
         ...state,

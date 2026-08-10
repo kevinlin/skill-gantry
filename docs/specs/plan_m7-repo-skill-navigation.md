@@ -80,7 +80,15 @@ Every pre-existing fixture puts all its skills in one repo, so `listLevel` start
 
 ## Deviations found while implementing
 
-*(see Changelog)*
+All three came out of measuring a rendered frame rather than reasoning from the box model, which is the same source as every deviation `plan_m7.md` records.
+
+**1. The count column is derived, not reserved.** The first cut gave it a constant four cells, wide enough for three digits. At the 22-cell column the whole 76–109 band uses, that leaves nine cells for the name, so `skills-lab` elided on a machine with ten skills in it — a cell taken off every repo name to hold a digit almost nobody has. It is now `max(len(count)) + 1` over the repos on screen, which gives the name eleven cells at that width. This is `plan_m7.md`'s deviation 5 arriving a second time: a reserved constant beside a derived width is a column that overruns the moment the content is ordinary.
+
+**2. Neither level pads itself to its allocation, so the two render different heights.** The row-budget case asserted the repo level's frame height *equals* the skill level's. It does not: `Panel` renders the rows it is handed, so three repos draw a shorter box than four skills — which the skill list has always done whenever a repo holds fewer skills than `skillRows`. The claim that matters is that neither level exceeds the terminal and the repo level is never the taller of the two, since a level taller than its neighbour is what pushes the panel below it off the bottom. Asserted that way, plus a direct case that the repo level windows against its allocation and reports the overflow through the title.
+
+**3. Two assertions read text the 22-cell column elides** — the full repo name, and the `+3 more` hint in the title. Both are §14.1's second rule working rather than something to widen, so the cases assert at a width that holds them and the narrow case asserts the elision. `plan_m7.md`'s deviation 8 records the identical mistake against the suppressed-issue mark.
+
+**Not a deviation, recorded so it is not mistaken for one.** `package.json` was at 0.4.3 rather than the 0.4.2 the plan named — `0774126` is an ancestor of `HEAD` while `efb528c` reads 0.4.2, a merge-ordering artefact. The 0.5.0 target is unchanged.
 
 ## Changelog
 
