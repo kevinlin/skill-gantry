@@ -143,7 +143,14 @@ function moveDown(
   delta: number,
 ): Action {
   if (state.focus === 'queue') return { type: 'select-job', delta }
-  if (state.focus !== 'work') return { type: 'select-skill', delta }
+  // R11.23: in the skills zone the pair moves whichever of the two levels is
+  // showing. `select-skill` is clamped to the showing repo, so neither level's
+  // cursor can walk into rows the panel says it is not showing.
+  if (state.focus !== 'work') {
+    return state.listLevel === 'repos'
+      ? { type: 'select-repo', delta }
+      : { type: 'select-skill', delta }
+  }
   // A list of things to act on takes a cursor, not a scroll offset — the same
   // shape SkillList and Issues already have. The other three tabs still scroll.
   if (state.panel === 'findings') {
@@ -185,6 +192,14 @@ const suppressionPrefill = (): string =>
  * the divergence `StatusBar` was extracted to end for the footer itself.
  */
 const NO_FINDINGS = 'no findings here · space marks a stage, r runs it'
+
+/**
+ * R11.23's repo level has a cursor and no mark, and a cursor whose mark key
+ * does nothing is what the guard-then-flash shape exists to prevent. Names the
+ * key that reaches the level where the mark means something, in one constant
+ * for the reason `NO_FINDINGS` is one.
+ */
+const NO_REPO_MARK = 'l enters the repo · space marks a skill'
 
 /** The palette above the same footer hint every screen prints. */
 function PaletteScreen({ state }: { state: AppState }): React.ReactElement {
@@ -995,8 +1010,23 @@ export function App({
     // has been aliased in every block above since M2 while this one was bound
     // nowhere, so a user who reached for `←` got silence and no way to learn why.
     if ((plain && (input === 'h' || input === 'l')) || key.leftArrow || key.rightArrow) {
+      const inward = input === 'l' || key.rightArrow
+      // R11.23. The pair had a meaning in one zone and returned early in the
+      // other, so it was bound nowhere in the skill list — which the two levels
+      // of that column now give it. Inward only from the repo level: there is
+      // nothing under a skill, and making `l` jump zones instead would put a
+      // third meaning on a pair R11.11 scopes to one. Outward always, so the
+      // binding does not change meaning with how many repos are registered.
+      if (state.focus === 'skills') {
+        if (inward) {
+          if (state.listLevel === 'repos') dispatch({ type: 'enter-repo' })
+          return
+        }
+        dispatch({ type: 'leave-repo' })
+        return
+      }
       if (state.focus !== 'work') return
-      dispatch({ type: 'select-stage', delta: input === 'l' || key.rightArrow ? 1 : -1 })
+      dispatch({ type: 'select-stage', delta: inward ? 1 : -1 })
       return
     }
     if (plain && input === ' ') {
@@ -1031,6 +1061,10 @@ export function App({
           return
         }
         dispatch({ type: 'toggle-stage-mark' })
+        return
+      }
+      if (state.listLevel === 'repos') {
+        flash(NO_REPO_MARK)
         return
       }
       dispatch({ type: 'toggle-skill-mark' })

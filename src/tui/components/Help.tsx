@@ -22,7 +22,7 @@ export const KEYS: readonly (readonly [string, string])[] = [
   ['esc', 'back to Work, or close what is open'],
   ['? / q', 'this help · quit'],
   ['tab, shift-tab', 'Work: focus skills → stages → output → queue'],
-  ['h / l, ← / →', 'Work: move along the lifecycle rail'],
+  ['h / l, ← / →', 'Work: the lifecycle rail, or out to / into a repo'],
   ['space', 'Work: mark the selected skill or stage'],
   ['r / x', 'Work: run every marked skill and stage · cancel a job'],
   ['y', 'Work: copy the fix prompt for the selected stage'],
