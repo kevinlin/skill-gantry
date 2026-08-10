@@ -4,6 +4,7 @@ import { mkdtemp, readdir, readlink, realpath, stat } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
+import { withDistributionLock } from '../helpers/distribution-lock.js'
 
 const run = promisify(execFile)
 
@@ -28,7 +29,7 @@ describe('pnpm install:cli puts skillgantry on PATH', () => {
     const before = await realBinState()
 
     const env = { ...process.env, SG_HOME: home, SG_BIN_DIR: binDir }
-    await run('scripts/install-cli.sh', [], { cwd: process.cwd(), env })
+    await withDistributionLock(() => run('scripts/install-cli.sh', [], { cwd: process.cwd(), env }))
 
     const { stdout } = await run(link, ['--version'])
     expect(stdout.trim()).toMatch(/^\d+\.\d+\.\d+$/)
@@ -39,7 +40,7 @@ describe('pnpm install:cli puts skillgantry on PATH', () => {
     expect(await readdir(join(home, 'cli', 'node_modules', '.bin'))).toContain('skillgantry')
 
     // Re-running overwrites cleanly: one link, still runnable.
-    await run('scripts/install-cli.sh', [], { cwd: process.cwd(), env })
+    await withDistributionLock(() => run('scripts/install-cli.sh', [], { cwd: process.cwd(), env }))
     expect((await stat(link)).isDirectory()).toBe(false)
     const second = await run(link, ['--version'])
     expect(second.stdout.trim()).toMatch(/^\d+\.\d+\.\d+$/)

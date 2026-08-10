@@ -9,7 +9,7 @@ import { App } from '../../src/tui/app.js'
 import { fakeRun } from '../helpers/fake-run.js'
 import { fakeSetupDriver } from '../helpers/fake-views.js'
 import { recordFixtureRun, skillFixture } from '../helpers/ledger-fixture.js'
-import { renderInk } from '../helpers/render-ink.js'
+import { renderInk, waitForFrame } from '../helpers/render-ink.js'
 
 const ALPHA = skillFixture('alpha', 'declawed')
 const BETA = skillFixture('beta', 'spec-lint')
@@ -151,7 +151,7 @@ describe('M6 exit criteria', () => {
     expect(ui.lastFrame()).toContain('alpha/declawed')
     expect(ui.lastFrame()).toContain('beta/spec-lint')
     ui.stdin.send('a')
-    await ui.settle(80)
+    await waitForFrame(ui, (frame) => frame.includes('acknowledged'))
     // Read back through the port, so the assertion is against the ledger and
     // not against the frame the keypress happened to leave behind.
     const acknowledged = await views.issues({ state: 'acknowledged' })

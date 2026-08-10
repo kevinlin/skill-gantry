@@ -16,7 +16,7 @@ import { toolRoot } from '../../src/core/tools/install.js'
 import type { SetupDriver } from '../../src/core/index.js'
 import { doctor } from '../../src/core/tools/doctor.js'
 import { SetupApp } from '../../src/tui/setup-app.js'
-import { renderInk } from '../helpers/render-ink.js'
+import { renderInk, waitForFrame } from '../helpers/render-ink.js'
 import { makeRepo, SKILL_MD } from '../helpers/tmp-repo.js'
 import { buildSetupDriver } from '../../src/cli/setup-command.js'
 
@@ -35,6 +35,10 @@ describe('M3 exit criterion: a clean machine reaches a verified toolchain throug
   it('probes, selects a preset, installs, verifies, writes the selection and registers a repo', async () => {
     const h = await home()
     const repo = await makeRepo({ files: { 'declawed/SKILL.md': SKILL_MD('declawed') } })
+    let releaseLastInstall = (): void => undefined
+    const lastInstallGate = new Promise<void>((resolve) => {
+      releaseLastInstall = resolve
+    })
 
     // Only the network is stubbed: config, the lock, verification and the state
     // machine are the real ones.
@@ -46,6 +50,7 @@ describe('M3 exit criterion: a clean machine reaches a verified toolchain throug
         { runtime: 'npm', present: true, version: '11.0.0', installCommand: 'y' },
       ],
       install: async (toolId) => {
+        if (toolId === RELEASE_TOOL_ID) await lastInstallGate
         const bin = await fakeInstalled(h, toolId, '1.0.0')
         const lock = await loadToolLock(h)
         await saveToolLock(h, {
@@ -67,19 +72,21 @@ describe('M3 exit criterion: a clean machine reaches a verified toolchain throug
     }
 
     const ink = renderInk(<SetupApp driver={driver} />)
-    await ink.settle(40)
+    await waitForFrame(ink, (frame) => frame.includes('0.7.12'))
     ink.stdin.send('\r')
-    await ink.settle(20)
+    await waitForFrame(ink, (frame) => frame.includes('Select tools'))
     ink.stdin.send('1')
-    await ink.settle(20)
+    await waitForFrame(ink, (frame) => frame.includes('* skills (vercel-labs)'))
     ink.stdin.send('\r')
-    await ink.settle(200)
+    await waitForFrame(ink, (frame) => frame.includes('◐ skills '))
+    releaseLastInstall()
+    await waitForFrame(ink, (frame) => frame.includes('● skills '))
     ink.stdin.send('\r')
-    await ink.settle(40)
+    await waitForFrame(ink, (frame) => frame.includes('Credentials and repo'))
     for (const ch of repo) ink.stdin.send(ch)
-    await ink.settle(60)
+    await waitForFrame(ink, (frame) => frame.includes(repo))
     ink.stdin.send('\r')
-    await ink.settle(80)
+    await waitForFrame(ink, (frame) => frame.includes('Toolchain verified'))
 
     const lock = await loadToolLock(h)
     expect(Object.keys(lock.tools)).toContain('skillspector')
