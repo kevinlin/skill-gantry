@@ -13,8 +13,7 @@ import {
 } from '../core/index.js'
 import type { SkillRef, Stage } from '../core/types.js'
 import { selectSkill, type CliDeps } from './run-command.js'
-
-const EVAL_CANDIDATES = ['evals/eval.yaml', 'evals/cases', 'evals']
+import { evalAssetsOf } from './skill-evals.js'
 
 interface RunMetaOnDisk {
   runId: string
@@ -38,20 +37,6 @@ const newestRun = async (skill: SkillRef): Promise<string | null> => {
   const entries = await readIndex(skill.workspacePath).catch(() => [])
   const ids = entries.map((entry) => entry.runId).sort()
   return ids[ids.length - 1] ?? null
-}
-
-/** Absent is the common case, so a missing path is data rather than an error. */
-const evalAssetsOf = async (skill: SkillRef): Promise<string[]> => {
-  const found: string[] = []
-  for (const rel of EVAL_CANDIDATES) {
-    try {
-      await access(join(skill.dir, rel))
-      found.push(join(skill.relPath, rel))
-    } catch {
-      // not carried by this skill
-    }
-  }
-  return found
 }
 
 export interface OptimisePlan {
