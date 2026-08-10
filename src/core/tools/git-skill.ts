@@ -1,7 +1,8 @@
-import { lstat, mkdir, readlink, rm, stat, symlink, unlink } from 'node:fs/promises'
+import { lstat, mkdir, readFile, readlink, rm, stat, symlink, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { GitSkillSpec } from './catalogue.js'
 import type { Exec } from './exec.js'
+import { settingsDigest } from './skillhone-settings.js'
 
 /**
  * Upstream's documented runtime table, plus `.agents` which this project's
@@ -152,11 +153,30 @@ export async function verifyGitSkill(
  * Links outlive the clone, and a dangling `~/.claude/skills/skillhone` breaks
  * every agent that scans that directory — the cost R3.1 exists to avoid, so
  * removal is an explicit path rather than a consequence of deleting the tree.
+ *
+ * `config` is R3.10's file, removed on the same rule and with one extra
+ * condition: it is deleted only while its bytes still hash to what the lock
+ * recorded. The file holds the user's credential and may have been edited
+ * against a gateway this build knows nothing about, so an edited one is left
+ * behind — the same preimage recheck §12.5 gives the suppress writer, for a
+ * sharper reason, since here the recheck guards a delete rather than a write.
  */
-export async function gitSkillUninstall(dir: string, links: readonly string[]): Promise<void> {
+export async function gitSkillUninstall(
+  dir: string,
+  links: readonly string[],
+  config?: { path: string; sha256: string },
+): Promise<void> {
   for (const link of links) {
     try {
       await unlink(link)
+    } catch {
+      // Already gone is the outcome asked for.
+    }
+  }
+  if (config) {
+    try {
+      const text = await readFile(config.path, 'utf8')
+      if (settingsDigest(text) === config.sha256) await unlink(config.path)
     } catch {
       // Already gone is the outcome asked for.
     }

@@ -102,20 +102,32 @@ export function useSetupSession({
     // Already installed and verified, so the step reports it rather than
     // repeating it: changing one tool otherwise reinstalls the whole selection.
     const already = new Set(await driver.installedTools())
+    const usable: string[] = []
     for (const id of ids) {
       if (already.has(id)) {
         dispatch({ type: 'installed', toolId: id })
+        usable.push(id)
         continue
       }
       dispatch({ type: 'installing', toolId: id })
       try {
         await driver.install(id)
         dispatch({ type: 'installed', toolId: id })
+        usable.push(id)
       } catch (err) {
         dispatch({ type: 'install-failed', toolId: id, error: (err as Error).message })
       }
     }
     onSelection(ids)
+    // R3.10, after the loop rather than inside it: composing a tool's own
+    // configuration reads the credential file, which the loop above has no
+    // business touching. Only what installed — a tool that failed has nothing
+    // to configure, and a row saying its config was written would be a lie
+    // about a tool the step above just reported as failed.
+    for (const id of usable) {
+      const outcome = await driver.configure(id)
+      dispatch({ type: 'tool-configured', toolId: id, outcome })
+    }
     dispatch({ type: 'credentials', ...(await driver.credentialStatus()) })
   }
 

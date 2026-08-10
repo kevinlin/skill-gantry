@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readlink, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readlink, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -10,6 +10,11 @@ import {
   gitSkillUninstall,
   verifyGitSkill,
 } from '../../src/core/tools/git-skill.js'
+import {
+  skillhoneSettings,
+  skillhoneSettingsPath,
+  writeSkillhoneSettings,
+} from '../../src/core/tools/skillhone-settings.js'
 
 const SPEC: GitSkillSpec & { id: string } = {
   id: 'skillhone',
@@ -126,5 +131,37 @@ describe('gitSkillUninstall', () => {
     await gitSkillUninstall(dir, [link])
 
     await expect(readlink(link)).rejects.toThrow()
+  })
+
+  it('removes the settings file it wrote — R3.10 applying R3.1 to a second out-of-root write', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'sg-home-'))
+    const dir = await mkdtemp(join(tmpdir(), 'sg-tool-'))
+    const written = await writeSkillhoneSettings(
+      home,
+      skillhoneSettings({
+        ANTHROPIC_BASE_URL: 'https://gateway.test/anthropic',
+        ANTHROPIC_AUTH_TOKEN: 'sk-0123456789abcdef',
+        ANTHROPIC_MODEL: 'a-model',
+      })!,
+    )
+    if (written.kind !== 'written') throw new Error('expected a write')
+
+    await gitSkillUninstall(dir, [], { path: written.path, sha256: written.sha256 })
+
+    await expect(stat(written.path)).rejects.toThrow()
+  })
+
+  it('leaves a settings file edited since it was written', async () => {
+    // The file holds the user's credential and may have been retuned against a
+    // gateway this build knows nothing about, so the recheck guards the delete.
+    const home = await mkdtemp(join(tmpdir(), 'sg-home-'))
+    const dir = await mkdtemp(join(tmpdir(), 'sg-tool-'))
+    await mkdir(join(home, '.skillhone'), { recursive: true })
+    const path = skillhoneSettingsPath(home)
+    await writeFile(path, '{"hand":"edited"}\n')
+
+    await gitSkillUninstall(dir, [], { path, sha256: 'a'.repeat(64) })
+
+    expect(await readFile(path, 'utf8')).toBe('{"hand":"edited"}\n')
   })
 })

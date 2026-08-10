@@ -5,6 +5,7 @@ import {
   CATALOGUE,
   SETUP_ORDER,
   missingRuntimesFor,
+  type ConfigureOutcome,
   type RepoInspection,
   type SetupState,
   type SetupStateName,
@@ -24,6 +25,26 @@ const STEPS: Record<SetupStateName, { title: string; short: string }> = {
 }
 
 const MARK: Record<string, string> = { pending: '·', installing: '◐', ok: '●', failed: '×' }
+
+/**
+ * R3.10's outcome as a trailing field on the tool's own row, beside the
+ * existing `failed —` precedent, so the step costs exactly the rows it was
+ * allocated. It names the path and never the document: the file holds the
+ * user's credential, and a wizard that echoed it would put a secret on screen
+ * and in every scrollback the inline wizard deliberately leaves behind.
+ */
+function configField(outcome: ConfigureOutcome): { text: string; tone: string } | null {
+  switch (outcome.kind) {
+    case 'written':
+      return { text: '~/.skillhone/settings.json written', tone: STATUS.ok }
+    case 'exists':
+      return { text: '~/.skillhone/settings.json exists — left alone', tone: STATUS.warn }
+    case 'no-credentials':
+      return { text: 'no ANTHROPIC_AUTH_TOKEN in ~/.skillgantry/.env', tone: STATUS.warn }
+    case 'skipped':
+      return null
+  }
+}
 
 /**
  * The visible slice of a list that must keep `cursor` on screen, and how many
@@ -239,14 +260,19 @@ export function Setup({
             const window = listWindow(state.selected.length, state.selected.length - 1, body)
             return (
               <Box flexDirection="column">
-                {state.selected.slice(window.from, window.to).map((id) => (
-                  <Text key={id}>
-                    {MARK[state.installed[id] ?? 'pending']} {id}
-                    {state.installed[id] === 'failed' ? (
-                      <Text color={STATUS.bad}> failed — {state.errors[id]}</Text>
-                    ) : null}
-                  </Text>
-                ))}
+                {state.selected.slice(window.from, window.to).map((id) => {
+                  const outcome = state.toolConfig[id]
+                  const config = outcome ? configField(outcome) : null
+                  return (
+                    <Text key={id}>
+                      {MARK[state.installed[id] ?? 'pending']} {id}
+                      {state.installed[id] === 'failed' ? (
+                        <Text color={STATUS.bad}> failed — {state.errors[id]}</Text>
+                      ) : null}
+                      {config ? <Text color={config.tone}> {config.text}</Text> : null}
+                    </Text>
+                  )
+                })}
                 {window.hidden > 0 && (
                   <Text dimColor>
                     {'  '}

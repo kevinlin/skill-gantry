@@ -4,11 +4,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   loadConfig,
+  loadToolLock,
   saveConfig,
   saveToolLock,
   DEFAULT_CONFIG,
 } from '../../src/core/config/config.js'
-import { RELEASE_TOOL_ID } from '../../src/core/tools/catalogue.js'
+import { RELEASE_TOOL_ID, SKILLHONE_TOOL_ID } from '../../src/core/tools/catalogue.js'
 import { buildProgram, type CliDeps } from '../../src/cli/run-command.js'
 import { buildSetupDriver, needsSetup } from '../../src/cli/setup-command.js'
 import { makeRepo, SKILL_MD } from '../helpers/tmp-repo.js'
@@ -100,5 +101,69 @@ describe('setup driver', () => {
     const status = await buildSetupDriver(h).credentialStatus()
     expect(status.present).toBe(true)
     expect(status.warnings.join(' ')).toMatch(/more permissive than 600/)
+  })
+})
+
+describe('configure — the SkillHone settings file (R3.10)', () => {
+  const TOKEN = 'sk-0123456789abcdef0123456789abcdef'
+  const ENV_TEXT = [
+    'ANTHROPIC_BASE_URL=https://gateway.test/anthropic',
+    `ANTHROPIC_AUTH_TOKEN=${TOKEN}`,
+    'ANTHROPIC_MODEL=a-model',
+    '',
+  ].join('\n')
+
+  const seed = async (): Promise<{ h: string; u: string }> => {
+    const h = await home()
+    const u = await home()
+    await writeFile(join(h, '.env'), ENV_TEXT)
+    await saveToolLock(h, {
+      version: 1,
+      tools: {
+        [SKILLHONE_TOOL_ID]: {
+          installKind: 'git-skill',
+          requestedPin: 'a'.repeat(40),
+          resolvedVersion: 'a'.repeat(40),
+          bin: join(h, 'tools', SKILLHONE_TOOL_ID, '.venv', 'bin', 'python'),
+          integrity: 'n/a',
+          installedAt: '2026-08-01T00:00:00Z',
+          verifiedAt: '2026-08-01T00:00:00Z',
+        },
+      },
+    })
+    return { h, u }
+  }
+
+  it('writes the file and records its path and digest in the lock', async () => {
+    const { h, u } = await seed()
+    const outcome = await buildSetupDriver(h, u).configure(SKILLHONE_TOOL_ID)
+    if (outcome.kind !== 'written') throw new Error(`expected a write, got ${outcome.kind}`)
+
+    const recorded = (await loadToolLock(h)).tools[SKILLHONE_TOOL_ID]?.config
+    expect(recorded?.path).toBe(outcome.path)
+    expect(recorded?.sha256).toBe(outcome.sha256)
+    // The digest and never the document: the file holds a credential, a hash
+    // of it does not.
+    expect(JSON.stringify(recorded)).not.toContain(TOKEN)
+  })
+
+  it('leaves a file it did not write, and records nothing for it', async () => {
+    const { h, u } = await seed()
+    await mkdir(join(u, '.skillhone'), { recursive: true })
+    await writeFile(join(u, '.skillhone', 'settings.json'), '{"hand":"written"}\n')
+
+    expect((await buildSetupDriver(h, u).configure(SKILLHONE_TOOL_ID)).kind).toBe('exists')
+    expect((await loadToolLock(h)).tools[SKILLHONE_TOOL_ID]?.config).toBeUndefined()
+  })
+
+  it('reports a missing credential rather than writing a file that authenticates against nothing', async () => {
+    const h = await home()
+    const u = await home()
+    expect((await buildSetupDriver(h, u).configure(SKILLHONE_TOOL_ID)).kind).toBe('no-credentials')
+  })
+
+  it('skips every tool that declares no configuration file', async () => {
+    const { h, u } = await seed()
+    expect((await buildSetupDriver(h, u).configure('skill-lint')).kind).toBe('skipped')
   })
 })

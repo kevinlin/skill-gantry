@@ -1,8 +1,10 @@
-import { mkdir, mkdtemp, readdir, readlink, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, readlink, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { runOptimise } from '../../src/cli/optimise-command.js'
+import { buildSetupDriver } from '../../src/cli/setup-command.js'
+import { loadToolLock } from '../../src/core/config/config.js'
 import {
   SKILLHONE_TOOL_ID,
   catalogueEntry,
@@ -118,6 +120,48 @@ describe('M9 exit criteria', () => {
     )
     // R3.7's rule: reported, never installed, and never a reason a tool cannot run.
     expect(report.failed).toBe(false)
+  })
+
+  it('setup composes the settings file SkillHone refuses to start without — R3.10', async () => {
+    const userHome = await seedHome()
+    const sgHome = await mkdtemp(join(tmpdir(), 'sg-root-'))
+    const token = 'sk-0123456789abcdef0123456789abcdef'
+    await writeFile(
+      join(sgHome, '.env'),
+      [
+        'ANTHROPIC_BASE_URL=https://gateway.test/anthropic',
+        `ANTHROPIC_AUTH_TOKEN=${token}`,
+        'ANTHROPIC_MODEL=a-model',
+        '',
+      ].join('\n'),
+    )
+    await installTool(sgHome, bundleSpec(), { exec: bundleExec([]), userHome })
+
+    const driver = buildSetupDriver(sgHome, userHome)
+    const outcome = await driver.configure(SKILLHONE_TOOL_ID)
+    if (outcome.kind !== 'written') throw new Error(`expected a write, got ${outcome.kind}`)
+
+    // Strict JSON: only status.py reaches for json5, so a commented document is
+    // one optim.py, new.py and synth.py all fail to parse.
+    const settings = JSON.parse(await readFile(outcome.path, 'utf8')) as Record<string, unknown>
+    expect(Object.keys(settings)).toEqual(['api_key', 'improver', 'executor', 'synthesis'])
+    expect((await stat(outcome.path)).mode & 0o777).toBe(0o600)
+    expect((await stat(join(userHome, '.skillhone'))).mode & 0o777).toBe(0o700)
+
+    // Re-entering the wizard leaves it alone, and doctor is where that is said.
+    expect((await driver.configure(SKILLHONE_TOOL_ID)).kind).toBe('exists')
+
+    const lock = await loadToolLock(sgHome)
+    const recorded = lock.tools[SKILLHONE_TOOL_ID]?.config
+    expect(recorded?.sha256).toBe(outcome.sha256)
+
+    // R3.1's rule for a write outside the tool root, applied to this file too.
+    await gitSkillUninstall(
+      join(toolRoot(sgHome), SKILLHONE_TOOL_ID),
+      lock.tools[SKILLHONE_TOOL_ID]?.links ?? [],
+      recorded,
+    )
+    await expect(stat(outcome.path)).rejects.toThrow()
   })
 
   it('skillgantry optimise prints the prompt, names each tool report, and writes not one byte', async () => {

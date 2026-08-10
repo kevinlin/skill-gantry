@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task.
 
-**Status:** revision 1, shipped. Written against [design.md](design.md), [design_tui.md](design_tui.md) and [requirements.md](requirements.md) as of shipped M8. The task breakdown is added by `superpowers:writing-plans`; everything above it is settled.
+**Status:** revision 2, shipped. Written against [design.md](design.md), [design_tui.md](design_tui.md) and [requirements.md](requirements.md) as of shipped M8. The task breakdown is added by `superpowers:writing-plans`; everything above it is settled.
 
 **Goal:** Give the optimise stage something behind it. SkillHone becomes the catalogue's first non-CLI entry — a bundle of agent skills installed by clone and per-skill symlink, with its Python dependencies isolated in a managed venv. Marking `optimise` on the rail then opens a surface that hands the maintainer a coding-agent prompt built from the skill's recorded evidence. SkillGantry installs and composes; it never runs the loop and never applies its result.
 
@@ -58,6 +58,14 @@ All land before the code that depends on them, per the repo rule that a spec pro
 | design.md | §5.1a a catalogue kind with no executable · §5.2 a fourth driver row and `git-skill`'s three-fact verification · §5.3 the presets sentence rewritten and two new doctor conditions · **new §9.4a** the optimise prompt |
 | design_tui.md | **new §14.10** the optimise surface: the `r` branch, the batch refusal, the mark-clearing rule, the precedence slot |
 | decision-log.md | new entry reinstating SkillHone as a skill bundle, superseding §10's omission and D7's "both optimise candidates unpublished" |
+
+Revision 2 adds three more:
+
+| Doc | Change |
+|---|---|
+| requirements.md | **new R3.10** a catalogued tool's own configuration file, composed from `~/.skillgantry/.env`, never overwritten, recorded in the lock, removed on uninstall, reported by doctor. |
+| requirements.md | **R7.3** amended in place: one narrow exception for R3.10's file, with the four conditions that keep "SkillGantry writes no credential of its own" true. Amended rather than suffixed for the reason R3.1 was — the rule is what R7.3 owns. |
+| design.md | §5.1 the lock example gains `links` and `config` · §5.3 the doctor-conditions sentence names three more · **new §5.4** tool-owned configuration |
 
 [plan_m3.md](plan_m3.md)'s "Omitted" row stays as written. A deviation record is a point-in-time probe; the decision-log entry is what supersedes it.
 
@@ -210,6 +218,20 @@ It reuses `actionableFindings`, `newestRunId` and `stageDirFor`, all already exp
 `GantryViews` gains `planOptimise(skillId)` — a read that runs before the user has committed to anything, implemented in `src/cli/gantry-views.ts` because `src/tui/**` may not spawn and this needs `git status` plus the lock. `planSuppression` and `planRelease` are the precedent in shape and in reason.
 
 `skillgantry optimise <skill> [--json]` lives in `src/cli/optimise-command.ts`, modelled on `fix-command.ts`. It writes not one byte, and its exit code reports whether a prompt was produced rather than whether the skill passes — R12.6's meaning, not R12.2's.
+
+### 5. The settings file — revision 2
+
+Revision 1 installed SkillHone and left it unable to start. Three of its four entry points refuse to run without `~/.skillhone/settings.json`, and the first session with SkillGantry ended in a hand-written one. Design §5.4 is the contract; what belongs here is why the four seams are where they are.
+
+**The write hangs off the wizard, not off `installTool`.** `SetupDriver` gains `configure(toolId)`, called from `installAll` after the install loop and before the credential dispatch it already makes. `buildSetupDriver` implements it, which its own doc comment already claimed as the place "config, the lockfile, the install drivers and the credential file meet". Inside `installTool` was the alternative and would have needed a declarative field on `ToolSpec` — a schema for one entry, and `setup-command.ts` passes `installTool` no options today, so the env would have had to be threaded through as well.
+
+**No fifth wizard state.** Composing a file the installer already had every value for is part of installing, and a state of its own would ask the user to walk through a step that decides nothing. It also keeps `SETUP_ORDER`, `canEnter`, `entryBlockedReason` and `Setup.tsx`'s one-entry-per-state `STEPS` map untouched. The outcome is a trailing field on the tool's own install row, beside the existing `failed —` precedent, so the step still costs exactly the rows §14.1 allocated it.
+
+**Only what installed gets configured.** `installAll` collects the ids that succeeded rather than re-reading state a stale closure would have; a row saying a tool's config was written under a row reporting that tool as failed is a lie about the same tool, two lines apart.
+
+**Doctor reports three conditions, and that is what makes never-overwriting affordable.** Absent, unmanaged and stale — the third being the rotated-token case, which is the one a never-overwrite policy would otherwise bury for good. All three sit outside `FAILING`, beside `skillhone-deps`. `DoctorInput` gains `userHome`, defaulted the way `InstallToolOptions.userHome` already is.
+
+**Uninstall removes it, under R3.1's rule for a write outside the tool root.** `gitSkillUninstall` takes the recorded `{ path, sha256 }` and deletes only while the bytes still match — the preimage recheck §12.5 gives the suppress writer, here guarding a delete rather than a write, because the file holds the user's API key.
 
 ---
 
@@ -2163,6 +2185,8 @@ that writes nothing, and the prompt's suppression rule."
 | R11.20 (amended) refusal conditional on the install | §3 |
 | R11.21 (new) the terminal surface | §3 |
 | R12.8 (new) the headless command, writes nothing | §4 |
+| R3.10 (new) the tool-owned configuration file | §5 |
+| R7.3 (amended) the one exception, and its four conditions | §5 |
 
 **Owned elsewhere but shaped here.** R3.2's native install mechanism gains a fourth driver. R3.6's `install-and-verify` state now covers a tool with no version argv. R3.7's probe-and-report rule extends from host runtimes to a tool's own runtime dependency. R3.9's four drift kinds are re-grounded on `git-skill`'s three facts. R6.11's suppression rule is reused verbatim by the new prompt. R11.10 and R12.6's "the pipeline is the only writer under `runs/`" is what makes the prompt file-less.
 
@@ -2192,5 +2216,6 @@ that writes nothing, and the prompt's suppression rule."
 
 ## Changelog
 
+- 2026-08-10 — revision 2, shipped. `~/.skillhone/settings.json` composed from `~/.skillgantry/.env` when SkillHone installs, at mode 600 inside a 700 directory; an existing file is never overwritten; the path and a digest are recorded in the lock, removed on uninstall while the bytes still match, and reported by doctor as absent, unmanaged or stale. R3.10 added and R7.3 amended in place with one narrow exception, since SkillGantry does not spawn the tool it is configuring and so has no spawn to inject at. Design §5.4 is the contract; §5.1 and §5.3 amended.
 - 2026-08-10 — revision 1, shipped. Eight tasks, `pnpm check` green: 1102 unit tests, 52 acceptance.
 - 2026-08-09 — revision 1, design brief. Written after reading `Tencent/SkillHone` at `7d56583`, its install guide, its requirements file and the `skillhone-optimization` skill. Task breakdown pending `superpowers:writing-plans`.

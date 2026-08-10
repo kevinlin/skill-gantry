@@ -3,6 +3,7 @@ import type { GantryConfig } from '../config/schema.js'
 import type { Stage } from '../types.js'
 import { PRESETS, type PresetName, catalogueEntry } from './catalogue.js'
 import { type RuntimeStatus, runtimesFor } from './runtimes.js'
+import type { ConfigureOutcome } from './skillhone-settings.js'
 
 export type SetupStateName =
   | 'probe-runtimes'
@@ -31,6 +32,13 @@ export interface SetupState {
   /** The user chose to finish with no repo registered. */
   repoSkipped: boolean
   credentials: { present: boolean; warnings: readonly string[] } | null
+  /**
+   * R3.10's outcome per tool, reported on the install step rather than in a
+   * state of its own: composing a file the installer already had every value
+   * for is part of installing, and a sixth state would ask the user to walk
+   * through a step that decides nothing.
+   */
+  toolConfig: Readonly<Record<string, ConfigureOutcome>>
 }
 
 /**
@@ -51,6 +59,7 @@ export function initialSetupState(seed?: {
     repoPath: null,
     repoSkipped: false,
     credentials: null,
+    toolConfig: {},
   }
 }
 
@@ -62,6 +71,7 @@ export type SetupAction =
   | { type: 'installed'; toolId: string }
   | { type: 'install-failed'; toolId: string; error: string }
   | { type: 'credentials'; present: boolean; warnings: readonly string[] }
+  | { type: 'tool-configured'; toolId: string; outcome: ConfigureOutcome }
   | { type: 'repo'; path: string }
   | { type: 'skip-repo' }
   | { type: 'enter'; state: SetupStateName }
@@ -128,6 +138,12 @@ export function setupReducer(state: SetupState, action: SetupAction): SetupState
       }
     case 'credentials':
       return { ...state, credentials: { present: action.present, warnings: action.warnings } }
+    case 'tool-configured':
+      // `skipped` is every tool but SkillHone, so recording it would put a row
+      // on the install step for each one saying nothing happened.
+      return action.outcome.kind === 'skipped'
+        ? state
+        : { ...state, toolConfig: { ...state.toolConfig, [action.toolId]: action.outcome } }
     case 'repo':
       return { ...state, repoPath: action.path, repoSkipped: false }
     case 'skip-repo':
@@ -188,6 +204,12 @@ export function stageToolsFor(
 export interface SetupDriver {
   probe(): Promise<readonly RuntimeStatus[]>
   install(toolId: string): Promise<void>
+  /**
+   * R3.10: compose the tool's own configuration file, if it declares one. Split
+   * from `install` because it reads the credential file, which is the wizard's
+   * next step and the reason `buildSetupDriver` is where both already meet.
+   */
+  configure(toolId: string): Promise<ConfigureOutcome>
   saveSelection(selected: readonly string[]): Promise<void>
   credentialStatus(): Promise<{ present: boolean; warnings: readonly string[] }>
   /** Read-only: what a typed path resolves to, before the user commits it. */

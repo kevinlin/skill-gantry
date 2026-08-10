@@ -1,6 +1,8 @@
+import { homedir } from 'node:os'
 import { getAdapter } from '../core/adapters/registry.js'
 import {
   CATALOGUE,
+  SKILLHONE_TOOL_ID,
   catalogueEntry,
   inspectRepo,
   installTool,
@@ -11,7 +13,10 @@ import {
   registerRepo,
   runtimesFor,
   saveConfig,
+  saveToolLock,
+  skillhoneSettings,
   stageToolsFor,
+  writeSkillhoneSettings,
   type SetupDriver,
 } from '../core/index.js'
 import { renderSetup } from '../tui/index.js'
@@ -31,7 +36,7 @@ export async function needsSetup(home: string): Promise<boolean> {
  * file meet — the same role `tui-command.ts` plays for the Work screen, and the
  * reason `src/tui/**` needs neither subprocess nor sqlite.
  */
-export function buildSetupDriver(home: string): SetupDriver {
+export function buildSetupDriver(home: string, userHome: string = homedir()): SetupDriver {
   return {
     probe: () => probeRuntimes(runtimesFor(CATALOGUE)),
 
@@ -39,6 +44,45 @@ export function buildSetupDriver(home: string): SetupDriver {
       const spec = catalogueEntry(toolId)
       if (!spec) throw new Error(`not in the catalogue: ${toolId}`)
       await installTool(home, spec)
+    },
+
+    /**
+     * R3.10. SkillHone is the one catalogued tool that reads its configuration
+     * from a file of its own, so the id is checked here rather than declared on
+     * `ToolSpec`: a field on the catalogue would be a shape for one entry, and
+     * the second tool to need one is what should introduce it.
+     */
+    configure: async (toolId) => {
+      if (toolId !== SKILLHONE_TOOL_ID) return { kind: 'skipped' }
+      const env = await loadEnvFile(home)
+      const settings = skillhoneSettings(env.vars)
+      if (!settings) return { kind: 'no-credentials' }
+
+      const outcome = await writeSkillhoneSettings(userHome, settings)
+      if (outcome.kind !== 'written') return outcome
+
+      // Read-modify-write of the whole lock, one tool key at a time, the same
+      // shape `installTool` uses — and after the rename, so a lock recording a
+      // file that was never written is not a state that exists.
+      const lock = await loadToolLock(home)
+      const entry = lock.tools[toolId]
+      if (entry) {
+        await saveToolLock(home, {
+          ...lock,
+          tools: {
+            ...lock.tools,
+            [toolId]: {
+              ...entry,
+              config: {
+                path: outcome.path,
+                sha256: outcome.sha256,
+                writtenAt: new Date().toISOString(),
+              },
+            },
+          },
+        })
+      }
+      return outcome
     },
 
     saveSelection: async (selected) => {

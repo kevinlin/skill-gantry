@@ -1,6 +1,8 @@
 import { readFile, readdir, stat } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { loadToolLock } from '../config/config.js'
+import { loadEnvFile } from '../config/env.js'
 import { parseFrontmatter } from '../discovery/frontmatter.js'
 import type { LifecycleState } from '../ledger/lifecycle.js'
 import type { SkillRef } from '../types.js'
@@ -10,6 +12,12 @@ import { type Exec, defaultExec } from './exec.js'
 import { verifyGitSkill } from './git-skill.js'
 import { toolRoot, verifyTool } from './install.js'
 import { type RuntimeStatus, probeRuntimes, runtimesFor } from './runtimes.js'
+import {
+  serialiseSkillhoneSettings,
+  settingsDigest,
+  skillhoneSettings,
+  skillhoneSettingsPath,
+} from './skillhone-settings.js'
 
 export type ToolDriftKind =
   | 'ok'
@@ -23,6 +31,13 @@ export type ToolDriftKind =
   // runtime dependency: named, never installed, never failing the report.
   | 'skillhone-deps'
   | 'claude-cli-missing'
+  // R3.10's three, on the same rule: reported, never written. Three and not one
+  // because the recovery differs — an absent file is a re-run of setup, an
+  // unmanaged one is a decision only the user can make about their own bytes,
+  // and a stale one is a credential that moved after the file was composed.
+  | 'skillhone-config-missing'
+  | 'skillhone-config-unmanaged'
+  | 'skillhone-config-stale'
 
 /** The four kinds R3.9 names are the ones that fail the report. */
 const FAILING: ReadonlySet<ToolDriftKind> = new Set<ToolDriftKind>([
@@ -64,6 +79,12 @@ export interface DoctorInput {
    * version, `current` is RULE_CLASS_MAP_VERSION from the shipped build.
    */
   ruleMap: { applied: number; current: number }
+  /**
+   * Where a tool's own configuration directory lives (R3.10). Injected for the
+   * reason and with the default `InstallToolOptions.userHome` already uses, so
+   * a test can point the check at a temp home.
+   */
+  userHome?: string
   exec?: Exec
 }
 
@@ -171,6 +192,55 @@ async function lifecycleDrift(
   return findings
 }
 
+/**
+ * R3.10's three conditions, decided by comparing digests. Neither the file's
+ * bytes nor the document the current `.env` would compose leaves this function:
+ * both hold the user's credential, and which of three states the file is in is
+ * a question a hash answers.
+ */
+async function checkSkillhoneConfig(
+  home: string,
+  userHome: string,
+  entry: ToolLockEntry,
+): Promise<Omit<ToolFinding, 'toolId'> | null> {
+  const path = entry.config?.path ?? skillhoneSettingsPath(userHome)
+  const blank = { expectedVersion: null, actualVersion: null }
+
+  const current = await readFile(path, 'utf8').then(
+    (text) => text,
+    () => null,
+  )
+  if (current === null) {
+    return {
+      ...blank,
+      kind: 'skillhone-config-missing',
+      detail: `${path} is absent — optim.py exits before it reads anything; re-run \`skillgantry setup\``,
+    }
+  }
+
+  const onDisk = settingsDigest(current)
+  if (entry.config === undefined || entry.config.sha256 !== onDisk) {
+    return {
+      ...blank,
+      kind: 'skillhone-config-unmanaged',
+      detail: `${path} was not written by SkillGantry — delete it and re-run \`skillgantry setup\` to adopt the managed one`,
+    }
+  }
+
+  // Ours and untouched, so the only thing left that can be wrong is the source:
+  // a rotated token or a changed base URL leaves a file that authenticates
+  // against nothing, and never-overwrite means nothing else would ever say so.
+  const settings = skillhoneSettings((await loadEnvFile(home)).vars)
+  if (settings && settingsDigest(serialiseSkillhoneSettings(settings)) !== onDisk) {
+    return {
+      ...blank,
+      kind: 'skillhone-config-stale',
+      detail: `${path} no longer matches ~/.skillgantry/.env — delete it and re-run \`skillgantry setup\``,
+    }
+  }
+  return null
+}
+
 export async function doctor(input: DoctorInput): Promise<DoctorReport> {
   const lock = await loadToolLock(input.home)
 
@@ -210,6 +280,12 @@ export async function doctor(input: DoctorInput): Promise<DoctorReport> {
           'npm install -g @anthropic-ai/claude-code',
       })
     }
+    const config = await checkSkillhoneConfig(
+      input.home,
+      input.userHome ?? homedir(),
+      bundle,
+    )
+    if (config) tools.push({ toolId: SKILLHONE_TOOL_ID, ...config })
   }
 
   for (const dir of await installedDirs(input.home)) {

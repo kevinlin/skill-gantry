@@ -84,6 +84,16 @@ export {
   type GitSkillInstall,
 } from './tools/git-skill.js'
 export {
+  serialiseSkillhoneSettings,
+  settingsDigest,
+  skillhoneSettings,
+  skillhoneSettingsPath,
+  writeSkillhoneSettings,
+  type ConfigureOutcome,
+  type SkillhoneProfile,
+  type SkillhoneSettings,
+} from './tools/skillhone-settings.js'
+export {
   INSTALL_COMMAND,
   probeRuntimes,
   runtimesFor,
