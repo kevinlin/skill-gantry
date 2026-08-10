@@ -25,13 +25,13 @@ async function tuiSources(): Promise<string[]> {
 
 describe('R11.15 colour vocabulary', () => {
   it('uses the D23 palette for the accent and every state', () => {
-    expect(ACCENT).toBe('#0070f3')
+    expect(ACCENT).toBe('#22d3ee')
     expect(OUTCOME_COLOUR.passed).toBe('#00c853')
     expect(OUTCOME_COLOUR.failed).toBe('#ee0000')
     expect(OUTCOME_COLOUR.errored).toBe('#f5a623')
     expect(OUTCOME_COLOUR.degraded).toBe('#f5a623')
-    expect(OUTCOME_COLOUR.skipped).toBe('#555555')
-    expect(OUTCOME_COLOUR.idle).toBe('#555555')
+    expect(OUTCOME_COLOUR.skipped).toBe('#6b6b6b')
+    expect(OUTCOME_COLOUR.idle).toBe('#6b6b6b')
     expect(OUTCOME_COLOUR.running).toBe(ACCENT)
     expect(SEVERITY_COLOUR.critical).toBe('#ee0000')
     expect(SEVERITY_COLOUR.high).toBe('#ee0000')

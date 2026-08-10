@@ -15,8 +15,19 @@ import type { JobRecord } from '../core/index.js'
  * The accent is the focus signal — the focused panel's border, the selected
  * output tab, the palette's command ids, the cursor. No state may claim it
  * except `running`, which is the one state telling the user to look at it.
+ *
+ * Cyan and not D23's original `#0070f3`. That blue measures 4.35:1 against the
+ * near-black a terminal profile usually paints — over the ratio floor, and
+ * still the value users could not see, because it is the palette's darkest
+ * chromatic token and the ratio is carrying almost all of its weight in a
+ * channel the eye resolves worst. What it renders is mostly box rule: a single
+ * stroke, one cell wide, with no mass to make up the difference. `#22d3ee` is
+ * 10.96:1 on the same ground, so the focus mark stops depending on the profile
+ * being generous, and it downsamples to ANSI 256 `45` — bright cyan on a
+ * 16-colour profile, a hue no other token claims, so the downsample cannot
+ * collide with a state.
  */
-export const ACCENT = '#0070f3'
+export const ACCENT = '#22d3ee'
 
 /**
  * The four words the rest of the screen actually means when it says a colour:
@@ -40,13 +51,20 @@ export const ACCENT = '#0070f3'
  * they drift apart. `secondary` is severity `low`'s grey, for text that is
  * legible but not being pointed at; `muted` is the dim of something switched
  * off — a skipped stage, an unfocused border.
+ *
+ * `muted` was `#555555` at 2.66:1 on a near-black profile, under any floor and
+ * load-bearing in a way a skipped stage is not: every panel but the focused one
+ * draws its border in it, so most of the frame on screen at any moment was
+ * rendered in the palette's least survivable value. `#6b6b6b` is 3.72:1, which
+ * clears the 3:1 a box rule sits under while staying below `secondary`'s
+ * 5.58:1 — the ordering is what makes it still read as "off".
  */
 export const STATUS = {
   ok: '#00c853',
   warn: '#f5a623',
   bad: '#ee0000',
   secondary: '#888888',
-  muted: '#555555',
+  muted: '#6b6b6b',
 } as const
 
 /**

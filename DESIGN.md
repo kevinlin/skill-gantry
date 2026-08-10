@@ -19,11 +19,11 @@
 | Foreground | `#ededed` | `255` | `white` | Default text |
 | Primary | `#ffffff` | `15` | `bright white` | Key actions, focus states |
 | Secondary | `#888888` | `245` | `bright black` | Supporting text |
-| Accent | `#0070f3` | `33` | `blue` | Links, highlights |
+| Accent | `#22d3ee` | `45` | `bright cyan` | Focus signal: focused border and panel title, selected tab, links, highlights |
 | Success | `#00c853` | `41` | `green` | Positive status |
 | Warning | `#f5a623` | `214` | `yellow` | Caution status |
 | Error | `#ee0000` | `196` | `red` | Error status |
-| Muted | `#555555` | `240` | `bright black` | Disabled, hints |
+| Muted | `#6b6b6b` | `242` | `bright black` | Disabled, hints, unfocused borders |
 | Surface | `#1a1a1a` | `234` | `black` | Panels, cards |
 
 ### Neutral Scale
@@ -33,9 +33,34 @@
 | 50 | `#1a1a1a` | Subtle backgrounds, surface |
 | 100 | `#2a2a2a` | Borders, dividers |
 | 200 | `#444444` | Disabled text |
-| 300 | `#666666` | Placeholder text |
+| 300 | `#6b6b6b` | Muted — unfocused borders, hints, placeholder text |
 | 400 | `#888888` | Secondary text |
 | 500 | `#ededed` | Body text |
+
+### Contrast floor
+
+Every value above is measured against Background `#0a0a0a`, because a terminal
+profile that paints near-black is the case a colour has to survive — not the
+mid-grey a browser would give it.
+
+- Text and status colours: **≥ 4.5:1**.
+- Borders, rules, and any glyph carrying state on its own: **≥ 3:1**.
+
+Two values were retuned to meet this.
+
+Accent was `#0070f3` at 4.35:1 — over the floor, and still the value users
+reported they could not see. The ratio was the wrong measure on its own: that
+blue is the palette's darkest chromatic value, and what it renders is mostly
+box rule, one cell wide with no mass to compensate. `#22d3ee` is 10.96:1 on the
+same ground. Cyan and not another hue clearing the floor, because it downsamples
+to bright cyan on a 16-colour profile — a hue no status token claims, so the
+focus signal can never be mistaken for an outcome.
+
+Muted was `#555555` at 2.66:1, under any floor, and every panel except the
+focused one draws its border in it — so most of the frame at any moment was the
+palette's least survivable value. `#6b6b6b` is 3.72:1, clearing the border
+floor while staying below Secondary's 5.58:1. That ordering is what keeps it
+reading as "off" rather than as quiet text.
 
 ## 3. Typography & ASCII Art
 
@@ -235,16 +260,17 @@ Keep icons to single-width characters. No emoji.
 ```
 Background: #0a0a0a  (ANSI 232)
 Foreground: #ededed  (ANSI 255)
-Accent:     #0070f3  (ANSI 33)
+Accent:     #22d3ee  (ANSI 45, bright cyan)
+Muted:      #6b6b6b  (ANSI 242) — unfocused borders
 Border:     ┌─┐│└─┘  (single line)
-Style:      minimal, monochrome with blue accent, generous spacing
+Style:      minimal, monochrome with cyan accent, generous spacing
 ```
 
 ### Example Prompts
 
-- "Build a status dashboard: single-line borders, white text on near-black bg, blue accent for active items, ✓/✗ status icons, no emoji"
+- "Build a status dashboard: single-line borders, white text on near-black bg, cyan accent for active items, ✓/✗ status icons, no emoji"
 - "Create a file picker: ▸ selector, dim unselected items, bold selected item, single-line box panel, embedded title in top border"
-- "Design a form: bottom-bordered inputs, blue highlight on focus, red on error, reverse-video submit button, 2-space indent"
+- "Design a form: bottom-bordered inputs, cyan highlight on focus, red on error, reverse-video submit button, 2-space indent"
 
 ## Do's and Don'ts
 
