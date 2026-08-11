@@ -1,6 +1,7 @@
 import { render } from 'ink'
 import { App, type AppProps } from './app.js'
 import { SetupApp, type SetupAppProps } from './setup-app.js'
+import { UpgradeApp, type UpgradeAppProps } from './upgrade-app.js'
 
 /**
  * Resolves when the user quits. The caller owns the queue and the ledger.
@@ -20,5 +21,28 @@ export async function renderSetup(props: SetupAppProps): Promise<void> {
   await instance.waitUntilExit()
 }
 
+/**
+ * Resolves with the answer. No `alternateScreen`, matching `renderSetup`: the
+ * decision the user just made stays in their scrollback, which is where the
+ * apply progress lines land after this unmounts (§14.13).
+ */
+export async function renderUpgrade(
+  props: Omit<UpgradeAppProps, 'onAnswer'>,
+): Promise<'upgrade' | 'skip'> {
+  return new Promise((resolve) => {
+    const instance = render(
+      <UpgradeApp
+        {...props}
+        onAnswer={(answer) => {
+          instance.unmount()
+          resolve(answer)
+        }}
+      />,
+    )
+  })
+}
+
 export type { AppProps } from './app.js'
 export type { SetupAppProps } from './setup-app.js'
+export { UpgradeApp } from './upgrade-app.js'
+export type { UpgradeAppProps } from './upgrade-app.js'
