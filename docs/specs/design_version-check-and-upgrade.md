@@ -258,7 +258,9 @@ all. Two are warranted because a respawn loop in a TTY is not something a user c
 
 Parse rule: `^## (\d+\.\d+\.\d+)` opens an entry; the body runs to the next `## ` or to EOF.
 
-Entries are **hand-written before tagging**, and §2's assertion refuses a tag that has none.
+Entries are **written before tagging**, and §2's assertion refuses a tag that has none. §5.1a seeds
+the section from history; the bullets are then edited by hand, because a raw commit subject is not a
+headline that fits a terminal row.
 
 ### 5.1 Backfill
 
@@ -277,6 +279,25 @@ commit (0.5.0) reaches into the merged branch. Filtering is what makes the entry
 upgrading cares that a spec was compacted.
 
 Result: 14 entries, 0.1.0 through 0.5.1.
+
+### 5.1a Cutting the next one
+
+`scripts/release-version.sh [patch|minor|major]` bumps `package.json` and opens the section, then
+stops. Three properties are load-bearing:
+
+1. **The seed reuses the backfill walk.** `changelog-from-history.sh --pending <version>` emits one
+   entry for the last version-bump commit to `HEAD` — the same range shape and the same
+   `feat`/`fix`/`ui`/`perf` filter §5.1 defines, so a cut entry and a backfilled one cannot diverge
+   in form. The version is an argument because it is not on disk yet; the script does not decide the
+   bump.
+2. **It refuses a dirty tree**, since the seeded section describes committed work only, and the
+   release commit the user makes next would otherwise absorb whatever else was uncommitted.
+3. **It does not commit, tag or push.** The tag is what publishes, and §2's two assertions run only
+   after it exists — so the stop is where the maintainer edits the bullets and runs `pnpm check`
+   before that becomes irreversible for the clients reading the asset.
+
+A bump behind no matching subject still gets a section — `- No user-facing change.`, the shape 0.4.3
+already uses — because §2 refuses a tag without one.
 
 ### 5.2 How the client reads it
 

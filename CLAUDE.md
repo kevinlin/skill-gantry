@@ -20,9 +20,11 @@ pnpm install:cli        # build, pack, install to ~/.skillgantry/versions/<v>, l
 pnpm lint               # eslint src tests (also enforces the import boundary)
 pnpm test               # vitest run — offline, excludes install + acceptance
 pnpm acceptance         # SG_ACCEPTANCE=1, drives the whole CLI
-pnpm test:integration   # SG_INTEGRATION=1 + SG_ACCEPTANCE=1: real-network installs, then acceptance
+pnpm test:integration   # SG_INTEGRATION=1 + SG_ACCEPTANCE=1: real-network installs, real-fs suppress, then acceptance
 pnpm check              # lint && build && test && acceptance — run before committing
 ```
+
+`.github/workflows/check.yml` runs exactly `pnpm check` on every push to main and every PR, under Node 24 and pnpm 10 with `--frozen-lockfile`. So a green `pnpm check` locally is the whole gate.
 
 Single test file / case:
 
@@ -31,11 +33,16 @@ pnpm vitest run tests/core/reconcile.test.ts
 pnpm vitest run tests/core/reconcile.test.ts -t 'closes only when every detector agrees'
 ```
 
-`vitest.config.ts` excludes two suites unless their env flag is set, keeping the default run offline and fast: `tests/core/install.test.ts` needs `SG_INTEGRATION=1` (reaches a real package index), `tests/acceptance/**` needs `SG_ACCEPTANCE=1`. The offline default holds because every install driver takes an injected `Exec` and `gh-release.ts` an injected `fetchImpl`.
-
-Adapter fixtures are regenerated, not hand-edited: `scripts/capture-fixtures.sh <skills-repo>`. It refuses to run unless the installed tool matches the pinned version, so fixtures and pins cannot drift apart.
+`vitest.config.ts` excludes two groups unless their env flag is set, keeping the default run offline and fast. `SG_INTEGRATION=1` unlocks `tests/core/install.test.ts` (reaches a real package index) and `tests/core/suppress-integration.test.ts` (drives the suppress write path over a real filesystem — the default run never exercises it, which matters because `suppress` is one of the three paths that write to the user's repo). `SG_ACCEPTANCE=1` unlocks `tests/acceptance/**`. The offline default holds because every install driver takes an injected `Exec` and `gh-release.ts` an injected `fetchImpl`.
 
 Design §15 is the CLI surface: ten subcommands plus a root action, all built by `buildProgram(deps)` in `src/cli/run-command.ts`.
+
+### scripts/
+
+- `capture-fixtures.sh <skills-repo>` — regenerates adapter fixtures; they are never hand-edited. It refuses to run unless the installed tool matches the pinned version, so fixtures and pins cannot drift apart.
+- `install-cli.sh` — behind `pnpm install:cli`.
+- `release-version.sh [patch|minor|major] [--dry-run]` — behind `pnpm release:version`. Cuts a version and stops: see § Cutting a release.
+- `changelog-from-history.sh` — derives changelog entries from a first-parent walk. `--pending <version>` emits just the unreleased section, which is what `release-version.sh` seeds from.
 
 ## Specs are the source of truth
 
@@ -49,6 +56,8 @@ Precedence, highest first:
 4. The plans — a record of intent, never a contract. Each ends with a "Deviations found while implementing" section, and shipped plans are compacted to hold the why, not the how.
 
 Design reviews are point-in-time findings against a named commit. Historical.
+
+Two root files carry names that collide with that tree and are not contracts: `DESIGN.md` is the TUI visual design system (palette, density, mood) and `PRODUCT.md` the product schema. A bare "design §N" always means `docs/specs/design.md`. `docs/specs/meta/convention.md` holds the spec naming and structure rules the `spec-lint` skill applies, and `docs/research/` predates the specs.
 
 When implementation proves a spec wrong, amend the spec doc in the same branch rather than letting the two diverge.
 
@@ -96,6 +105,27 @@ The seams no single file reveals:
 | the release contract, the changelog, the versioned prefix, the check or the apply | §20 → design_version-check-and-upgrade.md |
 
 Two of those bite hardest because the change looks local. Extending the rule-class map is a migration, not an edit: bump `RULE_CLASS_MAP_VERSION` and reclassify live issues, or every issue filed under the old class is orphaned (R8.14). And outcome classification is an ordered table where a schema-valid parse beats the exit code, so a scanner exiting 1 with a clean report has *passed*.
+
+### Cutting a release
+
+§20 states the contract; this is the loop that satisfies it. Publishing is a tag, so nothing ships until one is pushed.
+
+```bash
+pnpm release:version [patch|minor|major] [--dry-run]   # default patch
+```
+
+It refuses a dirty tree, bumps `package.json`'s version line in place, and prepends a `## <version> — <date>` section to `CHANGELOG.md`, seeded by `changelog-from-history.sh --pending` from the commits since the last bump — filtered to `feat` / `fix` / `ui` / `perf` subjects, falling back to `- No user-facing change.` when none match. Then it stops and prints what remains:
+
+```bash
+# edit the seeded section by hand — bullets are headlines, detail in a paragraph under one
+pnpm check
+git commit -am 'chore(release): <version>'
+git tag v<version> && git push origin v<version>
+```
+
+That hand edit is not optional. `parseChangelog` reads only the `- ` lines and the upgrade prompt gives each one terminal row, so a raw commit subject is the wrong shape; the seed is a draft.
+
+The tag fires `.github/workflows/release.yml`, which refuses to publish unless the tag matches `package.json` and `CHANGELOG.md` has a section for it (R13.8) — a mismatch would make every client install a version it did not ask for and still see the upgrade available. `CHANGELOG.md` ships as a release asset, and that asset is what a client's launch check reads, so a section is immutable once published.
 
 ## Conventions
 

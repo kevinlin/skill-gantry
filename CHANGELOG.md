@@ -12,6 +12,14 @@ rather than replaying its commits. Standalone fixes belonging to no plan are lis
 is a headline that fits a terminal, and the paragraph under it carries the detail.
 
 ## 0.6.1 — 2026-08-11
+- feat(scripts): cut a version with one command
+
+  `pnpm release:version [patch|minor|major]` bumps `package.json` and opens this file's next section,
+  seeded from the commits since the last bump by `changelog-from-history.sh --pending` — the same
+  range shape and subject filter the backfill uses. It refuses a dirty tree and stops before
+  committing, tagging or pushing, since the tag is what publishes and the seeded bullets still need
+  editing into terminal-row headlines. Recorded as design_version-check-and-upgrade.md §5.1a.
+
 - docs: compact the changelog against the milestone plans
 
   Each version that delivered a milestone now states what that milestone's plan set out to do,

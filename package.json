@@ -14,6 +14,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "install:cli": "scripts/install-cli.sh",
+    "release:version": "scripts/release-version.sh",
     "lint": "eslint src tests",
     "test": "vitest run",
     "acceptance": "SG_ACCEPTANCE=1 vitest run tests/acceptance",
