@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-Everything in [plan_m1.md's Global Constraints](plan_m1.md), [plan_m2.md's](plan_m2.md), [plan_m3.md's](plan_m3.md), [plan_m4.md's](plan_m4.md) and [plan_m5.md's](plan_m5.md) still holds. These are the additions.
+Everything in [plan_m1-engine-and-sidecar.md's Global Constraints](plan_m1-engine-and-sidecar.md), [plan_m2-queue-and-tui.md's](plan_m2-queue-and-tui.md), [plan_m3-tools-module.md's](plan_m3-tools-module.md), [plan_m4-adapters-and-merge.md's](plan_m4-adapters-and-merge.md) and [plan_m5-mutation-and-release.md's](plan_m5-mutation-and-release.md) still holds. These are the additions.
 
 - Import boundary unchanged: `cli → tui → core`; `src/tui/**` reaches core **only** through `src/core/index.ts`; no `console` or `process.exit` in `src/core/**`; no `node:fs` / `node:child_process` / `node:https` / `node:net` in `src/core/adapters/**`.
 - **`src/tui/**` may not open the ledger and may not spawn.** It may read the filesystem. Every ledger query and the `doctor` probe reach it as data through the `GantryViews` port, implemented in `src/cli/gantry-views.ts`. `src/cli/**` may deep-import core (`run-command.ts` already does); `src/tui/**` may not.
@@ -83,7 +83,7 @@ All landed in Task 1, before the code that depends on them, per the repo rule th
 
 ### Task 1: Design §10.7, the missing satisfies labels, and R13.7's mechanical check
 
-Wrote `tests/specs/traceability.test.ts` — R13.7's mechanical check that every requirement has exactly one milestone owner and at least one design `*Satisfies*` label. Added design §10.7 (statistics queries contract), nineteen missing `*Satisfies*` labels, user transition rows in §10.5, screen definitions in §14, test rows in §16, and M6's module row in §17. Added plan_m6 to the spec index.
+Wrote `tests/specs/traceability.test.ts` — R13.7's mechanical check that every requirement has exactly one milestone owner and at least one design `*Satisfies*` label. Added design §10.7 (statistics queries contract), nineteen missing `*Satisfies*` labels, user transition rows in §10.5, screen definitions in §14, test rows in §16, and M6's module row in §17. Added plan_m6-screens-and-palette to the spec index.
 
 ### Task 2: Per-stage timings and stage metrics
 
@@ -232,7 +232,7 @@ Landed before the code, per the repo rule.
 
 ### Tasks
 
-**The executable form of these five tasks is [plan_m6-settings-edit.md](plan_m6-settings-edit.md)** — TDD steps, the code each step writes, the command that verifies it and the commit that closes it. What follows is the summary and the verification each task owes; that document is what an implementer works from.
+**The executable form of these five tasks is [plan_m6.1-settings-edit.md](plan_m6.1-settings-edit.md)** — TDD steps, the code each step writes, the command that verifies it and the commit that closes it. What follows is the summary and the verification each task owes; that document is what an implementer works from.
 
 **Task 13 — the pure transforms and the change list.** `src/core/config/edit.ts` with `withRepo`, `withoutRepo`, `withStageTools`, `withScalar` and `configChanges`; `registerRepo` rewritten onto `withRepo`. *Verify:* unit tests over each transform, `configChanges` asserted for add, remove and change including `needsRestart`, and a parity test that `withRepo` derives the same id and rejects the same duplicate `registerRepo` does.
 
@@ -264,8 +264,8 @@ Landed before the code, per the repo rule.
 - 2026-08-04 — **Compacted post-implementation.** Removed step-by-step tasks, file-by-file diffs, code snippets, file structure tree, and verification commands now that the feature has shipped. Preserved Goal, Global Constraints, Facts, Spec Amendments, Design Decisions, Critical Files summary, Requirement Coverage, Known Gaps, Deviations, and follow-ups. Original plan recoverable via git history.
 - 2026-08-04 — **Extension: editable Settings planned.** R11.7 and R11.8 added to requirements.md (revision 8) and owned by M6; design.md gains §14.2 and two §16 test rows; §14.1's "the wizard stays inline" sentence corrected. Reverses this plan's "Settings is read-only" deferral — the objection behind it (a second write path to `config.json`) is answered by staging plus one confirmed, schema-validated write, and by reusing the setup states rather than reimplementing selection. Tasks 13–17 are unimplemented.
 - 2026-08-05 — **The status bar names the running version.** The version was a literal in `run-command.ts` that nobody updated with `package.json`.
-- 2026-08-05 — **Extension: fix prompts for stage findings.** R6.10, R11.9 and R12.6 added to M6's ownership; `buildFixPrompt` in `src/core/stages/`, the pipeline hook, `skillgantry fix` and `y` on the Work screen. Planned and shipped in [plan_m6-fix-prompts-for-stage-findings.md](plan_m6-fix-prompts-for-stage-findings.md).
-- 2026-08-05 — **A polish pass over the screens this milestone shipped.** No new capability; four defects and a vocabulary that had drifted while six screens were built one at a time. The Work screen's half of the same pass is in [plan_m2.md](plan_m2.md)'s changelog for this date.
+- 2026-08-05 — **Extension: fix prompts for stage findings.** R6.10, R11.9 and R12.6 added to M6's ownership; `buildFixPrompt` in `src/core/stages/`, the pipeline hook, `skillgantry fix` and `y` on the Work screen. Planned and shipped in [plan_m6.2-fix-prompts-for-stage-findings.md](plan_m6.2-fix-prompts-for-stage-findings.md).
+- 2026-08-05 — **A polish pass over the screens this milestone shipped.** No new capability; four defects and a vocabulary that had drifted while six screens were built one at a time. The Work screen's half of the same pass is in [plan_m2-queue-and-tui.md](plan_m2-queue-and-tui.md)'s changelog for this date.
   - **`q` in the in-session wizard quit the session.** The `screen === 'setup'` guard in `app.tsx` sat below the bindings it was meant to outrank, so `q`, `esc` and `:` reached the app's handlers instead of the wizard's. Guard hoisted; two regression tests added.
   - **The wizard's footer promised the wrong key.** `Setup` takes an `exitLabel` to distinguish in-session (`q` returns to Settings) from standalone (`q` quits); its footer truncates to stay within the row budget.
   - **Severity colours diverged across screens.** Five colour maps in five files consolidated into `src/tui/tokens.ts`, with the rule that only `running` may claim the accent colour. Also fixed `skipped` painted as `errored` in the run history.

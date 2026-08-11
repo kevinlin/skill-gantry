@@ -70,8 +70,8 @@ export function issueDetailRows(row: IssueRow, width: number): ScreenRow[]
 | requirements.md | rev-15 preamble line; four in-place amendments; R11.18; M7's ownership row and exit criteria |
 | design_tui.md | new §14.8; §14.2 precedence gains the detail view; §14.6 gains the digit-focus rule, the arrow aliases, the compact-tier link and the Issues cursor split |
 | design.md | §17 claims §14.8; §18 gains an "M7 extension" row |
-| index.md | row for this plan; plan_m7.md's status; two pre-existing catalogue defects fixed — the `plan-m6-settings-edit.md` dead link and the orphan `plan_m2-rehydrate-the-last-recorded-run.md` |
-| plan_m7.md | `## Changelog` pointing here |
+| index.md | row for this plan; plan_m7-work-screen-overhaul.md's status; two pre-existing catalogue defects fixed — the `plan_m6.1-settings-edit.md` dead link and the orphan `plan_m2.1-rehydrate-the-last-recorded-run.md` |
+| plan_m7-work-screen-overhaul.md | `## Changelog` pointing here |
 
 ## Testing
 
@@ -128,11 +128,11 @@ Task 1 is first because R13.7's traceability test fails the build until R11.18 h
 
 ### Task 1: Spec amendments
 
-**Files:** Modify: `docs/specs/requirements.md`, `docs/specs/design_tui.md`, `docs/specs/design.md`, `docs/specs/index.md`, `docs/specs/plan_m8.md`. Create: this file.
+**Files:** Modify: `docs/specs/requirements.md`, `docs/specs/design_tui.md`, `docs/specs/design.md`, `docs/specs/index.md`, `docs/specs/plan_m8-suppress-finding.md`. Create: this file.
 
 - [x] **Step 1:** requirements.md — rev-15 preamble sentence; amend R11.11, R11.12, R11.13, R11.14 in place; add R11.18; extend M8's ownership row and exit criteria.
 - [x] **Step 2:** design_tui.md — new `### 14.8` opening exactly `*Satisfies R11.18.*`; amend §14.2 and §14.6.
-- [x] **Step 3:** design.md §17 and §18; index.md rows and the two catalogue defects; plan_m8.md `## Changelog`.
+- [x] **Step 3:** design.md §17 and §18; index.md rows and the two catalogue defects; plan_m8-suppress-finding.md `## Changelog`.
 - [x] **Step 4:** Run `pnpm vitest run tests/specs/traceability.test.ts`. Expected: 2 passed.
 - [x] **Step 5: Commit** `docs (m8): spec the zone-scoped keys and the full-length detail view`
 

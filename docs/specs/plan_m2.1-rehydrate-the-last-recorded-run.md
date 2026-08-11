@@ -58,7 +58,7 @@ New **§14.5 Rehydrating the last recorded run**, carrying `*Satisfies R11.10.*`
 
 §14.3: update the "no run this session" sentence to match the new R11.9 wording.
 
-### `docs/specs/plan_m2.md`
+### `docs/specs/plan_m2-queue-and-tui.md`
 
 Append a dated entry to the `## Changelog` section, in the register of the two entries above it — the defect first, then the rules that came out of it. Also strike the now-false clause in **Known gaps**: `loadSkillStatuses` is no longer the only launch-time sidecar read.
 

@@ -53,7 +53,7 @@ Every tool SkillGantry installs, where it comes from, and how it gets there. Ver
 
 ### Considered, not supported
 
-Each of these was probed against its real index and left out on the evidence, with the probe output recorded in [`plan_m3.md`](docs/specs/plan_m3.md) and [`decision-log.md`](docs/specs/decision-log.md) §10. The question was only whether SkillGantry can drive it today.
+Each of these was probed against its real index and left out on the evidence, with the probe output recorded in [`plan_m3-tools-module.md`](docs/specs/plan_m3-tools-module.md) and [`decision-log.md`](docs/specs/decision-log.md) §10. The question was only whether SkillGantry can drive it today.
 
 | Tool | Repo | Why not |
 |---|---|---|

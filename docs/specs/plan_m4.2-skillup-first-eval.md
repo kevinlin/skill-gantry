@@ -14,7 +14,7 @@
 
 ## Global Constraints
 
-Everything in [plan_m1.md](plan_m1.md)'s, [plan_m2.md](plan_m2.md)'s, [plan_m3.md](plan_m3.md)'s, [plan_m4.md](plan_m4.md)'s and [plan_m4-skillhone-optimise.md](plan_m4-skillhone-optimise.md)'s Global Constraints still holds. These are the additions.
+Everything in [plan_m1-engine-and-sidecar.md](plan_m1-engine-and-sidecar.md)'s, [plan_m2-queue-and-tui.md](plan_m2-queue-and-tui.md)'s, [plan_m3-tools-module.md](plan_m3-tools-module.md)'s, [plan_m4-adapters-and-merge.md](plan_m4-adapters-and-merge.md)'s and [plan_m4.1-skillhone-optimise.md](plan_m4.1-skillhone-optimise.md)'s Global Constraints still holds. These are the additions.
 
 - Import boundary unchanged: `cli → tui → core`, `src/tui/**` reaches core only through `src/core/index.ts`, no `console` or `process.exit` in `src/core/**`.
 - `src/core/tools/**` owns fs, network and subprocess, and MUST NOT open the ledger. The catalogue and driver changes are bound by that rule.
@@ -31,7 +31,7 @@ Probed 2026-08-10. None of the below is an assumption; the one open question is 
 
 **1. The adapter's argv fixes the suite's path.** [src/core/adapters/skill-up.ts](../../src/core/adapters/skill-up.ts) invokes `run {skillDir}/evals/eval.yaml --format json --output-dir {toolDir} --iteration 1` and declares one artefact, `iteration-1/report.json`. A suite anywhere else is invisible to the gate, and the declared artefact is what the parser reads.
 
-**2. A failing case is filed at a path the layout has to produce.** [plan_m4.md](plan_m4.md) Task 4 paths eval findings at `<skillRelPath>/evals/cases/<case_id>.yaml`. A repo storing its cases elsewhere gets an issue naming a file that does not exist, recorded there as a display defect. The bootstrap prompt is the first thing able to prevent it, which is why the case layout is a constraint in the body rather than a suggestion.
+**2. A failing case is filed at a path the layout has to produce.** [plan_m4-adapters-and-merge.md](plan_m4-adapters-and-merge.md) Task 4 paths eval findings at `<skillRelPath>/evals/cases/<case_id>.yaml`. A repo storing its cases elsewhere gets an issue naming a file that does not exist, recorded there as a display defect. The bootstrap prompt is the first thing able to prevent it, which is why the case layout is a constraint in the body rather than a suggestion.
 
 **3. `skill-up init` does not scaffold a suite.** It writes user config: OTLP defaults, `runtime_kwargs`. Scaffolding in skill-upper's own documented flow is copying `assets/eval.yaml.tmpl` and `assets/case.yaml.tmpl` into the skill and rewriting them. There is no CLI path SkillGantry could drive, which is what makes a prompt handoff the only option rather than the preferred one.
 
@@ -41,11 +41,11 @@ Probed 2026-08-10. None of the below is an assumption; the one open question is 
 
 **6. skill-upper's step 5 is credentials, and they are the user's.** It reads `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `QODER_PERSONAL_ACCESS_TOKEN`, or `~/.skill-up/credentials.yaml`, and it stops and asks rather than writing secrets into YAML. R7.3 forbids SkillGantry writing credentials, so the prompt names key *names* only and never a value, the same line R7.4's redaction rule draws.
 
-**7. The engine is declared by the skill, not by SkillGantry.** `evals/eval.yaml` carries `engine: { name: claude_code }` in every reference skill, and skill-up resolves that CLI's own authentication, which is [plan_m4.md](plan_m4.md)'s known gap. Doctor already probes for a missing `claude` with `exec('command', ['-v', 'claude'])` and reports `claude-cli-missing` without installing it, so the prompt has a checked fact to name.
+**7. The engine is declared by the skill, not by SkillGantry.** `evals/eval.yaml` carries `engine: { name: claude_code }` in every reference skill, and skill-up resolves that CLI's own authentication, which is [plan_m4-adapters-and-merge.md](plan_m4-adapters-and-merge.md)'s known gap. Doctor already probes for a missing `claude` with `exec('command', ['-v', 'claude'])` and reports `claude-cli-missing` without installing it, so the prompt has a checked fact to name.
 
 **8. `OptimisePane` is already this surface.** Title, scrolled prompt lines, `y` copy, `j`/`k`, `esc`; a slot of `{ skillId, prompt, lines, offset }`; precedence after `ConfirmPane` and before the setup screen. Nothing in it is about optimisation except its title and the mark it clears.
 
-**Open probe, owned by Task 2:** that `skills/skill-upper/SKILL.md` exists in `alibaba/skill-up` at tag `v0.7.0`. The path is confirmed on a working checkout; the *tag* is not. If v0.7.0 predates the skill, pin the earliest tag carrying it and record the deviation, per plan_m3's rule that every pin is probed against its real index before it is written.
+**Open probe, owned by Task 2:** that `skills/skill-upper/SKILL.md` exists in `alibaba/skill-up` at tag `v0.7.0`. The path is confirmed on a working checkout; the *tag* is not. If v0.7.0 predates the skill, pin the earliest tag carrying it and record the deviation, per plan_m3-tools-module's rule that every pin is probed against its real index before it is written.
 
 ## Spec amendments this milestone carries
 
@@ -198,7 +198,7 @@ The enqueue tail of the handler is lifted into a local function so the suite-pre
 - **A multi-skill batch is not pre-checked.** Any suite-less skill in it still errors at evaluate, exactly as today. Per-skill bootstrap is per-skill by construction, and N port reads to build N prompts nobody asked for is the wrong trade. `:evals` on the selected skill is the recovery.
 - **Guidance is pinned.** A skill-upper fix released between tags does not reach the managed copy until the pin moves. That is the cost of keeping guidance and binary in step, and it is the trade every other pin in the catalogue makes.
 - **Nothing verifies what the agent wrote** until the next evaluate run. `skill-up validate` inside the prompt is the cheap first check; the gate is the real one.
-- **skill-up still cannot be `skipped` for want of credentials**, which is [plan_m4.md](plan_m4.md)'s gap, untouched. Its engine is declared in the skill's own `eval.yaml` and authenticated by that CLI, so a missing engine lands as `errored`/`missing-artefact`. The prompt names the `claude` CLI when it is absent, which is the part of that gap a prompt can close.
+- **skill-up still cannot be `skipped` for want of credentials**, which is [plan_m4-adapters-and-merge.md](plan_m4-adapters-and-merge.md)'s gap, untouched. Its engine is declared in the skill's own `eval.yaml` and authenticated by that CLI, so a missing engine lands as `errored`/`missing-artefact`. The prompt names the `claude` CLI when it is absent, which is the part of that gap a prompt can close.
 
 ## Self-review
 

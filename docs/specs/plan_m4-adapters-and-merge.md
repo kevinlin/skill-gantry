@@ -5,11 +5,11 @@
 
 **Architecture:** M4 adds three adapter modules and two shared parsers to `src/core/adapters/`, one migration module to `src/core/ledger/`, and changes three shipped behaviours that only a second tool could expose — a policy resolution that read the last adapter instead of the selection, an occurrence count that the second tool in a stage overwrote, and a rule-class map that could not grow without orphaning live issues. No new module, no new source root, no CLI subcommand.
 
-**Prerequisite: [plan_m3-promptfoo-removal.md](plan_m3-promptfoo-removal.md) is merged first.**
+**Prerequisite: [plan_m3.1-promptfoo-removal.md](plan_m3.1-promptfoo-removal.md) is merged first.**
 
 ## Global Constraints
 
-Everything in [plan_m1.md's Global Constraints](plan_m1.md), [plan_m2.md's](plan_m2.md) and [plan_m3.md's](plan_m3.md) still holds. M4 additions:
+Everything in [plan_m1-engine-and-sidecar.md's Global Constraints](plan_m1-engine-and-sidecar.md), [plan_m2-queue-and-tui.md's](plan_m2-queue-and-tui.md) and [plan_m3-tools-module.md's](plan_m3-tools-module.md) still holds. M4 additions:
 
 - Import boundary unchanged; three new adapters in `src/core/adapters/` enforce R4.3 against four parsers.
 - A parser receives bytes, never a path. `ParseContext` carries `artefacts: ReadonlyMap<string, Buffer>`, `stdout`, `stderr`, `exitCode` and `durationMs`.
@@ -208,7 +208,7 @@ Every requirement M4 owns, and the task that satisfies it.
 **Deferred within M4, with reasons.**
 
 - **agentskills, SkillOpt and SkillHone get no adapter**, because M3's probe found no installable implementation. R3.5b as amended is a rule over the catalogue, so this is coverage rather than a gap.
-- **promptfoo gets no adapter**, per [plan_m3-promptfoo-removal.md](plan_m3-promptfoo-removal.md) and decision-log §10.
+- **promptfoo gets no adapter**, per [plan_m3.1-promptfoo-removal.md](plan_m3.1-promptfoo-removal.md) and decision-log §10.
 - **VirusTotal-mode skill-scanner** is a separate adapter id under R4.2b and is not shipped.
 - **`skillopt` and the optimise stage** stay empty. R4.8 is satisfied structurally and by the lookup seam.
 

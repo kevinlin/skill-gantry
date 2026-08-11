@@ -10,7 +10,7 @@
 
 **Tech Stack:** unchanged.
 
-**Runs before [plan_m4.md](plan_m4.md).** M4 amends R3.5b to name the adapters it actually ships. Doing that arithmetic against a catalogue that still lists promptfoo would state a number that is wrong the moment this plan lands.
+**Runs before [plan_m4-adapters-and-merge.md](plan_m4-adapters-and-merge.md).** M4 amends R3.5b to name the adapters it actually ships. Doing that arithmetic against a catalogue that still lists promptfoo would state a number that is wrong the moment this plan lands.
 
 ## Why promptfoo is dropped, not deferred
 
@@ -31,10 +31,10 @@ Deferring instead of removing keeps the promise alive in three spec documents an
 
 ## Global Constraints
 
-Everything in [plan_m1.md's Global Constraints](plan_m1.md), [plan_m2.md's](plan_m2.md) and [plan_m3.md's](plan_m3.md) still holds. These are the additions.
+Everything in [plan_m1-engine-and-sidecar.md's Global Constraints](plan_m1-engine-and-sidecar.md), [plan_m2-queue-and-tui.md's](plan_m2-queue-and-tui.md) and [plan_m3-tools-module.md's](plan_m3-tools-module.md) still holds. These are the additions.
 
-- The removal is complete or it is not done: no production identifier, spec sentence, preset, test fixture or test comment may name promptfoo when this plan finishes, except inside [plan_m3.md](plan_m3.md).
-- **[plan_m3.md](plan_m3.md) is not edited.** It is a point-in-time record of what M3 probed and shipped, and rewriting it to hide a tool M3 genuinely installed would make the record lie. Task 1 adds a forward pointer to this document from the decision log instead.
+- The removal is complete or it is not done: no production identifier, spec sentence, preset, test fixture or test comment may name promptfoo when this plan finishes, except inside [plan_m3-tools-module.md](plan_m3-tools-module.md).
+- **[plan_m3-tools-module.md](plan_m3-tools-module.md) is not edited.** It is a point-in-time record of what M3 probed and shipped, and rewriting it to hide a tool M3 genuinely installed would make the record lie. Task 1 adds a forward pointer to this document from the decision log instead.
 - `docs/research/skillops-lifecycles.md` is not edited either, for the same reason: it is upstream research, not a SkillGantry contract.
 - Conventional Commits, lowercase imperative subject describing the behaviour change.
 
@@ -45,7 +45,7 @@ docs/specs/
   decision-log.md            MODIFIED  D7, D8, environment facts table, new §10
   requirements.md            MODIFIED  R3.5 tool list
   design.md                  MODIFIED  §5.3 preset paragraph
-  plan_m3-promptfoo-removal.md  NEW       this file
+  plan_m3.1-promptfoo-removal.md  NEW       this file
 src/core/tools/
   catalogue.ts               MODIFIED  entry removed
 tests/core/
@@ -84,7 +84,7 @@ with:
 
 ```markdown
 Validate: skill-lint, agentskills. Evaluate: skill-up, promptfoo. Security: skill-scanner (Cisco), SkillSpector (NVIDIA). Optimise: SkillOpt, SkillHone. Release: native, so eight tool adapters in total. Counting vercel `skills`, which the native release stage invokes for its installability check, nine external tools are installed.
-*Superseded in part:* five of these eight are not shipping. M3 found agentskills, SkillOpt and SkillHone unpublished in installable form (probe output in [plan_m3.md](plan_m3.md)); promptfoo is removed by §10 below. The catalogue is the record of what exists, not this paragraph.
+*Superseded in part:* five of these eight are not shipping. M3 found agentskills, SkillOpt and SkillHone unpublished in installable form (probe output in [plan_m3-tools-module.md](plan_m3-tools-module.md)); promptfoo is removed by §10 below. The catalogue is the record of what exists, not this paragraph.
 ```
 
 - [x] **Step 2: Amend D8's evaluate policy**
@@ -150,7 +150,7 @@ with:
 Leave the rest of R3.5 (the adapter-gating sentence, the release-is-native sentence and the rev 4 note) untouched, and append to its rev note:
 
 ```markdown
- *(rev 5: agentskills, SkillOpt and SkillHone unpublished — plan_m3.md; promptfoo needs a per-skill config no repo has — decision-log §10.)*
+ *(rev 5: agentskills, SkillOpt and SkillHone unpublished — plan_m3-tools-module.md; promptfoo needs a per-skill config no repo has — decision-log §10.)*
 ```
 
 - [x] **Step 6: Amend design §5.3's preset paragraph**
@@ -172,7 +172,7 @@ Presets: **Minimal** is skill-up plus skillspector — the two already present, 
 Run:
 
 ```bash
-grep -rn "promptfoo\|Promptfoo\|PROMPTFOO" docs/specs/ | grep -v 'plan_m3.md' | grep -v 'plan_m3-promptfoo-removal.md'
+grep -rn "promptfoo\|Promptfoo\|PROMPTFOO" docs/specs/ | grep -v 'plan_m3-tools-module.md' | grep -v 'plan_m3.1-promptfoo-removal.md'
 ```
 
 Expected: only the two intended mentions — decision-log §10 and the D7/D8/§5.3 sentences that explain the removal. No sentence anywhere may still say promptfoo *will* ship.
@@ -185,7 +185,7 @@ Expected: PASS. This test reads `design.md` §7's skillspector example, which Ta
 - [x] **Step 9: Commit**
 
 ```bash
-git add docs/specs/decision-log.md docs/specs/requirements.md docs/specs/design.md docs/specs/plan_m3-promptfoo-removal.md
+git add docs/specs/decision-log.md docs/specs/requirements.md docs/specs/design.md docs/specs/plan_m3.1-promptfoo-removal.md
 git commit -m "docs: remove promptfoo from the tool catalogue contract
 
 promptfoo evaluates prompts declared in a per-project promptfooconfig.yaml
@@ -408,7 +408,7 @@ grep -n 'mkdtemp\|tmpdir' tests/core/install.test.ts
 
 Note the assertion moves from `stageTools.evaluate` to `stageTools.validate`, because skill-lint is a validate tool where promptfoo was an evaluate one.
 
-**This case is scheduled to invert.** [plan_m4.md](plan_m4.md) Task 8 ships skill-lint's parser, at which point `stageTools.validate` becomes `['skill-lint']` and this assertion is rewritten there. It is left as a `[]` assertion here rather than deleted. Deleting it would leave the registry filter untested between the two plans, and that filter is what stops a run failing with `unknown tool`.
+**This case is scheduled to invert.** [plan_m4-adapters-and-merge.md](plan_m4-adapters-and-merge.md) Task 8 ships skill-lint's parser, at which point `stageTools.validate` becomes `['skill-lint']` and this assertion is rewritten there. It is left as a `[]` assertion here rather than deleted. Deleting it would leave the registry filter untested between the two plans, and that filter is what stops a run failing with `unknown tool`.
 
 - [x] **Step 3: Run the affected suites**
 
@@ -436,11 +436,11 @@ Expected exactly:
 ```
 docs/research/skillops-lifecycles.md
 docs/specs/decision-log.md
-docs/specs/plan_m3.md
-docs/specs/plan_m3-promptfoo-removal.md
+docs/specs/plan_m3-tools-module.md
+docs/specs/plan_m3.1-promptfoo-removal.md
 ```
 
-`skillops-lifecycles.md` is upstream research and `plan_m3.md` is a point-in-time record of what M3 genuinely installed; neither is a contract, and rewriting either would make the record dishonest.
+`skillops-lifecycles.md` is upstream research and `plan_m3-tools-module.md` is a point-in-time record of what M3 genuinely installed; neither is a contract, and rewriting either would make the record dishonest.
 
 - [x] **Step 5: Run the full gate**
 
@@ -495,7 +495,7 @@ R3.8's three presets, R3.9's four drift kinds, R4.7's pick-one policy and R4.10'
 Four, all in the plan's own prose rather than in the change it describes. The code and spec edits landed as written.
 
 - **Task 1 Step 1 said "five of these eight are not shipping".** Four do not: agentskills, SkillOpt, SkillHone, promptfoo. Four do: skill-lint, skill-up, skill-scanner, SkillSpector. Written as four.
-- **Task 3 Step 4's expected `grep docs/` list named four files; seven carry the word.** It omitted `design.md` and `requirements.md`, which this plan itself amends in Task 1, and `plan_m4.md`, which cites decision-log §10 in its own rev-5 note on R3.5b. All three are correct mentions, so the expectation was wrong rather than the tree.
+- **Task 3 Step 4's expected `grep docs/` list named four files; seven carry the word.** It omitted `design.md` and `requirements.md`, which this plan itself amends in Task 1, and `plan_m4-adapters-and-merge.md`, which cites decision-log §10 in its own rev-5 note on R3.5b. All three are correct mentions, so the expectation was wrong rather than the tree.
 - **Task 3 Step 4's `grep src/ tests/` expected no output, which its own Task 2 Step 2 makes unsatisfiable** by mandating a `PRESETS` comment that names promptfoo. The check that holds is the one the Global Constraints actually mean: no identifier, string literal, fixture or test comment names promptfoo. Only the two rationale comments do.
 - **`CATALOGUE`'s doc comment said "Two of D7's eight tools are absent."** Already wrong at three before this plan, and the removal makes it four. Corrected in the same edit, since the removal is what makes the count visibly wrong. It now names all four and points at the record behind each.
 

@@ -9,7 +9,7 @@
 
 ## Global Constraints
 
-Everything in [plan_m1.md's Global Constraints](plan_m1.md), [plan_m2.md's](plan_m2.md), [plan_m3.md's](plan_m3.md) and [plan_m4.md's](plan_m4.md) still holds. These are the additions.
+Everything in [plan_m1-engine-and-sidecar.md's Global Constraints](plan_m1-engine-and-sidecar.md), [plan_m2-queue-and-tui.md's](plan_m2-queue-and-tui.md), [plan_m3-tools-module.md's](plan_m3-tools-module.md) and [plan_m4-adapters-and-merge.md's](plan_m4-adapters-and-merge.md) still holds. These are the additions.
 
 - Import boundary unchanged: `cli → tui → core`; `src/tui/**` reaches core only through `src/core/index.ts`; no `console` or `process.exit` in `src/core/**`; no `node:fs` / `node:child_process` / `node:https` / `node:net` in `src/core/adapters/**`.
 - `src/core/isolation/**` and `src/core/release/**` own fs and subprocess. Neither opens the ledger. Release's gate query lives in `src/core/ledger/gates.ts` and reaches release as data, which is the rule that already keeps `tools` and `queue` out of sqlite.
@@ -217,7 +217,7 @@ Every requirement M5 owns, and the task that satisfies it. A requirement with no
 
 **Deferred within M5, with reasons.**
 
-- **The optimise stage ships no tool.** No catalogued optimise tool exists — both D7 candidates are unpublished, per plan_m3.md. R4.8 stays satisfied structurally, and Task 7 proves the mutating path with a fake optimiser rather than leaving it unexercised until a tool appears.
+- **The optimise stage ships no tool.** No catalogued optimise tool exists — both D7 candidates are unpublished, per plan_m3-tools-module.md. R4.8 stays satisfied structurally, and Task 7 proves the mutating path with a fake optimiser rather than leaving it unexercised until a tool appears.
 - **Git commit and tag stay unimplemented.** R9.7 forbids release from committing, and D9 offers committing as a separate confirmed action. Nothing in R9 requires SkillGantry to perform it, so it stays out.
 - **The TUI has no retirement or recovery screen.** `skillgantry retire` and `skillgantry recover` are the entry points; the Tools and Issues screens are R11.3 and M6.
 - **No `optimise → validate` loop.** R5.4, deferred by D6.

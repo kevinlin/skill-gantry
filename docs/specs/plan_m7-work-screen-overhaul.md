@@ -144,4 +144,4 @@ Every one below came out of measuring a rendered frame instead of reasoning from
 ## Changelog
 
 - 2026-08-09 — **Compacted post-implementation.** Removed step-by-step tasks, file-by-file diffs, code snippets, and verification commands now that the feature has shipped. Preserved Goal, Architecture, Specification, Global Constraints, Task Order, Critical Files summary, task intents, requirement coverage, and Deviations. Original plan recoverable via git history.
-- 2026-08-09 — **Extended.** [plan_m7-work-screen-navigation.md](plan_m7-work-screen-navigation.md) adds R11.18 and amends R11.11–R11.14 in place: the Work screen's navigation, and the full-length view a pane bound by §14.1's allocation cannot be.
+- 2026-08-09 — **Extended.** [plan_m7.1-work-screen-navigation.md](plan_m7.1-work-screen-navigation.md) adds R11.18 and amends R11.11–R11.14 in place: the Work screen's navigation, and the full-length view a pane bound by §14.1's allocation cannot be.

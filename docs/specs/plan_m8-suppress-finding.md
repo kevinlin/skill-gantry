@@ -13,7 +13,7 @@ Decisions: [decision-log.md](decision-log.md) new §12, D24–D27, retiring D21'
 
 ## The problem
 
-M6 taught SkillGantry to *read* a tool's suppression file ([plan_m6-respect-skillspector-baseline.md](plan_m6-respect-skillspector-baseline.md)). Writing one is still manual: the maintainer leaves the terminal, opens `.skillspector-baseline.yaml`, works out the rule syntax, gets the path shape right, saves, comes back, and re-runs by hand. D21 named that gap and deferred it, listing three costs — the write touches the user's repo, every adapter would have to declare its baseline's path and entry shape, and R8.15 names that file an authority SkillGantry only reads.
+M6 taught SkillGantry to *read* a tool's suppression file ([plan_m6.3-respect-skillspector-baseline.md](plan_m6.3-respect-skillspector-baseline.md)). Writing one is still manual: the maintainer leaves the terminal, opens `.skillspector-baseline.yaml`, works out the rule syntax, gets the path shape right, saves, comes back, and re-runs by hand. D21 named that gap and deferred it, listing three costs — the write touches the user's repo, every adapter would have to declare its baseline's path and entry shape, and R8.15 names that file an authority SkillGantry only reads.
 
 There is a second half the deferral did not name. Accepting a finding moves the skill digest, because the baseline file is inside the candidate manifest (§4.4). R9.9 then refuses to release against gates recorded from the bytes before the write. That is deliberate: it stops a baseline being a retroactive gate override (design.md §12.4). So an acceptance always implies a re-run, and a user who does not know that hits a refusal they cannot explain.
 

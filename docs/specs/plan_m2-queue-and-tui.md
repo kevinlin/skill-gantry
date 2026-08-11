@@ -1,6 +1,6 @@
 # SkillGantry M2 Implementation Plan
 
-**Status:** Shipped. Aligned to [design.md](design.md) revision 3, [requirements.md](requirements.md) revision 3 and [plan_m1.md](plan_m1.md) revision 2.
+**Status:** Shipped. Aligned to [design.md](design.md) revision 3, [requirements.md](requirements.md) revision 3 and [plan_m1-engine-and-sidecar.md](plan_m1-engine-and-sidecar.md) revision 2.
 
 **Goal:** Put a queue and a terminal interface over the M1 engine — batch enqueue with a bounded worker pool, a command path that cancels and resolves, and a Work screen that renders live state without holding log text in React.
 
@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-Everything in [plan_m1.md's Global Constraints](plan_m1.md) still holds. These are the additions.
+Everything in [plan_m1-engine-and-sidecar.md's Global Constraints](plan_m1-engine-and-sidecar.md) still holds. These are the additions.
 
 - The import boundary gains a rule: `src/tui/**` imports core **only** through `src/core/index.ts`. Deep imports such as `../core/ledger/db.js` fail `pnpm lint`. This is R13.1 applied to the new consumer.
 - `src/tui/**` may touch the filesystem. It may not spawn processes or open the ledger; those belong to `src/cli/tui-command.ts`, which owns the wiring.
@@ -24,9 +24,9 @@ Everything in [plan_m1.md's Global Constraints](plan_m1.md) still holds. These a
 
 ## Working against M1
 
-M1 is being implemented in a separate worktree. Where a task below shows a whole M1 file, it shows that file **as plan_m1 specifies it, with the M2 change applied**. If the shipped file has drifted from plan_m1, apply the described change to the shipped file rather than pasting over it. Each task states its change in prose before the code for exactly this reason.
+M1 is being implemented in a separate worktree. Where a task below shows a whole M1 file, it shows that file **as plan_m1-engine-and-sidecar specifies it, with the M2 change applied**. If the shipped file has drifted from plan_m1, apply the described change to the shipped file rather than pasting over it. Each task states its change in prose before the code for exactly this reason.
 
-Two M1 behaviours M2 depends on, both verified in plan_m1's own tests:
+Two M1 behaviours M2 depends on, both verified in plan_m1-engine-and-sidecar's own tests:
 
 1. `runTool` already accepts an `AbortSignal`, kills the process **group** on abort, and returns `cancelled: true`. `classifyToolRun` already maps that to `errored` with `error_kind = 'cancelled'`, which does not reconcile. So cancelling a running tool needs no new kill path — only a pipeline that survives it.
 2. `withSkillLock` already carries a pid and a stale threshold, and `finalizeRun` already defines `latest` as the greatest run id. M1 tests both **in one process**. R6.7 and R6.9 are M2-owned because one process shares a lock table and a file descriptor table, so an in-process test cannot prove either. M2 proves them across real processes and logs the reclaim, which M1's no-op callback does not.
@@ -235,4 +235,4 @@ Each one is a place the plan as written did not survive contact with the shipped
 - 2026-08-01 — **Compacted post-implementation.** Removed step-by-step tasks, file-by-file diffs, code snippets, and verification commands now that the feature has shipped. Preserved Goal, Design Decisions, Global Constraints, File Structure, Requirement Coverage, Known Gaps, and Deviations. Original plan recoverable via git history.
 - 2026-08-02 — **The Work screen learned its own size.** Fixed pane heights overflowed common terminals (26 rows into 80×24). Design gains §14.1: `layoutFor` in `src/tui/layout.ts` is the sole size authority; four modes (`wide`/`standard`/`narrow`/`too-small`); narrow drops borders via `Panel.tsx`, not panels; overflow counts against the allocation; keys move to a footer plus `?` help. Ink 6.8 → 7.1 for `useWindowSize` and `alternateScreen`. Frame-fit coverage in `tests/tui/layout.test.tsx`.
 - 2026-08-05 — **The output pane became readable.** Artefacts and SKILL.md truncated in silence, and nothing scrolled. The pane is now a focus stop with `j`/`k` scroll; `outputOffset` is null for the tab's natural anchor (log follows the newest line); `outputWindow()` in `src/tui/rows.ts` is the one window derivation the pane and key handler share. Design §14 updated. Cases in `store.test.ts` and `output-pane.test.tsx`.
-- 2026-08-05 — **Rehydrate the last recorded run.** Relaunch showed an empty rail, findings and artefacts while evidence sat on disk — only the skill-list glyph survived. Requirements gains R11.10; design gains §14.5. `loadLastRun` in `views.ts` reads the newest sidecar run lazily on selection; `set-last-run` yields to a live session run; the Log pane replays via per-skill `recordedLog` so the session ring buffer (R11.4) stays untouched. Detail plan: [plan_m2-rehydrate-the-last-recorded-run.md](plan_m2-rehydrate-the-last-recorded-run.md).
+- 2026-08-05 — **Rehydrate the last recorded run.** Relaunch showed an empty rail, findings and artefacts while evidence sat on disk — only the skill-list glyph survived. Requirements gains R11.10; design gains §14.5. `loadLastRun` in `views.ts` reads the newest sidecar run lazily on selection; `set-last-run` yields to a live session run; the Log pane replays via per-skill `recordedLog` so the session ring buffer (R11.4) stays untouched. Detail plan: [plan_m2.1-rehydrate-the-last-recorded-run.md](plan_m2.1-rehydrate-the-last-recorded-run.md).

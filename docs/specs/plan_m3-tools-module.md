@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** revision 1, aligned to [design.md](design.md) revision 3, [requirements.md](requirements.md) revision 3, [plan_m1.md](plan_m1.md) revision 2 and shipped M2.
+**Status:** revision 1, aligned to [design.md](design.md) revision 3, [requirements.md](requirements.md) revision 3, [plan_m1-engine-and-sidecar.md](plan_m1-engine-and-sidecar.md) revision 2 and shipped M2.
 
 **Goal:** Complete the `tools` module. Nine external tools become installable, verifiable and lockable through three drivers; a re-enterable setup wizard takes a clean machine from no runtime to a verified toolchain, a registered repo and a written selection; `doctor` re-verifies the lock and reports every drift kind.
 
@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-Everything in [plan_m1.md's Global Constraints](plan_m1.md) and [plan_m2.md's](plan_m2.md) still holds. These are the additions.
+Everything in [plan_m1-engine-and-sidecar.md's Global Constraints](plan_m1-engine-and-sidecar.md) and [plan_m2-queue-and-tui.md's](plan_m2-queue-and-tui.md) still holds. These are the additions.
 
 - Node engine floor `>=24.0.0`; ESM only, `NodeNext`; relative imports carry `.js`, in `.tsx` too.
 - Import boundary unchanged: `cli → tui → core`, `src/tui/**` reaches core only through `src/core/index.ts`, no `console` or `process.exit` in `src/core/**`, no `node:fs` / `node:child_process` / `node:https` / `node:net` in `src/core/adapters/**`.
@@ -222,10 +222,10 @@ As written, `const RUNNABLE_STAGES: readonly Stage[]` widens the element type to
 
 - 2026-08-01 — revision 1, written against design.md revision 3 and requirements.md revision 3.
 - 2026-08-01 — **Compacted post-implementation.** Removed step-by-step tasks, file-by-file diffs, code snippets, test bodies, verification commands and commit messages now that the feature has shipped. Preserved Goal, Global Constraints, Spec Amendments, File Structure, Design Decisions, Requirement Coverage, Known Gaps, Deviations, and follow-ups. Original plan recoverable via git history. 
-- 026-08-02 — Promptfoo removal carried out under a separate plan: [plan_m3-promptfoo-removal.md](plan_m3-promptfoo-removal.md).
+- 026-08-02 — Promptfoo removal carried out under a separate plan: [plan_m3.1-promptfoo-removal.md](plan_m3.1-promptfoo-removal.md).
 - 2026-08-02 — **`pnpm install:cli`** — new `scripts/install-cli.sh` builds, packs, and installs into `~/.skillgantry/cli/`, symlinking `~/.local/bin/skillgantry`. Paths overridable via `SG_HOME`/`SG_BIN_DIR`. Acceptance test in `tests/acceptance/install-cli.test.ts`. Deliberate exception to R3.1, which governs managed tools, not SkillGantry's own binary. Original plan recoverable via git history as `plan_m3-install-as-terminal-command.md`.
 - 2026-08-02 — **Fix the `credentials-and-repo` wizard step** — five bugs, all reproduced before fix: typed path never displayed (rendered post-registration state instead of the draft buffer), pasted paths dropped (single-char guard vs multi-char paste), unhandled rejection crashed the wizard, `~` not expanded, and Enter on empty input was a silent no-op. Added `inspectRepo` on `SetupDriver` for real-time path feedback (debounced, sequence-guarded). Ctrl+D now exits without a repo (`repoSkipped`). Design §5.3 updated.
-- 2026-08-02 — **Wizard styling** — step counter and five-step progress rail replace the raw state enum in the title; frame capped at 84 columns. Nine new cases in `tests/tui/setup-wizard.test.tsx`; `tests/core/config.test.ts` covers `~` expansion and `inspectRepo`. Ink 6.8 → 7.1 bump recorded in [plan_m2.md](plan_m2.md).
+- 2026-08-02 — **Wizard styling** — step counter and five-step progress rail replace the raw state enum in the title; frame capped at 84 columns. Nine new cases in `tests/tui/setup-wizard.test.tsx`; `tests/core/config.test.ts` covers `~` expansion and `inspectRepo`. Ink 6.8 → 7.1 bump recorded in [plan_m2-queue-and-tui.md](plan_m2-queue-and-tui.md).
 - 2026-08-10: **Stabilise acceptance under full-suite load.** Two root causes were reproduced before their fixes landed.
   - Ink acceptances guessed at React and filesystem timing with fixed `settle` delays. M3 sent Enter and the repo path while the final installer or next wizard state was still pending, then read `config.repos` as empty. M6 proved the ledger transition had completed while the Issues frame still rendered `open`. M3 now gates the final `skills` install deterministically, and both cases wait for their user-visible states with `waitForFrame` before continuing. A suspected lost update in `config.json` was not reproducible, so no production config change or unsupported regression claim shipped.
   - `packaging.test.ts` and `install-cli.test.ts` ran in separate Vitest workers and both compiled into the checkout's `dist/` while one of them packed it. Reproduction installed tarballs containing a zero-byte `LifecycleRail.js` or `ReleaseTargetPane.js`. Their build-and-pack critical sections now share a checkout-scoped cross-process lock; the rest of the acceptance suite remains parallel.

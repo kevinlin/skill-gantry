@@ -1,6 +1,6 @@
 # SkillGantry M6 Extension — Editable Settings Implementation Plan
 
-**Status:** Shipped 2026-08-04, on branch `feat/m6-settings-edit`. Written against [design_tui.md](design_tui.md) §14.2, [requirements.md](requirements.md) revision 8 (R11.7, R11.8) and shipped M1–M6. Owned by M6; the summary of these tasks lives in [plan_m6.md § Extension: editable Settings](plan_m6.md#extension-editable-settings), which this document is the executable form of.
+**Status:** Shipped 2026-08-04, on branch `feat/m6-settings-edit`. Written against [design_tui.md](design_tui.md) §14.2, [requirements.md](requirements.md) revision 8 (R11.7, R11.8) and shipped M1–M6. Owned by M6; the summary of these tasks lives in [plan_m6-screens-and-palette.md § Extension: editable Settings](plan_m6-screens-and-palette.md#extension-editable-settings), which this document is the executable form of.
 
 **Goal:** The Settings screen names every setting, its value and the file that holds it, and lets a user change any configurable field from the TUI — through the setup states that already own tool selection and repo registration, and through one staged document that reaches disk only as a confirmed change set.
 
@@ -8,7 +8,7 @@
 
 ## Global Constraints
 
-All constraints from [plan_m1.md](plan_m1.md) through [plan_m6.md](plan_m6.md) hold. The ones this work exercises: one write path to `config.json` (via `GantryViews.applyConfig`), the setup states are shared not reimplemented, no credential enters a change set (R7.3), `src/tui/**` may not spawn or open the ledger, §14.1's row budget holds on the new full-screen views.
+All constraints from [plan_m1-engine-and-sidecar.md](plan_m1-engine-and-sidecar.md) through [plan_m6-screens-and-palette.md](plan_m6-screens-and-palette.md) hold. The ones this work exercises: one write path to `config.json` (via `GantryViews.applyConfig`), the setup states are shared not reimplemented, no credential enters a change set (R7.3), `src/tui/**` may not spawn or open the ledger, §14.1's row budget holds on the new full-screen views.
 
 ---
 
