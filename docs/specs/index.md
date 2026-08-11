@@ -25,6 +25,7 @@ Which milestone owns which requirement is a separate question, answered only by 
 | File | Milestone | Status | Description |
 |---|---|---|---|
 | [plan_m1-engine-and-sidecar.md](plan_m1-engine-and-sidecar.md) | M1 | Shipped, compacted | Engine, adapter contract, one adapter, sidecar, ledger, headless CLI |
+| [plan_m1.1-timestamped-run-directories.md](plan_m1.1-timestamped-run-directories.md) | M1.1 | Shipped | A run directory named for its start time rather than its run id (R6.1, R6.4, R6.7 as amended in revision 26; D32): the claim loop that retries the name, the directory name recorded in `index.ndjson`, a recovery scan that returns the directory it found instead of rebuilding one, and `--run` taking either handle |
 | [plan_m2-queue-and-tui.md](plan_m2-queue-and-tui.md) | M2 | Shipped, compacted | Queue, Ink TUI Work screen |
 | [plan_m2.1-rehydrate-the-last-recorded-run.md](plan_m2.1-rehydrate-the-last-recorded-run.md) | M2.1 | Shipped | Present the selected skill's most recently recorded run without a run this session (R11.10): the sidecar read, the per-skill recorded log, and the reducer's precedence rule |
 | [plan_m3-tools-module.md](plan_m3-tools-module.md) | M3 | Shipped | Tools module: catalogue, three drivers, setup wizard, doctor |
@@ -44,7 +45,6 @@ Which milestone owns which requirement is a separate question, answered only by 
 | [plan_m7.2-repo-skill-navigation.md](plan_m7.2-repo-skill-navigation.md) | M7.2 | Shipped | Two-level repo → skill navigation in the list column (R11.23, amended R11.11): repo groups as contiguous ranges over the flat skill array, the level the entry repo count chooses, the horizontal pair's meaning in the skill-list zone, and a title that names which level is showing |
 | [plan_m8-suppress-finding.md](plan_m8-suppress-finding.md) | M8 | Shipped, compacted | Accept a finding from the terminal (R4.16, R8.16, R10.12, R11.16, R11.17, R12.7): a declarative baseline spec on the manifest, a narrow diff-confirm-recheck-rename write path, `s` on the Issues screen and the Findings pane, and the gate re-run the acceptance invalidates |
 | [plan_m9-version-check-and-upgrade.md](plan_m9-version-check-and-upgrade.md) | M9 | Shipped | Version check and self-upgrade (R11.24, R12.10, R13.8–R13.12; D30–D31): the release workflow and its two pre-publish assertions, `CHANGELOG.md` and the first-parent backfill, the four `src/core/upgrade/` modules, the versioned prefix and atomic relink, and the prompt, subcommand and doctor condition that reach them |
-| [plan_m10-timestamped-run-directories.md](plan_m10-timestamped-run-directories.md) | M10 | Shipped | A run directory named for its start time rather than its run id (R6.1, R6.4, R6.7 as amended in revision 26; D32): the claim loop that retries the name, the directory name recorded in `index.ndjson`, a recovery scan that returns the directory it found instead of rebuilding one, and `--run` taking either handle |
 
 ## Reviews (historical)
 

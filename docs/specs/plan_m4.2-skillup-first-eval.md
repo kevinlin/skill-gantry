@@ -79,7 +79,7 @@ All land in Task 1, before the code that depends on them, per the repo rule that
 | `src/tui/store.ts` | `PromptSlot`, renamed prompt actions, the `:evals` palette command |
 | `src/tui/components/PromptPane.tsx` | NEW, replaces `OptimisePane.tsx` |
 | `src/tui/app.tsx` | the `r` pre-flight, the palette action, the render branch |
-| `tests/acceptance/m10.test.ts` | one named case per exit-criterion clause |
+| `tests/acceptance/m4.2.test.ts` | one named case per exit-criterion clause |
 
 ---
 
@@ -176,7 +176,7 @@ The enqueue tail of the handler is lifted into a local function so the suite-pre
 
 ### Task 11: Acceptance and the real install
 
-**Scope.** `tests/acceptance/m10.test.ts`, one named case per exit-criterion clause, over a fixture skill with no `evals/`: the rail mark opens a surface and the queue stays empty; a mixed mark is refused by name; `skillgantry evals` prints the same body and writes not one byte; doctor reports an unmanaged link without failing and without touching it. Extend the `SG_INTEGRATION` matrix with the real clone, so that `alibaba/skill-up` at the pinned tag installs, links and verifies with nothing landing in a user-global location (R3.1).
+**Scope.** `tests/acceptance/m4.2.test.ts`, one named case per exit-criterion clause, over a fixture skill with no `evals/`: the rail mark opens a surface and the queue stays empty; a mixed mark is refused by name; `skillgantry evals` prints the same body and writes not one byte; doctor reports an unmanaged link without failing and without touching it. Extend the `SG_INTEGRATION` matrix with the real clone, so that `alibaba/skill-up` at the pinned tag installs, links and verifies with nothing landing in a user-global location (R3.1).
 
 **Verify.** `pnpm check`, then `SG_INTEGRATION=1 pnpm test:integration`.
 

@@ -12,9 +12,9 @@ rather than replaying its commits. Standalone fixes belonging to no plan are lis
 is a headline that fits a terminal, and the paragraph under it carries the detail.
 
 ## 0.6.2 — 2026-08-11
-- M10 — a run directory named for when the run started (R6.1, R6.4, R6.7)
+- M1.1 — a run directory named for when the run started (R6.1, R6.4, R6.7)
 
-  [plan](docs/specs/plan_m10-timestamped-run-directories.md). A run wrote to a directory named by its
+  [plan](docs/specs/plan_m1.1-timestamped-run-directories.md). A run wrote to a directory named by its
   UUIDv7 id, so `ls` on a workspace was a column of UUIDs and identifying a run meant opening
   `run.json` in each one. The directory is now `2026-08-11_14-32-07` from the start time, suffixed
   `-2` where two runs share a second, and the id still lives in `run.json`. Existing workspaces are

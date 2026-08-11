@@ -1,7 +1,7 @@
 # SkillGantry — Design
 
 **Date:** 2026-08-01
-**Status:** revision 3, incorporating [design-review-r2.md](design-review-r2.md); amended in place through M10
+**Status:** revision 3, incorporating [design-review-r2.md](design-review-r2.md); amended in place through M9
 **Layer:** design (layer 2 of 3: [requirements](requirements.md) → design → plan)
 **Traces to:** [requirements.md](requirements.md), [decision-log.md](decision-log.md)
 
@@ -1516,7 +1516,7 @@ Every pass below is recorded in full somewhere else — the two reviews are thei
 | M4.1 | SkillHone catalogued as a skill bundle rather than a CLI, which gave the optimise stage something behind it: the `git-skill` install kind and its three-fact verification (§5.1, §5.2, §5.3), the R6.12 prompt (§9.4a), the surface that presents it (§14.10) and the subcommand that prints it (§15); then, in revision 2, the configuration file that install left uncomposed (§5.1, §5.3, §5.4) | [plan_m4.1-skillhone-optimise.md](plan_m4.1-skillhone-optimise.md) |
 | M4.2 | A way for the evaluate gate to start: skill-upper catalogued as a `git-skill` bundle with no dependencies at all (§5.1a, §5.2), doctor's report of a skill link that is not ours (§5.3), the eval bootstrap prompt (§9.4b), the pane it shares with optimise and the pre-flight that opens it (§14.11), and the subcommand that prints it (§15) | [plan_m4.2-skillup-first-eval.md](plan_m4.2-skillup-first-eval.md) |
 | M9 | Distribution became a thing the product does rather than a thing the maintainer does: a release contract with two pre-publish assertions, a changelog the client reads from the release's own asset, versioned install prefixes adopted by one atomic rename, and the launch-time offer that uses them (§20, §5.3, §15, §14.14) | [plan_m9-version-check-and-upgrade.md](plan_m9-version-check-and-upgrade.md) |
-| M10 | A run directory named for the moment it started rather than for its own id, which meant separating the name a maintainer reads from the identity everything joins on: the claim loop retrying the name, the index carrying it, recovery returning the directory it scanned instead of rebuilding one, and `--run` taking either handle (§9, §9.1, §9.2, §11.3, §13, §15) | [plan_m10-timestamped-run-directories.md](plan_m10-timestamped-run-directories.md) |
+| M1.1 | A run directory named for the moment it started rather than for its own id, which meant separating the name a maintainer reads from the identity everything joins on: the claim loop retrying the name, the index carrying it, recovery returning the directory it scanned instead of rebuilding one, and `--run` taking either handle (§9, §9.1, §9.2, §11.3, §13, §15) | [plan_m1.1-timestamped-run-directories.md](plan_m1.1-timestamped-run-directories.md) |
 
 ## 19. Risks carried into implementation
 

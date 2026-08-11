@@ -1,4 +1,4 @@
-# Plan — M10: timestamped run directories
+# Plan — M1.1: timestamped run directories
 
 **Date:** 2026-08-11
 **Status:** shipped
@@ -27,7 +27,7 @@ Nothing was moved onto the timestamp. `latest`, gate authority (`gates.ts`), iss
 Four consequences follow, and they are the whole change:
 
 1. **The claim retries the name, not the id.** `claimDirIn(root, base)` takes `<base>`, `<base>-2`, `<base>-3` under exclusive `mkdir`. Retrying the id would collide again: the name comes from the clock. The attempt bound rose from 5 to 100, because 5 was safe only while each attempt drew a fresh UUID and collided by accident; a clock-derived name collides by construction for every run started in the same second.
-2. **The index carries the directory name.** `IndexEntry` gains `dir`, and `runDirFor(ws, entry)` is the single resolver. An entry with no `dir` is read as a run named by its id — the rule that held when such entries were written, so pre-M10 workspaces resolve with no migration.
+2. **The index carries the directory name.** `IndexEntry` gains `dir`, and `runDirFor(ws, entry)` is the single resolver. An entry with no `dir` is read as a run named by its id — the rule that held when such entries were written, so pre-M1.1 workspaces resolve with no migration.
 3. **Recovery stopped reconstructing paths.** `recordDirFor` is deleted. `scanSandboxRecords` already enumerated the real directories under `runs/` and `retire/` and discarded the path; it now returns `{ record, dir }`. This is strictly better than a fallback: recovery is now indifferent to the naming scheme rather than tracking it.
 4. **`--run` takes either handle**, matching the id first, so a directory named like an id cannot make the argument ambiguous.
 
@@ -46,7 +46,7 @@ Retirement uses the same name and the same claim loop, so the two groups one rec
 
 ## Deviations found while implementing
 
-- **The plan said "add an M10 row to § Milestone ownership". It must not.** The change amends R6.1, R6.4 and R6.7 in place and adds no requirement id, and `tests/specs/traceability.test.ts` fails a requirement claimed by two milestones. The ownership table is unchanged; M10 appears only in design §18's change history.
+- **The plan said "add an M1.1 row to § Milestone ownership". It must not.** The change amends R6.1, R6.4 and R6.7 in place and adds no requirement id, and `tests/specs/traceability.test.ts` fails a requirement claimed by two milestones. The ownership table is unchanged; M1.1 appears only in design §18's change history.
 - **The retry bound had to move.** Not foreseen: the acceptance suite claims 40 directories across two processes inside one second, which a bound of 5 rejects. The bound was never about the retry *count* before — a fresh UUID per attempt made a second collision vanishingly unlikely — so it had to be re-derived from what now causes collisions.
 - **`latest`'s ordering reduce changed shape, not rule.** It reduces over entries rather than ids so the winner's `dir` is in hand; the field it orders on is untouched. The distinction is worth naming because the obvious simplification — order on `dir`, since that is what gets written — reintroduces the exact tie R6.7's "one stable field" exists to rule out.
 - **`tests/acceptance/m2.test.tsx` had to resolve a dir it previously derived.** The queue's job summary carries `runId` and no directory, so the test reads the index. Left as-is rather than widening the summary: the pipeline's `RunSummary` already carries `runDir`, and the queue is not a run-evidence reader.
