@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task by task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** planned.
+**Status:** shipped.
 
 **Goal:** Publish SkillGantry from GitHub Releases, and have the terminal interface offer — never impose — the newer release it finds at launch, installing it into a versioned prefix and relaunching into it.
 
@@ -1503,6 +1503,19 @@ git commit -m "test(m12): prove an upgrade adopts atomically and survives a kill
 
 **Task 1 — §17's table is not what the coverage test parses.** The test unions every `*Satisfies …*` label in design.md and design_tui.md; §17's requirement-group table is prose. Adding the three rows Step 5 asks for therefore left the test red, and the labels are what closed it: `*Satisfies R13.8–R13.12.*` opening §20, `R12.10` appended to §15's label, and `*Satisfies R11.24.*` opening §14.13.
 
+**Task 6 — the roots are `realpath`'d too, or every install reads as foreign.** `resolveEligibility` resolves the entry point and compares it against `<home>/versions`, and the plan compared a resolved path against an unresolved root. On macOS `os.tmpdir()` alone is `/var/folders/…` while the resolved entry point is `/private/var/folders/…`, so the owned case never matched. `resolveRoot` resolves each root and falls back to its literal spelling when it does not exist — a root that is not there cannot contain the entry point either.
+
+**Task 7 — `latest` caches `null` for "checked, nothing newer".** The plan's own test requires it and the implementation has to slice for it: the resolved release is compared against the running version *before* the state is written, so the throttled path never reports a version it would have to re-compare.
+
+**Task 9 — the layout is named in four more places than the plan lists.** `tests/acceptance/install-cli.test.ts` asserted `cli/node_modules/.bin` directly and failed the moment the prefix moved; it now asserts the versioned prefix and that the link resolves into the one named after the version the binary reports. `README.md`, `CLAUDE.md` and design.md §2 each documented `~/.skillgantry/cli`, including a `rm -rf` a user would copy, and were corrected with it.
+
+**Task 12 — `runUpgrade` takes a trailing injection parameter.** The plan's test list needs `fetchImpl`, `Exec`, the entry path and the TTY answer all replaced, and none of them belongs on `UpgradeOptions`, which is commander's flags. `runUpgrade(deps, options, inject = {})` is `runEvals(…, userHome)`'s established shape: every field defaults to the real thing, and the subcommand's own call site passes none of them.
+
+**Tasks 13 and 14 — two new `CliDeps` seams, and they are what keeps `pnpm test` offline.** The root action and `doctor` both now reach the release index, so *every* existing test driving either would have made a real request — `tests/cli/tui-command.test.ts`, `tests/cli/setup-command.test.ts` and `tests/cli/doctor-command.test.ts` among them. `deps.maybeUpgrade` and `deps.upgradeCheck` default to the real implementations and are stubbed in those suites, exactly as `deps.startTui` and `deps.startSetup` already are.
+
+**Task 15 — the binary had to learn `SG_HOME`, and the release source is two files.** `install-cli.sh` has honoured `SG_HOME` since M1 "so the acceptance test can install without touching a real home"; the binary did not, so `skillgantry upgrade --yes` under test would have installed into the developer's own `~/.skillgantry` and renamed their own `~/.local/bin/skillgantry`. `defaultDeps()` now reads it. `SG_UPGRADE_API_BASE` and `SG_UPGRADE_REPO` were added alongside, read in `src/cli/` and passed down as options, the way `GhReleaseOptions.apiBase` already works. The served release is built from `package.json` plus `dist/` alone — `files: ["dist"]` is the whole package, and `VERSION` reads the manifest, so bumping it is what makes the packed build answer `--version` with the new number.
+
 ## Changelog
 
 - 2026-08-11 — Written.
+- 2026-08-11 — Shipped. Renumbered M12 → M9 to match the tree's plan naming.

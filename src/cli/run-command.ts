@@ -50,7 +50,11 @@ export interface GantryProgram extends Command {
 }
 
 export function defaultDeps(): CliDeps {
-  const home = join(homedir(), '.skillgantry')
+  // `install-cli.sh` has honoured `SG_HOME` since M1 so the acceptance suite can
+  // install without touching a real home. The binary has to honour the same
+  // variable or the upgrade acceptance test would relink the developer's own
+  // `~/.local/bin/skillgantry` while proving that the rename works.
+  const home = process.env['SG_HOME'] ?? join(homedir(), '.skillgantry')
   return {
     home,
     dbPath: join(home, 'gantry.db'),

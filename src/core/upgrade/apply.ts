@@ -134,6 +134,13 @@ export async function applyUpgrade(options: ApplyOptions): Promise<ApplyResult> 
     throw error
   }
 
+  // Crash safety is the one thing a unit test cannot prove, so the acceptance
+  // suite kills a real child in the window between the last verification and
+  // the rename. Unset — every run but that one — this costs one env read.
+  if (process.env['SG_UPGRADE_PAUSE_BEFORE_RELINK']) {
+    await new Promise((resolve) => setTimeout(resolve, 30_000))
+  }
+
   // R13.10. `rename` over an existing symlink is atomic; `ln -sfn` unlinks then
   // symlinks and leaves a window in which no command is on PATH. §12.5's one
   // atomic rename, applied to the binary instead of a baseline file.

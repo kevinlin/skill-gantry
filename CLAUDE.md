@@ -10,6 +10,8 @@ Lifecycle stages: `validate`, `evaluate`, `security`, `optimise`, `release`.
 
 Three commands write to the user's own repo, and they do not carry the same safety. `release` and `retire` drive a *tool* over the live tree, so the crash safety there does not read off the code: a marker on disk before the first byte moves, a diff before any write, a path back from every failure — design §12. `suppress` composes one file's bytes itself, so it keeps the diff, the preimage recheck and one atomic rename and deliberately omits the sandbox, the journal and the marker, with a reason stated for each — design §12.5. Read the section before touching any of the three.
 
+A fourth write path makes its own trade: `upgrade` replaces SkillGantry's own installation. It keeps nothing from §12 — no marker, no journal, no sandbox — because the new bytes are built where nothing resolves through them, verified twice, and adopted by one atomic rename whose predecessor is still on disk. There is no partially-updated state a marker could describe, and the retained prefix *is* the rollback — design §20 and design_version-check-and-upgrade.md §4.4. Its ordering is the whole safety argument, so read that before moving a step.
+
 ## Commands
 
 ```bash
@@ -72,7 +74,8 @@ The seams no single file reveals:
 - The pipeline owns the sandbox lifecycle, not the executor. `pipeline/run.ts` opens it, gates the mutation, applies or discards, and disposes in a `finally` that `execute()` is inside; an executor only declares `mutationScope` and decides. A throw that skipped disposal left a worktree registered and the record `active` forever.
 - Retirement (`release/retire.ts`) drives the mutation path directly, outside the pipeline, writing its record under the same workspace shape — which is why one recovery scan finds an interrupted retirement and an interrupted release with no special case.
 - The catalogue is the install authority, the adapter registry the run authority (design §5.1a). A tool can be installed, verified and locked with no adapter — vercel `skills` is — but must not reach `stageTools`, or `AdapterStageExecutor.plan()` throws `unknown tool: <id>` and fails the whole run.
-- `tools/**`, `queue/**` and `isolation/**` must not open the ledger. Doctor's lifecycle check therefore takes ledger state as an argument, from `src/cli/`.
+- `tools/**`, `queue/**` and `isolation/**` must not open the ledger, and `upgrade/**` joins them. Doctor's lifecycle check therefore takes ledger state as an argument, from `src/cli/` — and so does its `skillgantry-outdated` condition, because `tools/**` owns no network dependency either.
+- The launch check and doctor's condition both reach the release index, so `CliDeps.maybeUpgrade` and `CliDeps.upgradeCheck` exist for the reason `startTui` and `startSetup` do: without them every test driving the root action or `doctor` makes a real request, and `pnpm test` stops being offline.
 - Palette key routing reads a ref, not state — React batches keypresses that arrive in one tick, and reading state lost every character but the last.
 
 ### Read the design section before changing a contract
@@ -90,6 +93,7 @@ The seams no single file reveals:
 | retirement | §13 |
 | a screen, the row budget, render discipline | design_tui.md §14, §14.1 |
 | a CLI flag or exit code | §15 |
+| the release contract, the changelog, the versioned prefix, the check or the apply | §20 → design_version-check-and-upgrade.md |
 
 Two of those bite hardest because the change looks local. Extending the rule-class map is a migration, not an edit: bump `RULE_CLASS_MAP_VERSION` and reclassify live issues, or every issue filed under the old class is orphaned (R8.14). And outcome classification is an ordered table where a schema-valid parse beats the exit code, so a scanner exiting 1 with a clean report has *passed*.
 

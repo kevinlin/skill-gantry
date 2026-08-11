@@ -53,6 +53,20 @@ export interface UpgradeInjection {
 const progressLine = (step: ApplyStep, detail: string): string =>
   `${step.padEnd(15)}${detail}`
 
+/**
+ * The release index, overridable the way `GhReleaseOptions.apiBase` already is
+ * and read here rather than in core, which owns no environment. The acceptance
+ * suite points both at a local server; nothing else sets either.
+ */
+const releaseSource = (): { apiBase?: string; repo?: string } => ({
+  ...(process.env['SG_UPGRADE_API_BASE'] === undefined
+    ? {}
+    : { apiBase: process.env['SG_UPGRADE_API_BASE'] }),
+  ...(process.env['SG_UPGRADE_REPO'] === undefined
+    ? {}
+    : { repo: process.env['SG_UPGRADE_REPO'] }),
+})
+
 const jsonDocument = (current: string, release: ReleaseInfo | null): string =>
   JSON.stringify(
     {
@@ -86,6 +100,7 @@ export async function runUpgrade(
     currentVersion: current,
     now: inject.now ?? Date.now(),
     force: true,
+    ...releaseSource(),
     ...(inject.fetchImpl === undefined ? {} : { fetchImpl: inject.fetchImpl }),
   })
 
@@ -206,6 +221,7 @@ export async function maybeUpgrade(
     home: deps.home,
     currentVersion: current,
     now,
+    ...releaseSource(),
     ...(inject.fetchImpl === undefined ? {} : { fetchImpl: inject.fetchImpl }),
   }).catch(() => ({ kind: 'unreachable' as const, reason: 'the check threw' }))
 
