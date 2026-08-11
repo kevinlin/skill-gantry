@@ -5,6 +5,21 @@ asset rather than from a branch (R13.9), so a section is immutable once its rele
 
 Backfilled from a first-parent walk of `package.json`'s version — `scripts/changelog-from-history.sh`.
 
+## 0.6.0 — 2026-08-11
+- feat(cli): offer an upgrade at launch and relaunch into it (R11.24, R13.12)
+- feat(cli): add skillgantry upgrade (R12.10)
+- feat(tui): offer an available upgrade before the main screen mounts (R11.24)
+- feat(doctor): report an available release without installing it (R13.11)
+- feat(upgrade): resolve the latest release under a 24h throttle (R13.11)
+- feat(upgrade): verify before adopting, and adopt with one atomic rename (R13.12)
+- feat(upgrade): refuse to upgrade an install SkillGantry did not make (R13.10)
+- feat(upgrade): parse CHANGELOG.md and slice the entries above a version
+- feat(upgrade): export the semver comparator and hold the check's cache
+- ci: publish a tagged release with checksums and changelog (R13.8)
+- build: install each version into its own prefix (R13.10)
+- fix(config): name the version that wrote a document this build cannot read
+- fix: add the pnpm workspace file
+
 ## 0.5.1 — 2026-08-10
 - fix(setup): label each tool with the stage it serves
 
