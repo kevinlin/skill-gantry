@@ -37,7 +37,17 @@ describe('pnpm install:cli puts skillgantry on PATH', () => {
     // The link resolves into the overridden home, not anywhere global.
     const resolved = await realpath(link)
     expect(resolved.startsWith(await realpath(home))).toBe(true)
-    expect(await readdir(join(home, 'cli', 'node_modules', '.bin'))).toContain('skillgantry')
+
+    // R13.10's layout: one prefix per version, and the link resolves into the
+    // prefix named after the version the binary answers with.
+    const version = stdout.trim()
+    expect(await readdir(join(home, 'versions'))).toContain(version)
+    expect(await readdir(join(home, 'versions', version, 'node_modules', '.bin'))).toContain(
+      'skillgantry',
+    )
+    expect(resolved).toBe(
+      await realpath(join(home, 'versions', version, 'node_modules', '.bin', 'skillgantry')),
+    )
 
     // Re-running overwrites cleanly: one link, still runnable.
     await withDistributionLock(() => run('scripts/install-cli.sh', [], { cwd: process.cwd(), env }))

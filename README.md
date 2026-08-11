@@ -84,12 +84,14 @@ pnpm install
 pnpm install:cli
 ```
 
-That builds, packs, installs into `~/.skillgantry/cli` and links `~/.local/bin/skillgantry`. It then invokes the binary and refuses if it cannot answer `--version`. If `~/.local/bin` is not on your PATH, the script says so.
+That builds, packs, installs into `~/.skillgantry/versions/<version>` and links `~/.local/bin/skillgantry` onto it with one atomic rename. It then invokes the binary and refuses if it cannot answer `--version`. If `~/.local/bin` is not on your PATH, the script says so.
+
+Each version gets its own prefix, and the two newest are kept — the previous one is what makes a rollback a relink rather than a reinstall.
 
 Re-run `pnpm install:cli` any time to pick up a newer working tree. To remove it:
 
 ```bash
-rm -f ~/.local/bin/skillgantry && rm -rf ~/.skillgantry/cli
+rm -f ~/.local/bin/skillgantry && rm -rf ~/.skillgantry/versions
 ```
 
 ## Quickstart

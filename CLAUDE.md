@@ -14,7 +14,7 @@ Three commands write to the user's own repo, and they do not carry the same safe
 
 ```bash
 pnpm build              # tsc -p tsconfig.json
-pnpm install:cli        # build, pack, install to ~/.skillgantry/cli, link ~/.local/bin/skillgantry
+pnpm install:cli        # build, pack, install to ~/.skillgantry/versions/<v>, link ~/.local/bin/skillgantry
 pnpm lint               # eslint src tests (also enforces the import boundary)
 pnpm test               # vitest run — offline, excludes install + acceptance
 pnpm acceptance         # SG_ACCEPTANCE=1, drives the whole CLI

@@ -57,7 +57,7 @@ A pnpm workspace was rejected: the goal is a testable boundary, which a folder p
 
 Distribution acceptance (R13.5): `npm pack` output is installed into a clean temp prefix in CI and `skillgantry --version` is invoked from it. Packaging is verified, not assumed.
 
-Local installation is `pnpm run install:cli`, which packs the working tree, installs it into `~/.skillgantry/cli` and links `~/.local/bin/skillgantry`, verifying by invocation before reporting success. The prefix is wiped on every run, so the command on PATH always reflects current source. It is a shell script rather than a subcommand because a subcommand cannot perform the first install. `SG_HOME` and `SG_BIN_DIR` override both paths, which is how the acceptance test installs without touching a real home. This is the one place SkillGantry writes outside a directory it owns; R3.1 binds managed tools, not SkillGantry's own binary.
+Local installation is `pnpm run install:cli`, which packs the working tree, installs it into `~/.skillgantry/versions/<version>` and links `~/.local/bin/skillgantry` onto it with one atomic rename, verifying by invocation before reporting success. That version's prefix is wiped on every run, so the command on PATH always reflects current source; sibling versions are retained two deep, which §20 relies on for a rollback. It is a shell script rather than a subcommand because a subcommand cannot perform the first install. `SG_HOME` and `SG_BIN_DIR` override both paths, which is how the acceptance test installs without touching a real home. This is the one place SkillGantry writes outside a directory it owns; R3.1 binds managed tools, not SkillGantry's own binary.
 
 ## 3. Module map
 
