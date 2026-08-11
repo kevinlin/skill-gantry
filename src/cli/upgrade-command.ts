@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process'
 import {
   VERSION,
   applyUpgrade,
@@ -178,4 +179,91 @@ export async function recordDecline(home: string, version: string, now: number):
     declinedVersion: version,
     latest: null,
   })
+}
+
+/**
+ * R11.24, R13.11. The launch-time offer: throttled, silent on failure, and it
+ * never blocks or fails the launch. Everything it can answer other than a
+ * completed relaunch is `'continue'`, so the root action's only branch is
+ * whether to start the TUI at all.
+ */
+export async function maybeUpgrade(
+  deps: CliDeps,
+  inject: UpgradeInjection = {},
+): Promise<'continue' | 'relaunched'> {
+  // R13.12. Two independent guards stop a respawn loop: apply's post-install
+  // version equality, and this. A loop in a TTY is not something a user can
+  // easily escape, so neither guard is the only one.
+  if (process.env['SG_UPGRADED_FROM']) return 'continue'
+
+  const current = inject.currentVersion ?? VERSION
+  const entryPath = inject.entryPath ?? process.argv[1] ?? ''
+  const isTty = inject.isTty ?? process.stdout.isTTY === true
+  const prompt = inject.prompt ?? renderUpgrade
+  const now = inject.now ?? Date.now()
+
+  const check = await checkForUpgrade({
+    home: deps.home,
+    currentVersion: current,
+    now,
+    ...(inject.fetchImpl === undefined ? {} : { fetchImpl: inject.fetchImpl }),
+  }).catch(() => ({ kind: 'unreachable' as const, reason: 'the check threw' }))
+
+  // Silent on everything but an offer the user can act on: a launch the user
+  // asked for is not the place to report that a lookup failed.
+  if (check.kind !== 'available') return 'continue'
+  const { release } = check
+
+  const eligibility = await resolveEligibility(entryPath, deps.home)
+  if (eligibility.kind === 'foreign') {
+    // One line, not a prompt: this build cannot install itself, so an offer
+    // would be an offer to do nothing. `doctor` and `skillgantry upgrade` keep
+    // the detail reachable.
+    deps.write(`skillgantry ${release.version} is available — ${eligibility.advice}`)
+    return 'continue'
+  }
+
+  // Off a TTY there is nobody to answer, and R11.24's prompt is the only
+  // authorisation this path has.
+  if (!isTty) return 'continue'
+
+  const answer = await prompt({
+    fromVersion: current,
+    toVersion: release.version,
+    publishedAt: release.publishedAt,
+    entries: release.entries,
+    installPath: `${deps.home}/versions/${release.version}`,
+  })
+  if (answer === 'skip') {
+    await recordDecline(deps.home, release.version, now)
+    return 'continue'
+  }
+
+  let applied
+  try {
+    applied = await applyUpgrade({
+      release,
+      home: deps.home,
+      link: eligibility.link,
+      fromVersion: current,
+      ...(inject.fetchImpl === undefined ? {} : { fetchImpl: inject.fetchImpl }),
+      ...(inject.exec === undefined ? {} : { exec: inject.exec }),
+      onProgress: (step, detail) => deps.write(progressLine(step, detail)),
+    })
+  } catch (error) {
+    // R13.11 again: a failed upgrade leaves the installation byte-identical
+    // and the launch unaffected, so this reports and continues.
+    deps.write(`upgrade did not complete: ${(error as Error).message}`)
+    return 'continue'
+  }
+
+  // `process.execPath` plus the new entry file rather than the PATH link: the
+  // relaunch then depends on neither the rename having been observed nor the
+  // shell's command hash.
+  const result = spawnSync(process.execPath, [applied.entry, ...process.argv.slice(2)], {
+    stdio: 'inherit',
+    env: { ...process.env, SG_UPGRADED_FROM: current },
+  })
+  process.exitCode = result.status ?? 0
+  return 'relaunched'
 }

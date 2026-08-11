@@ -19,7 +19,7 @@ import { detectInterrupted, formatInterrupted, runRecover } from './recover-comm
 import { runRelease, type ReleaseOptions } from './release-command.js'
 import { runRetire, type RetireOptions } from './retire-command.js'
 import { needsSetup, startSetup, type SetupOptions } from './setup-command.js'
-import { runUpgrade, type UpgradeOptions } from './upgrade-command.js'
+import { maybeUpgrade, runUpgrade, type UpgradeOptions } from './upgrade-command.js'
 import { startTui, type TuiOptions } from './tui-command.js'
 
 const STAGES: readonly Stage[] = ['validate', 'evaluate', 'security', 'optimise', 'release']
@@ -32,6 +32,10 @@ export interface CliDeps {
   startTui?: (options: TuiOptions) => Promise<void>
   /** Test seam. Defaults to the real wizard. */
   startSetup?: (options: SetupOptions) => Promise<void>
+  /** Test seam, and the one that keeps the default suite offline: the real
+      `maybeUpgrade` reaches the release index, and every test driving the root
+      action would otherwise make that request. */
+  maybeUpgrade?: (deps: CliDeps) => Promise<'continue' | 'relaunched'>
 }
 
 /**
@@ -324,6 +328,9 @@ export function buildProgram(deps: CliDeps): GantryProgram {
         return
       }
       await noticeInterrupted(deps)
+      // R11.24: before the main screen mounts, and after the mutation-record
+      // scan for its reason — both are launch-time work that never blocks.
+      if ((await (deps.maybeUpgrade ?? maybeUpgrade)(deps)) === 'relaunched') return
       const launch = deps.startTui ?? startTui
       await launch({
         home: deps.home,

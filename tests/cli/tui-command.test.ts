@@ -57,6 +57,9 @@ describe('default command', () => {
       dbPath: join(h, 'gantry.db'),
       write: () => {},
       startTui,
+      // The launch check reaches the release index; the default suite is
+      // offline, so the root action's seam stands in for it.
+      maybeUpgrade: async () => 'continue',
     })
     await program.parseAsync(['node', 'skillgantry'])
     expect(startTui).toHaveBeenCalledWith(
@@ -72,6 +75,9 @@ describe('default command', () => {
       dbPath: join(h, 'gantry.db'),
       write: () => {},
       startTui,
+      // The launch check reaches the release index; the default suite is
+      // offline, so the root action's seam stands in for it.
+      maybeUpgrade: async () => 'continue',
     })
     await program.parseAsync(['node', 'skillgantry', '--concurrency', '4'])
     expect(startTui).toHaveBeenCalledWith(expect.objectContaining({ concurrency: 4 }))
@@ -86,6 +92,9 @@ describe('default command', () => {
       dbPath: join(h, 'gantry.db'),
       write: () => {},
       startTui,
+      // The launch check reaches the release index; the default suite is
+      // offline, so the root action's seam stands in for it.
+      maybeUpgrade: async () => 'continue',
     })
     await expect(
       program.parseAsync(['node', 'skillgantry', 'run', 'nothing', '--stage', 'security']),
