@@ -3,20 +3,30 @@
 One section per released version, newest first. The client reads this file from the release's own
 asset rather than from a branch (R13.9), so a section is immutable once its release is published.
 
-Backfilled from a first-parent walk of `package.json`'s version — `scripts/changelog-from-history.sh`.
+Entries were backfilled from a first-parent walk of `package.json`'s version
+(`scripts/changelog-from-history.sh`), then compacted: where a version delivered a milestone, the
+entry states what that milestone's plan under [docs/specs/](docs/specs/index.md) set out to do
+rather than replaying its commits. Standalone fixes belonging to no plan are listed on their own.
+
+`parseChangelog` reads only the `- ` lines, and the upgrade prompt gives each one row. So a bullet
+is a headline that fits a terminal, and the paragraph under it carries the detail.
+
+## 0.6.1 — 2026-08-11
+- docs: compact the changelog against the milestone plans
+
+  Each version that delivered a milestone now states what that milestone's plan set out to do,
+  instead of replaying its commit subjects. Bullets are headlines within a terminal row, since the
+  upgrade prompt gives each one line; the detail sits in a paragraph the parser drops.
 
 ## 0.6.0 — 2026-08-11
-- feat(cli): offer an upgrade at launch and relaunch into it (R11.24, R13.12)
-- feat(cli): add skillgantry upgrade (R12.10)
-- feat(tui): offer an available upgrade before the main screen mounts (R11.24)
-- feat(doctor): report an available release without installing it (R13.11)
-- feat(upgrade): resolve the latest release under a 24h throttle (R13.11)
-- feat(upgrade): verify before adopting, and adopt with one atomic rename (R13.12)
-- feat(upgrade): refuse to upgrade an install SkillGantry did not make (R13.10)
-- feat(upgrade): parse CHANGELOG.md and slice the entries above a version
-- feat(upgrade): export the semver comparator and hold the check's cache
-- ci: publish a tagged release with checksums and changelog (R13.8)
-- build: install each version into its own prefix (R13.10)
+- M9 — version check and self-upgrade (R11.24, R12.10, R13.8–R13.12)
+
+  [plan](docs/specs/plan_m9-version-check-and-upgrade.md). Publish SkillGantry from GitHub Releases,
+  and have the terminal interface offer — never impose — the newer release it finds at launch,
+  installing it into a versioned prefix and relaunching into it. Adds the release workflow with its
+  two pre-publish assertions, this changelog and its backfill, the throttled check, `skillgantry
+  upgrade`, and doctor's `skillgantry-outdated` condition.
+
 - fix(config): name the version that wrote a document this build cannot read
 - fix: add the pnpm workspace file
 
@@ -24,189 +34,162 @@ Backfilled from a first-parent walk of `package.json`'s version — `scripts/cha
 - fix(setup): label each tool with the stage it serves
 
 ## 0.5.0 — 2026-08-10
-- feat(tui): two-level repo and skill navigation in the list column
+- M7.2 — two-level repo and skill navigation (R11.23)
+
+  [plan](docs/specs/plan_m7.2-repo-skill-navigation.md). Give the list column the level it has
+  always claimed — the registered repos above the skills of one repo — under the horizontal key
+  pair that was bound nowhere in that zone. Amends R11.11.
 
 ## 0.4.3 — 2026-08-10
+- No user-facing change.
 
 ## 0.4.2 — 2026-08-10
-- feat(setup): show registered repos and replace one in place
-- feat(tui): open the eval bootstrap surface when evaluate has no suite
-- feat(evals): build the eval bootstrap prompt and print it headlessly
-- feat(tools): catalogue skill-upper as a git-skill bundle with no dependencies
+- M4.2 — skill-up's first eval suite (R3.11, R6.13, R11.22, R12.9)
+
+  [plan](docs/specs/plan_m4.2-skillup-first-eval.md). Give the evaluate gate a way to start. Marking
+  `evaluate` on a skill with no `evals/eval.yaml` now opens a surface that hands the maintainer a
+  coding-agent prompt for authoring one, and `skill-upper` — which owns the templates and judge
+  guidance that prompt names — becomes a catalogued, installed and verified `git-skill` bundle
+  rather than something the user is assumed to have.
+
+- M3.2 — the setup repo step shows and edits what is registered (R3.12)
+
+  [plan](docs/specs/plan_m3.2-setup-repo-edit.md). The `credentials-and-repo` state names every repo
+  already registered and can replace a selected repo's path in place, keeping that repo's identifier
+  so its recorded runs and issues follow the change. A clean machine's frame does not change.
 
 ## 0.4.1 — 2026-08-10
-- ui: colour for state; the terminal's own for surface
 - feat(setup): compose the SkillHone settings file at install time
 
+  M4.1 continued: `~/.skillhone/settings.json` is written from the credential file during install.
+
+- ui: colour for state; the terminal's own for surface
+
 ## 0.4.0 — 2026-08-10
-- feat(tui): count the running stage and orient on empty surfaces
-- feat(tui): open an optimise surface from the rail mark
-- feat(cli): add skillgantry optimise and planOptimise
-- feat(stages): build the coding-agent optimisation prompt
-- feat(tools): dispatch and verify git-skill installs
-- feat(tools): add the git-skill install driver
-- feat(tools): catalogue SkillHone as a git-skill bundle
+- M4.1 — SkillHone and the optimise action (R3.10, R6.12, R11.21, R12.8)
+
+  [plan](docs/specs/plan_m4.1-skillhone-optimise.md). Give the optimise stage something behind it.
+  SkillHone becomes the catalogue's first non-CLI entry — a bundle of agent skills installed by
+  clone and per-skill symlink, with its Python dependencies isolated in a managed venv. Marking
+  `optimise` on the rail opens a surface that hands the maintainer a coding-agent prompt built from
+  the skill's recorded evidence. SkillGantry installs and composes; it never runs the loop and never
+  applies its result.
+
 - fix(core): stop a cancelled gate superseding the pass it never contradicted
 - fix(tui): stop a marked release swallowing the stage that would unblock it
 
 ## 0.3.3 — 2026-08-09
+- M5.1 — collect the release target before enqueuing the job (R11.19, R11.20)
+
+  [plan](docs/specs/plan_m5.1-tui-release-target.md). Release never infers a target version, so a
+  release marked from the Work screen failed in 90ms with nothing to release. Adds the target
+  surface, the `planRelease` port, the rail's runnability guard, and `plan()` inside the stage's
+  failure boundary.
+
 - fix(core): reproduce the candidate manifest in the git sandbox
-- feat(tui): collect the release target before enqueuing the job
 - fix(specs): correct a spec-test path assertion
 
 ## 0.3.2 — 2026-08-09
-- feat(tui): advertise the dashboard key on every overview tier
-- feat(tui): advertise the detail view and the four keys the help screen omitted
-- feat(tui): open the selected finding or issue at full length
-- fix(tui): give the issues tab a cursor its own keys move
-- feat(tui): focus the output pane from the key that selects its view
-- feat(tui): move the rail with the horizontal arrows
+- M7.1 — Work screen navigation and the detail view (R11.18)
+
+  [plan](docs/specs/plan_m7.1-work-screen-navigation.md). Every movement key acts on the zone that
+  owns it, both arrow pairs work where the letter pairs do, the Dashboard key is advertised wherever
+  the Overview card renders, and `enter` opens the selected finding or issue at the length its tool
+  wrote it. Amends R11.11–R11.14.
 
 ## 0.3.1 — 2026-08-09
-- feat(tui): accept a finding with s, and re-run the gates it invalidated
-- feat(tui): resolve the gate chain a suppression invalidates
-- feat(tui): add the suppression confirmation pane
-- feat(cli): add skillgantry suppress
-- feat(suppress): resolve an issue or finding to the tools that can accept it
-- feat(suppress): stage, diff, recheck and atomically rename a baseline write
-- feat(candidate): exclude the suppression write temp file from the digest
-- feat(suppress): append an accepted finding to a baseline document
-- feat(suppress): compose a baseline entry from a finding
-- feat(adapters): declare a tool's suppression file on its manifest
+- M8 — accept a finding as a false positive from the terminal
+
+  [plan](docs/specs/plan_m8-suppress-finding.md). R4.16, R8.16, R10.12, R11.16, R11.17, R12.7. A maintainer who has judged a finding a false
+  positive can accept it from the Issues screen or the Findings pane, see the exact bytes that will
+  land in their repo before they land, and re-run the gates the acceptance invalidated — without
+  leaving the terminal and without hand-editing YAML. Adds a declarative baseline spec on the
+  adapter manifest and a narrow diff-confirm-recheck-rename write path.
+
 - ui: polish pass
 
 ## 0.3.0 — 2026-08-09
-- ui: highlight a selected row with padded reverse video
-- ui: show stage pass rates beside the skill list in height-driven tiers
-- ui: copy the fix prompt of the stage that found the selected finding
-- ui: open a finding's artefact directory through the host
-- ui: give the findings pane a cursor and inline evidence
-- ui: attribute every finding to its stage, tool and artefact directory
-- ui: triage issues from the Work screen over one shared row builder
-- ui: scope every movement key to one of three focus zones
-- ui: draw a titled panel's heading in its top border
-- ui: take the D23 palette for state and leave surfaces to the terminal
-- ui: add the design system
-- feat: respect a tool's own suppression baseline
-- feat: add `y copy` to the key hints
+- M7 — Work screen overhaul (R11.11–R11.15)
+
+  [plan](docs/specs/plan_m7-work-screen-overhaul.md). Make the Work screen answer the daily loop end
+  to end — act on a finding, see the statistics, and have every movement key belong to a focus zone
+  — without leaving the screen or breaking the 80×24 floor. Adds the D23 palette, a titled panel
+  border that funds the row budget, three focus zones, the Overview card and its height-driven
+  tiers, a Findings cursor with inline evidence, the Issues tab, and `openPath`. Amends R11.9.
+
+- M6.3 — respect a tool's suppression baseline (R4.14, R4.15, R6.11, R8.15)
+
+  [plan](docs/specs/plan_m6.3-respect-skillspector-baseline.md). skillspector takes `--baseline` and
+  never auto-discovers the file, so a repo's accepted false positives were re-reported and re-filed
+  as open issues. Adds conditional argv, `RawFinding.suppressed`, the ledger's derived suppression
+  cache, and the Issues mark.
 
 ## 0.2.2 — 2026-08-05
-- feat: rehydrate the last recorded run on the Work screen
-- feat: replay a rehydrated run's tool output in the Log pane
+- M2.1 — rehydrate the last recorded run on the Work screen (R11.10)
+
+  [plan](docs/specs/plan_m2.1-rehydrate-the-last-recorded-run.md). Relaunching against a skill with
+  recorded runs showed an empty rail, empty Findings and `no run this session`, while every byte of
+  that evidence sat on disk. The screen now presents the selected skill's most recently recorded run
+  and replays its tool output in the Log pane.
 
 ## 0.2.1 — 2026-08-05
-- ui: delight pass
-- feat: generate a coding-agent fix prompt for a stage that found something
+- M6.2 — a fix prompt per findings-bearing stage (R6.10, R11.9, R12.6)
+
+  [plan](docs/specs/plan_m6.2-fix-prompts-for-stage-findings.md). Findings are routinely unsafe to
+  apply mechanically — one remediation wanted a frontmatter field that would fail validate, the
+  other was a false positive — so the deliverable is a generated prompt, not a fixer. SkillGantry
+  writes the prompt, the agent judges and edits, the user re-runs the stage. Adds the builder in
+  `stages`, the pipeline hook, `skillgantry fix`, and `y` on the Work screen.
+
 - feat: name the running version in the status bar
-- ui: make the output pane readable
+- ui: delight pass; make the output pane readable
 
 ## 0.2.0 — 2026-08-05
-- ui: polish pass
-- ui: initial visual design
-- fix: keep the wizard's repo submit to one round trip (R3.6)
-- feat: gate settings edits behind a confirmed change set (R11.7, R11.8)
-- feat: run the setup states as a TUI screen that stages its result (R11.8)
-- feat: stage settings edits in the store without writing config (R11.8)
-- feat: report each setting's holding file and origin on the settings screen (R11.7)
-- feat: add pure config transforms and a semantic change list (R11.8)
-- fix: keep every screen inside its row budget and document the new keys
-- feat: show the doctor report and the resolved settings as screens
-- feat: triage issues across repos from an Issues screen
-- feat: render cross-repo statistics on a Dashboard screen
-- feat: make every top-level screen reachable through a command palette
-- feat: give the terminal interface one port for ledger and doctor reads
-- feat: list issues across repos and apply the user state transitions
-- feat: answer R8.9's statistics from the ledger, filterable by provenance
-- feat: fingerprint each run's provenance and group runs by it
-- feat: record each stage's own span and its tools' summed metrics
-- fix: store symlinks as links in the journal and seed both halves of a staged rename
-- fix: sweep leftover apply temps on recovery and drop the unused diff helper
-- fix: require an unmodified key for every TUI binding and correct the review pane budget
-- fix: bound restoreSnapshot to the candidate policy and make the pre-state durable
-- fix: stop treating a post-apply failure as a discard, and refuse retire over an unresolved record
-- fix: force-stage the release scope and widen the dirty check to the candidate
-- fix: cover the binary change kind, keep case 9 honest, and restore --version
-- fix: correct review-pane precedence, scroll semantics and stale-consumer races
-- feat: add the mutation review pane and route resolution through the queue
-- fix: restore R10.3's allowDirty override and distinguish retire no-ops
-- feat: add retirement through the ordinary mutation path
-- feat: add skillgantry release
-- fix: close four review findings in the release state machine
-- feat: add the release stage and its state machine
-- fix: stamp deprecated_at on the skills upsert's conflict branch too
-- feat: make SKILL.md frontmatter the lifecycle authority and the ledger a cache
-- fix: prove symlink preservation, narrow evidence fallback, drop env cast
-- feat: package the candidate, prove it installs, and bundle the evidence
-- fix: preserve line endings and changelog spacing in release editors
-- feat: add the release decisions as pure modules
-- fix: settle the sandbox record on every mutation path, not just apply/discard
-- feat: open the mutation sandbox in the pipeline and move authorisation into the engine
-- fix: don't revert an already-applied mutation during recovery
-- feat: detect and resolve an interrupted mutation on startup
-- fix: fsync the journal backup and record before mutating live targets
-- feat: add the journalled apply and the preimage recheck
-- fix: route snapshot sandbox exclusions through the candidate manifest
-- feat: add the snapshot mutation sandbox and the strategy dispatch
-- feat: add the git worktree mutation sandbox
-- fix: rewrite only diff header lines instead of a global path substring replace
-- feat: add the mutation sandbox contract, one diff renderer and the active-sandbox record
-- fix: probe unzip with -v, not --version, in the mutating preflight
-- feat: add the mutation-aborted error kind and the mutating preflight
-- fix: give the tool-outcome gate a severity fail floor
-- ui: improve the TUI layout
-- feat(cli): install skillgantry onto the user's PATH
-- feat(adapters): add skill-scanner in its only mode, LLM
-- feat(cli): report a pending rule-map migration and apply it on request
-- fix(stages): resolve stage policy from the whole selection
-- fix(ledger): count occurrences across a run, not per tool run
-- feat(adapters): add skill-up and the shared v1alpha1 eval parser
-- feat(adapters): add skill-lint, parsing its JSON report from stdout
-- feat(ledger): map every skillspector static rule and version the map
-- feat(tools): drop promptfoo from the catalogue
-- feat(cli): add the setup subcommand and route first run to it
-- feat(tui): add the setup wizard over the four setup states
-- feat(tools): add the re-enterable setup state machine
-- feat(cli): add the doctor subcommand
-- feat(tools): report every drift kind from the lock and the tool root
-- feat(tools): dispatch installs over all three kinds
-- feat(tools): add the gh-release driver with declared integrity
-- feat(tools): add the npm-prefix install driver
-- feat(tools): probe runtimes and name their official install command
-- feat(tools): catalogue the installable tools and their presets
-- feat(cli): launch the work screen when no subcommand is given
-- feat(tui): show the queue on the work screen with per-job cancellation
-- feat(tui): back the findings, artefacts and SKILL.md panes with real files
-- feat(tui): render the work screen from live engine state
-- feat(tui): reduce core events into one screen state
-- feat(tui): bound live log output in a ring buffer outside react
-- feat(tui): add the ink toolchain and enforce the core surface boundary
-- feat(runner): emit redacted output chunks while a tool runs
-- feat(workspace): log lock reclaims and prove finalisation across processes
-- feat(queue): cancel queued and running jobs through the handle
-- feat(queue): drain a batch through a bounded pool with a single mutation slot
-- feat(pipeline): gate mutating stages on a correlated, timed prompt
-- feat(pipeline): cancel in any phase and still finalise the run
+- M2 — queue and terminal interface
+
+  [plan](docs/specs/plan_m2-queue-and-tui.md). A queue and a terminal interface over the M1 engine:
+  batch enqueue with a bounded worker pool, a command path that cancels and resolves, and a Work
+  screen that renders live state without holding log text in React.
+
+- M3 — the tools module
+
+  [plan](docs/specs/plan_m3-tools-module.md). External tools become installable, verifiable and
+  lockable through three drivers; a re-enterable setup wizard takes a clean machine from no runtime
+  to a verified toolchain, a registered repo and a written selection; `doctor` re-verifies the lock
+  and reports every drift kind. Includes
+  [M3.1](docs/specs/plan_m3.1-promptfoo-removal.md) — promptfoo dropped entirely, since it evaluates
+  prompts declared in a config and has no notion of a skill.
+
+- M4 — the remaining adapters and the cross-tool merge
+
+  [plan](docs/specs/plan_m4-adapters-and-merge.md). Three adapters join skillspector, the rule-class
+  map gains twenty entries and with them the versioned migration M1 deferred, and two tools
+  reporting one problem in one file resolve to one issue with two detections — closing only when
+  both agree it is gone.
+
+- M5 — mutation isolation and release
+
+  [plan](docs/specs/plan_m5-mutation-and-release.md). Let SkillGantry write to the user's repo
+  without ever being able to lose their work: two mutation sandboxes behind one interface, a
+  journalled apply with a preimage recheck, and crash recovery from a marker written before the
+  first byte moves. On top of that the release stage — package, prove the archive installs, then
+  touch the working tree once — plus retirement through the same path.
+
+- M6 — screens and the command palette
+
+  [plan](docs/specs/plan_m6-screens-and-palette.md). Turn five milestones of recorded evidence into
+  answers: cross-repo statistics out of the ledger, an Issues table a maintainer can triage from,
+  the four top-level screens design §14 named, and a palette that reaches all of them. Extended by
+  [M6.1](docs/specs/plan_m6.1-settings-edit.md) (R11.7, R11.8) — Settings names every setting, its
+  value and the file that holds it, and an edit reaches disk only as a confirmed change set.
 
 ## 0.1.0 — 2026-08-01
-- fix(cli): declare the exit code the run command sets
-- feat(cli): add the headless run command with JSON output and exit codes
-- fix(ledger): widen the candidate row cast so tsc accepts it
-- feat(pipeline): run stages over an event stream with a run handle
-- feat(ledger): add issue transitions, scoped reconciliation and the run transaction
-- feat(ledger): add the schema, connection and merge-first fingerprint
-- feat(workspace): write the sidecar layout with locked append-only finalisation
-- feat(stages): execute adapter-backed stages with per-tool isolation
-- feat(stages): add a total tool-to-stage outcome reduction
-- feat(adapters): implement the skillspector adapter against a real fixture
-- feat(adapters): parse SARIF and rebase paths onto the repo root
-- feat(adapters): add the adapter contract, rule-class map and registry
-- feat(runner): spawn tools with process-tree kill and artefact loading
-- feat(runner): scrub secrets on the write path across chunk boundaries
-- feat(config): load credentials and derive redacted provenance
-- feat(tools): install and verify uv tools into a managed tool root
-- feat(config): add config and tool lock stores with path canonicalisation
-- feat(discovery): define the candidate manifest and digest it
-- feat(discovery): discover skills and resolve workspace paths
-- feat(discovery): parse SKILL.md frontmatter without throwing
-- feat(core): add shared types with a closed metric key set
-- feat: scaffold package with enforced import boundary
+- M1 — the engine and the sidecar
+
+  [plan](docs/specs/plan_m1-engine-and-sidecar.md). The SkillGantry engine end to end for one
+  adapter, driven by a headless command, with every cross-cutting contract — sidecar layout,
+  redaction, fingerprinting, reconciliation, provenance — proven against real tool output from a
+  tool SkillGantry itself installed. Discovery and the candidate digest, the runner with its
+  process-tree kill, the adapter contract and rule-class map, the stage outcome reduction, the
+  locked append-only sidecar, the SQLite ledger with scoped reconciliation and issue transitions,
+  and `skillgantry run` with JSON output and exit codes.
