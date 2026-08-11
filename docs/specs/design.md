@@ -1485,7 +1485,7 @@ Fixture capture is a scripted, repeatable step tied to the pinned tool versions,
 | R9 release | 12.4 |
 | R10 mutation safety | 12.1, 12.2, 12.3, 12.5 |
 | R11 terminal interface | [design_tui.md](design_tui.md) 14, 14.1, 14.2, 14.3, 14.5, 14.6, 14.7, 14.8, 14.9, 14.10, 14.11 |
-| R11.24 the upgrade prompt | [design_tui.md](design_tui.md) 14.13 |
+| R11.24 the upgrade prompt | [design_tui.md](design_tui.md) 14.14 |
 | R12 headless | 15 |
 | R12.10 `skillgantry upgrade` | 15 |
 | R13 quality and distribution | 2, 16 |
@@ -1511,7 +1511,7 @@ Every pass below is recorded in full somewhere else — the two reviews are thei
 | M7 extension | Navigation, and the surface a truncating pane cannot be: a key that moves focus to what it selects rather than acting at a distance, both arrow pairs as aliases, the Issues tab's own cursor and a tagged query response, the dashboard key on every Overview tier that renders, and a full-length view of one finding or one issue (§14.2, §14.6, §14.8) | [plan_m7.1-work-screen-navigation.md](plan_m7.1-work-screen-navigation.md) |
 | M4.1 | SkillHone catalogued as a skill bundle rather than a CLI, which gave the optimise stage something behind it: the `git-skill` install kind and its three-fact verification (§5.1, §5.2, §5.3), the R6.12 prompt (§9.4a), the surface that presents it (§14.10) and the subcommand that prints it (§15); then, in revision 2, the configuration file that install left uncomposed (§5.1, §5.3, §5.4) | [plan_m4.1-skillhone-optimise.md](plan_m4.1-skillhone-optimise.md) |
 | M4.2 | A way for the evaluate gate to start: skill-upper catalogued as a `git-skill` bundle with no dependencies at all (§5.1a, §5.2), doctor's report of a skill link that is not ours (§5.3), the eval bootstrap prompt (§9.4b), the pane it shares with optimise and the pre-flight that opens it (§14.11), and the subcommand that prints it (§15) | [plan_m4.2-skillup-first-eval.md](plan_m4.2-skillup-first-eval.md) |
-| M9 | Distribution became a thing the product does rather than a thing the maintainer does: a release contract with two pre-publish assertions, a changelog the client reads from the release's own asset, versioned install prefixes adopted by one atomic rename, and the launch-time offer that uses them (§20, §5.3, §15, §14.13) | [plan_m9-version-check-and-upgrade.md](plan_m9-version-check-and-upgrade.md) |
+| M9 | Distribution became a thing the product does rather than a thing the maintainer does: a release contract with two pre-publish assertions, a changelog the client reads from the release's own asset, versioned install prefixes adopted by one atomic rename, and the launch-time offer that uses them (§20, §5.3, §15, §14.14) | [plan_m9-version-check-and-upgrade.md](plan_m9-version-check-and-upgrade.md) |
 
 ## 19. Risks carried into implementation
 
@@ -1532,6 +1532,6 @@ Still open. Two the first draft carried are closed and gone: the adapter contrac
 
 *Satisfies R13.8–R13.12.*
 
-Specified in [design_version-check-and-upgrade.md](design_version-check-and-upgrade.md): the GitHub Releases publishing contract and its two pre-publish assertions, `CHANGELOG.md` and the first-parent walk that backfills it, the versioned install prefix and the atomic relink that adopts one, the throttled launch-time check, and the three surfaces that reach it — the prompt (§14.13), `skillgantry upgrade` (§15) and doctor's `skillgantry-outdated` (§5.3).
+Specified in [design_version-check-and-upgrade.md](design_version-check-and-upgrade.md): the GitHub Releases publishing contract and its two pre-publish assertions, `CHANGELOG.md` and the first-parent walk that backfills it, the versioned install prefix and the atomic relink that adopts one, the throttled launch-time check, and the three surfaces that reach it — the prompt (§14.14), `skillgantry upgrade` (§15) and doctor's `skillgantry-outdated` (§5.3).
 
 It is numbered 20 rather than inserted beside §13, because §16–§19 are cited by id from the plans and from `tests/specs/`, and renumbering them to make room would invalidate every one of those citations to buy nothing but adjacency. It is a separate file for [design_tui.md](design_tui.md)'s reason: no other section reads it.

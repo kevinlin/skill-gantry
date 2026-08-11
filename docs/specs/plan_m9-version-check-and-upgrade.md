@@ -13,7 +13,7 @@
 ## Specification
 
 Layer 1: [requirements.md](requirements.md) — R13.8–R13.12, R11.24, R12.10, all new, plus a new **M9** row in § Milestone ownership.
-Layer 2: [design_version-check-and-upgrade.md](design_version-check-and-upgrade.md), reached from [design.md](design.md) §20. Amends design.md §5.3, §15, §17, §18 and [design_tui.md](design_tui.md) §14.13.
+Layer 2: [design_version-check-and-upgrade.md](design_version-check-and-upgrade.md), reached from [design.md](design.md) §20. Amends design.md §5.3, §15, §17, §18 and [design_tui.md](design_tui.md) §14.14.
 Decisions: **D30** and **D31**, appended to [decision-log.md](decision-log.md), which currently ends at D29.
 
 ## Global Constraints
@@ -71,7 +71,7 @@ Surfaces last: the prompt, then the subcommand that can use it, then the root ac
 **Files:**
 - Modify: `docs/specs/requirements.md` (R13 section, § Milestone ownership)
 - Modify: `docs/specs/design.md` (§5.3, §15, §17, §18)
-- Modify: `docs/specs/design_tui.md` (new §14.13)
+- Modify: `docs/specs/design_tui.md` (new §14.14)
 - Modify: `docs/specs/decision-log.md` (append D30, D31)
 - Modify: `docs/specs/index.md` (plan row)
 - Test: `tests/specs/traceability.test.ts` (existing; must stay green)
@@ -125,10 +125,10 @@ Expected: FAIL, naming the new ids as claimed by no design section. Ownership mu
 
 - [ ] **Step 5: Add the design.md §17 traceability rows and the §18 change-history row**
 
-§17 gains rows mapping R11.24 → design_tui.md §14.13, R12.10 → §15, R13.8–R13.12 → §20. §18 gains:
+§17 gains rows mapping R11.24 → design_tui.md §14.14, R12.10 → §15, R13.8–R13.12 → §20. §18 gains:
 
 ```markdown
-| M9 | Distribution became a thing the product does rather than a thing the maintainer does: a release contract with two pre-publish assertions, a changelog the client reads from the release's own asset, versioned install prefixes adopted by one atomic rename, and the launch-time offer that uses them (§20, §5.3, §15, §14.13) | [plan_m9-version-check-and-upgrade.md](plan_m9-version-check-and-upgrade.md) |
+| M9 | Distribution became a thing the product does rather than a thing the maintainer does: a release contract with two pre-publish assertions, a changelog the client reads from the release's own asset, versioned install prefixes adopted by one atomic rename, and the launch-time offer that uses them (§20, §5.3, §15, §14.14) | [plan_m9-version-check-and-upgrade.md](plan_m9-version-check-and-upgrade.md) |
 ```
 
 - [ ] **Step 6: Add §15's subcommand line and §5.3's doctor condition**
@@ -141,9 +141,9 @@ skillgantry upgrade [--yes] [--json] [--check]
 
 To §5.3's list of reporting-but-not-failing conditions, alongside `integrity-unverified` and `lifecycle-drift`: `skillgantry-outdated`, a published release newer than the running build, named with the command that installs it and never installed by `doctor` itself — R3.7's probe-and-report rule applied to SkillGantry's own binary.
 
-- [ ] **Step 7: Add §14.13 to design_tui.md**
+- [ ] **Step 7: Add §14.14 to design_tui.md**
 
-A new `### 14.13 The upgrade prompt` describing `UpgradeApp`, the two keys, the render without `alternateScreen`, and that it costs nothing from §14.1's row budget because it is not the main app. Do **not** renumber the two existing `### 14.12` sections; that defect is recorded in design_version-check-and-upgrade.md §8.1 and is out of scope here.
+A new `### 14.14 The upgrade prompt` describing `UpgradeApp`, the two keys, the render without `alternateScreen`, and that it costs nothing from §14.1's row budget because it is not the main app. The plan said §14.13 and said not to renumber the duplicate `### 14.12` pair; a spec lint on `main` fixed that duplicate while this branch was in flight, so §14.13 is now the setup repo step and the prompt is §14.14 — see the deviation below.
 
 - [ ] **Step 8: Append D30 and D31 to decision-log.md**
 
@@ -1501,7 +1501,7 @@ git commit -m "test(m12): prove an upgrade adopts atomically and survives a kill
 
 **Task 1 — `tests/specs/traceability.test.ts` has a third case the plan did not mention.** `states the revision the body has actually reached` compares requirements.md's `**Status:** revision N` header against the highest `(rev N)` marker in the body, so the seven new requirements marked *(rev 25)* failed the build until the header was bumped to 25 and the running paragraph gained its rev 25 sentence. Step 4's expected failure was therefore two failures, not one.
 
-**Task 1 — §17's table is not what the coverage test parses.** The test unions every `*Satisfies …*` label in design.md and design_tui.md; §17's requirement-group table is prose. Adding the three rows Step 5 asks for therefore left the test red, and the labels are what closed it: `*Satisfies R13.8–R13.12.*` opening §20, `R12.10` appended to §15's label, and `*Satisfies R11.24.*` opening §14.13.
+**Task 1 — §17's table is not what the coverage test parses.** The test unions every `*Satisfies …*` label in design.md and design_tui.md; §17's requirement-group table is prose. Adding the three rows Step 5 asks for therefore left the test red, and the labels are what closed it: `*Satisfies R13.8–R13.12.*` opening §20, `R12.10` appended to §15's label, and `*Satisfies R11.24.*` opening §14.14.
 
 **Task 6 — the roots are `realpath`'d too, or every install reads as foreign.** `resolveEligibility` resolves the entry point and compares it against `<home>/versions`, and the plan compared a resolved path against an unresolved root. On macOS `os.tmpdir()` alone is `/var/folders/…` while the resolved entry point is `/private/var/folders/…`, so the owned case never matched. `resolveRoot` resolves each root and falls back to its literal spelling when it does not exist — a root that is not there cannot contain the entry point either.
 
@@ -1512,6 +1512,8 @@ git commit -m "test(m12): prove an upgrade adopts atomically and survives a kill
 **Task 12 — `runUpgrade` takes a trailing injection parameter.** The plan's test list needs `fetchImpl`, `Exec`, the entry path and the TTY answer all replaced, and none of them belongs on `UpgradeOptions`, which is commander's flags. `runUpgrade(deps, options, inject = {})` is `runEvals(…, userHome)`'s established shape: every field defaults to the real thing, and the subcommand's own call site passes none of them.
 
 **Tasks 13 and 14 — two new `CliDeps` seams, and they are what keeps `pnpm test` offline.** The root action and `doctor` both now reach the release index, so *every* existing test driving either would have made a real request — `tests/cli/tui-command.test.ts`, `tests/cli/setup-command.test.ts` and `tests/cli/doctor-command.test.ts` among them. `deps.maybeUpgrade` and `deps.upgradeCheck` default to the real implementations and are stubbed in those suites, exactly as `deps.startTui` and `deps.startSetup` already are.
+
+**Merge — the prompt is §14.14, not §14.13.** The plan told Task 1 to leave the duplicate `### 14.12` pair alone because that defect belonged to nobody. A spec lint landed on `main` while this branch was in flight (commit `c973ea4`) and fixed it, renumbering the setup repo step to §14.13 — which the branch's own new §14.13 then collided with, invisibly, because the collision only exists in the merged tree. The prompt is §14.14 and every reference in design.md §17, §18 and §20, in design_version-check-and-upgrade.md §8, and in this plan follows it. A merge that compiles and passes is not a merge that is consistent: nothing mechanical checks that two section numbers in one file differ.
 
 **Task 15 — the binary had to learn `SG_HOME`, and the release source is two files.** `install-cli.sh` has honoured `SG_HOME` since M1 "so the acceptance test can install without touching a real home"; the binary did not, so `skillgantry upgrade --yes` under test would have installed into the developer's own `~/.skillgantry` and renamed their own `~/.local/bin/skillgantry`. `defaultDeps()` now reads it. `SG_UPGRADE_API_BASE` and `SG_UPGRADE_REPO` were added alongside, read in `src/cli/` and passed down as options, the way `GhReleaseOptions.apiBase` already works. The served release is built from `package.json` plus `dist/` alone — `files: ["dist"]` is the whole package, and `VERSION` reads the manifest, so bumping it is what makes the packed build answer `--version` with the new number.
 

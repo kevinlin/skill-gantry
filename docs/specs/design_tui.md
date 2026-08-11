@@ -451,7 +451,7 @@ enter save · ↑/↓ choose · esc back · ctrl-d finish
 
 **Row budget.** The step had no windowing, having had no unbounded content; the list is unbounded, so it takes the same `listWindow()` the tool list and the install list use, against `setupBodyRows(rows, extras)` less this step's fixed rows — credentials, its warnings, the heading, the blank, the field and the two verdict rows. §14.1's first rule holds unchanged: the `N more` footnote is spent out of the list's allocation, never appended below it. The hint has three phrasings rather than one truncated superset, each measured against `width - 2`, because §14.1's footer rule refuses to cut the row that names the keys — and the phrasing changes with the slot anyway, `enter register` and `enter save` being different promises.
 
-### 14.13 The upgrade prompt
+### 14.14 The upgrade prompt
 
 *Satisfies R11.24.*
 

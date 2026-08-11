@@ -411,7 +411,7 @@ land in `requirements.md` with a milestone owner, or `tests/specs/traceability.t
 |---|---|
 | [requirements.md](requirements.md) | **R13.8** release pipeline and its two assertions · **R13.9** CHANGELOG.md, its format, backfill and the asset · **R13.10** versioned prefixes, atomic relink, retention, ownership · **R13.11** the check: throttle, silent failure, decline, eligibility refusal · **R13.12** the apply: verify-before-adopt, snapshot, no-op on failure, relaunch guard · **R11.24** the prompt · **R12.10** `skillgantry upgrade` · a new **M9** row owning all seven |
 | [design.md](design.md) | **§20** pointing at this file · §15 gains the subcommand · §5.3 gains the `skillgantry-outdated` condition · §17 traceability rows · §18 change history |
-| [design_tui.md](design_tui.md) | **§14.13** the prompt |
+| [design_tui.md](design_tui.md) | **§14.14** the prompt |
 
 M9 exit criteria, for the milestone row:
 
