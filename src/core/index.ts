@@ -203,6 +203,12 @@ export {
   type SuppressionRequest,
 } from './suppress/target.js'
 export { entriesAbove, parseChangelog } from './upgrade/changelog.js'
+export {
+  DEFAULT_REPO,
+  THROTTLE_MS,
+  checkForUpgrade,
+  type CheckOptions,
+} from './upgrade/check.js'
 export { resolveEligibility } from './upgrade/eligible.js'
 export { loadUpgradeState, saveUpgradeState } from './upgrade/state.js'
 export type {
