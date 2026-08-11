@@ -202,6 +202,12 @@ export {
   type SuppressionPreview,
   type SuppressionRequest,
 } from './suppress/target.js'
+export {
+  applyUpgrade,
+  type ApplyOptions,
+  type ApplyResult,
+  type ApplyStep,
+} from './upgrade/apply.js'
 export { entriesAbove, parseChangelog } from './upgrade/changelog.js'
 export {
   DEFAULT_REPO,
