@@ -1,6 +1,6 @@
 # SkillGantry M3 Extension — The setup repo step shows and edits what is registered
 
-**Status:** Shipped 2026-08-10, on branch `worktree-m3-setup-repo-edit`. Written against [design_tui.md](design_tui.md) §14.12, [design.md](design.md) §5.3, [requirements.md](requirements.md) revision 23 (R3.12) and shipped M1–M9. Owned by M3, which owns the wizard.
+**Status:** Shipped 2026-08-10, on branch `worktree-m3-setup-repo-edit`. Written against [design_tui.md](design_tui.md) §14.12, [design.md](design.md) §5.3, [requirements.md](requirements.md) revision 23 (R3.12) and shipped M1–M4.1. Owned by M3, which owns the wizard.
 
 **Goal:** The `credentials-and-repo` state names every repo already registered and can replace a selected repo's path in place, keeping that repo's identifier so its recorded runs and issues follow the change. A clean machine's frame does not change.
 

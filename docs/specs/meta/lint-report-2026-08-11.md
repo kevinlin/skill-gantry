@@ -29,7 +29,7 @@ Specs root: `docs/specs/`
 
 ### Dead links
 
-- `plan_m3-setup-repo-edit.md:11` → `plan_m9.md` (not found — M9 work lives in `plan_m4-skillhone-optimise.md`, not a standalone plan file). **Not auto-fixed** — requires editorial decision on whether to link to `plan_m4-skillhone-optimise.md` or remove the link.
+- `plan_m3-setup-repo-edit.md:11` → `plan_m9.md` (not found — M4.1 work lives in `plan_m4-skillhone-optimise.md`, not a standalone plan file). **Not auto-fixed** — requires editorial decision on whether to link to `plan_m4-skillhone-optimise.md` or remove the link.
 
 ~~`index.md:58` → `meta/lint-report-2026-08-02.md`~~ **Auto-fixed:** dead row replaced by 2026-08-11 entry.
 

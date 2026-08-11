@@ -128,7 +128,7 @@ Expected: FAIL, naming the new ids as claimed by no design section. Ownership mu
 §17 gains rows mapping R11.24 → design_tui.md §14.13, R12.10 → §15, R13.8–R13.12 → §20. §18 gains:
 
 ```markdown
-| M12 | Distribution became a thing the product does rather than a thing the maintainer does: a release contract with two pre-publish assertions, a changelog the client reads from the release's own asset, versioned install prefixes adopted by one atomic rename, and the launch-time offer that uses them (§20, §5.3, §15, §14.13) | [plan_version-check-and-upgrade.md](plan_version-check-and-upgrade.md) |
+| M9 | Distribution became a thing the product does rather than a thing the maintainer does: a release contract with two pre-publish assertions, a changelog the client reads from the release's own asset, versioned install prefixes adopted by one atomic rename, and the launch-time offer that uses them (§20, §5.3, §15, §14.13) | [plan_m9-version-check-and-upgrade.md](plan_m9-version-check-and-upgrade.md) |
 ```
 
 - [ ] **Step 6: Add §15's subcommand line and §5.3's doctor condition**

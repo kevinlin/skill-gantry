@@ -181,7 +181,7 @@ Every byte of stdout and stderr SkillGantry writes passes a redaction filter fir
 
 ## Status and docs
 
-Milestones M1 through M8 have shipped: engine, terminal app, tool manager, four adapters, mutating stages with worktree isolation, Dashboard and Issues screens, the Work screen overhaul, and suppression. M9 is in progress: SkillHone, and the optimise action behind it.
+Milestones M1 through M8 have shipped: engine, terminal app, tool manager, four adapters, mutating stages with worktree isolation, Dashboard and Issues screens, the Work screen overhaul, and suppression.
 
 The specifications are the contract, and the code follows them. Start at [`docs/specs/index.md`](docs/specs/index.md); it is the only catalogue. [`decision-log.md`](docs/specs/decision-log.md) records why the product is shaped this way, [`requirements.md`](docs/specs/requirements.md) numbers what it must do, and [`design.md`](docs/specs/design.md) holds every contract.
 

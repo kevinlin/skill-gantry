@@ -1,14 +1,14 @@
-# SkillGantry M10 Implementation Plan — skill-up's first eval suite
+# SkillGantry M4.1 Implementation Plan — skill-up's first eval suite
 
 > **For agentic workers:** REQUIRED SUB-SKILL: use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task.
 
-**Status:** revision 1, shipped. Written against [design.md](design.md), [design_tui.md](design_tui.md) and [requirements.md](requirements.md) as of shipped M9.
+**Status:** revision 1, shipped. Written against [design.md](design.md), [design_tui.md](design_tui.md) and [requirements.md](requirements.md) as of shipped M4.1.
 
 **Goal:** Give the evaluate gate a way to start. skill-up cannot run without `evals/eval.yaml`, most skills carry none, and the gate answers that with `errored`/`missing-artefact` and no next step. Marking `evaluate` on a skill with no suite now opens a surface that hands the maintainer a coding-agent prompt for authoring one. `skill-upper`, the agent skill that owns the templates and the judge guidance that prompt names, becomes a catalogued, installed and verified dependency rather than something the user is assumed to have.
 
 **Architecture:** one catalogue entry and two conditionals in the existing `git-skill` driver; one pure prompt builder in `src/core/stages/` beside the two already there; one doctor condition; one pane generalised from `OptimisePane` and one `r` branch in `src/tui/`; one views-port read and one subcommand in `src/cli/`. No new source root, no ledger change, no adapter, no stage executor. The evaluate stage acquires a pre-flight, not a second run path.
 
-**Tech stack:** everything M1–M9 ship. No new dependency. `git` is invoked through the existing `Exec` seam.
+**Tech stack:** everything M1–M4.1 ship. No new dependency. `git` is invoked through the existing `Exec` seam.
 
 ---
 
@@ -58,8 +58,8 @@ All land in Task 1, before the code that depends on them, per the repo rule that
 | requirements.md | **new R11.22**: the terminal surface. The pre-flight at `r`, the refusal of a mixed mark, the palette entry, the mark-clearing rule, and the refusal when skill-upper is unreachable. |
 | requirements.md | **new R12.9**: the headless command, which writes nothing, and whose exit code reports whether a prompt was produced rather than whether the skill passes. |
 | requirements.md | **R3.5** amended in place: the `git-skill` carve-out covers a bundle with no runtime dependencies, so `requirements` is optional. **R3.8** amended in place: skill-upper is installed with skill-up rather than by preset name, being that tool's authoring companion and useless without it. **R11.21** amended in place for the shared pane. |
-| requirements.md | § Milestone ownership gains an M10 row. R13.7's check is mechanical, so an unowned id fails the build. |
-| design.md | §5.1a skill-upper as a catalogue member with no executable and no dependencies · §5.2 `git-skill` with an optional requirements file, and what `bin` records when there is no interpreter · §5.3 the new doctor condition · **new §9.4b** the eval bootstrap prompt, beside §9.4a · §15 `skillgantry evals` · §17 the M10 row |
+| requirements.md | § Milestone ownership gains an M4.2 row. R13.7's check is mechanical, so an unowned id fails the build. |
+| design.md | §5.1a skill-upper as a catalogue member with no executable and no dependencies · §5.2 `git-skill` with an optional requirements file, and what `bin` records when there is no interpreter · §5.3 the new doctor condition · **new §9.4b** the eval bootstrap prompt, beside §9.4a · §15 `skillgantry evals` · §17 the M4.2 row |
 | design_tui.md | **new §14.11** the eval bootstrap surface: the pre-flight at `r`, the three outcomes, the palette entry, the shared prompt pane, the precedence slot |
 | index.md | a row for this plan |
 | CLAUDE.md | "§15 is the CLI surface: six subcommands" is stale. Nine today, ten after this |
@@ -87,7 +87,7 @@ All land in Task 1, before the code that depends on them, per the repo rule that
 
 ### Task 1: The spec amendments this plan builds against
 
-**Scope.** Every row of the table above, in `requirements.md`, `design.md`, `design_tui.md`, `index.md` and `CLAUDE.md`. Write R3.11, R6.13, R11.22 and R12.9 in the register the surrounding requirements use, each naming the decision it derives from and, where the check is not self-evident, how to verify it. Add the M10 ownership row and its exit criteria.
+**Scope.** Every row of the table above, in `requirements.md`, `design.md`, `design_tui.md`, `index.md` and `CLAUDE.md`. Write R3.11, R6.13, R11.22 and R12.9 in the register the surrounding requirements use, each naming the decision it derives from and, where the check is not self-evident, how to verify it. Add the M4.2 ownership row and its exit criteria.
 
 **Verify.** `pnpm vitest run tests/specs` passes with the four new ids owned exactly once, and every `§n` this plan cites resolves to a section that exists.
 
@@ -155,7 +155,7 @@ Its install argument is plain fields rather than a type imported from `tools`, s
 
 Precedence is unchanged. One slot, one render branch, still after `ConfirmPane` and before the setup screen, since neither kind destroys anything.
 
-**Verify.** The M9 optimise cases in `tests/tui/` pass unchanged against the renamed slot, and the pane renders inside its allocation at 80×24 and 50×14 for both kinds.
+**Verify.** The M4.1 optimise cases in `tests/tui/` pass unchanged against the renamed slot, and the pane renders inside its allocation at 80×24 and 50×14 for both kinds.
 
 ### Task 10: The pre-flight at `r`, and the palette entry
 
@@ -182,7 +182,7 @@ The enqueue tail of the handler is lifted into a local function so the suite-pre
 
 ---
 
-## Requirement coverage for M10
+## Requirement coverage for M4.2
 
 | Requirement | Task |
 |---|---|
@@ -191,7 +191,7 @@ The enqueue tail of the handler is lifted into a local function so the suite-pre
 | R11.22 the terminal surface | 9 (pane), 10 (pre-flight, palette, refusals) |
 | R12.9 the headless command | 7 |
 
-**Owned elsewhere but shaped here.** R3.1 (M1) now covers a second `git-skill` install, landing under the tool root and in detected runtime skill directories and nowhere else. R3.5 and R3.8 (M3) gain a catalogue member whose selection follows another tool's. R3.7 (M3) takes a fourth reported condition under its probe-and-report rule. R3.9 (M3) gains a non-failing drift kind. R7.3 (M1) is why the prompt names credential keys and never a value. R11.20 and R11.21 (M5, M9) each take a second member: the rail's refusal vocabulary, and the prompt pane.
+**Owned elsewhere but shaped here.** R3.1 (M1) now covers a second `git-skill` install, landing under the tool root and in detected runtime skill directories and nowhere else. R3.5 and R3.8 (M3) gain a catalogue member whose selection follows another tool's. R3.7 (M3) takes a fourth reported condition under its probe-and-report rule. R3.9 (M3) gains a non-failing drift kind. R7.3 (M1) is why the prompt names credential keys and never a value. R11.20 and R11.21 (M5, M4.1) each take a second member: the rail's refusal vocabulary, and the prompt pane.
 
 ## Known gaps carried forward
 
@@ -202,7 +202,7 @@ The enqueue tail of the handler is lifted into a local function so the suite-pre
 
 ## Self-review
 
-Every requirement in the M10 row maps to a task, and no task says TBD. The one unprobed fact, that `skills/skill-upper` exists at tag `v0.7.0`, is named as such and owned by Task 2, which records a deviation if the probe comes back otherwise. Type signatures crossing tasks (`GitSkillSpec`, `EvalPreviewView`, `PromptSlot`) are stated once and consumed consistently. Eleven tasks, one deliverable: a skill with no evals stops being a gate that errors, and becomes a keystroke that hands over the prompt for fixing it.
+Every requirement in the M4.2 row maps to a task, and no task says TBD. The one unprobed fact, that `skills/skill-upper` exists at tag `v0.7.0`, is named as such and owned by Task 2, which records a deviation if the probe comes back otherwise. Type signatures crossing tasks (`GitSkillSpec`, `EvalPreviewView`, `PromptSlot`) are stated once and consumed consistently. Eleven tasks, one deliverable: a skill with no evals stops being a gate that errors, and becomes a keystroke that hands over the prompt for fixing it.
 
 ## Deviations found while implementing
 
@@ -214,7 +214,7 @@ Every requirement in the M10 row maps to a task, and no task says TBD. The one u
 
 **`verifyGitSkill` takes the condition rather than deriving it.** A fifth parameter, defaulting to true, and doctor reads `catalogueEntry(toolId)` to supply it. Deriving it from the lock was the alternative and it answers the wrong question: the lock records where `bin` landed, while the check needs to know whether an interpreter was ever meant to exist.
 
-**`R13.7`'s own check could not see an M10 row.** The milestone regex in `tests/specs/traceability.test.ts` read `M\d`, which matched no row at all once the table reached two digits — so an unowned requirement would have passed rather than failed the build, which is the one thing that test exists to prevent. Fixed to `M\d+` in the same commit as the row.
+**`R13.7`'s own check could not see an M4.2 row.** The milestone regex in `tests/specs/traceability.test.ts` read `M\d`, which matched no row at all once the table reached two digits — so an unowned requirement would have passed rather than failed the build, which is the one thing that test exists to prevent. Fixed to `M\d+` in the same commit as the row.
 
 **`runEvals` takes an injected `userHome`**, for the reason `DoctorInput.userHome` does: the reachability probe walks the runtime skills directories, and a test must not read the machine's real ones. `makeCliFixture` grew a temp `userHome`, a `runtimeSkills` seed and an `evalSuite` flag to match.
 
@@ -224,4 +224,4 @@ Every requirement in the M10 row maps to a task, and no task says TBD. The one u
 
 ## Changelog
 
-- 2026-08-10 — revision 1, written against shipped M9.
+- 2026-08-10 — revision 1, written against shipped M4.1.

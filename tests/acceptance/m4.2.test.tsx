@@ -94,12 +94,12 @@ const markEvaluate = async (ui: ReturnType<typeof render>): Promise<void> => {
   await ui.settle()
 }
 
-describe('M10 exit criteria', () => {
+describe('M4.2 exit criteria', () => {
   it('installs skill-upper by clone and per-skill symlink, with nothing global', async () => {
-    const userHome = await mkdtemp(join(tmpdir(), 'sg-m10-user-'))
+    const userHome = await mkdtemp(join(tmpdir(), 'sg-m4.2-user-'))
     await mkdir(join(userHome, '.claude', 'skills'), { recursive: true })
     await mkdir(join(userHome, '.agents', 'skills'), { recursive: true })
-    const sgHome = await mkdtemp(join(tmpdir(), 'sg-m10-root-'))
+    const sgHome = await mkdtemp(join(tmpdir(), 'sg-m4.2-root-'))
     const calls: string[][] = []
 
     const entry = await installTool(sgHome, bundleSpec(), {
@@ -125,11 +125,11 @@ describe('M10 exit criteria', () => {
   })
 
   it('reports a skill link it did not create without failing and without touching it', async () => {
-    const userHome = await mkdtemp(join(tmpdir(), 'sg-m10-user-'))
+    const userHome = await mkdtemp(join(tmpdir(), 'sg-m4.2-user-'))
     const foreign = join(userHome, '.claude', 'skills', SKILL_UPPER_TOOL_ID)
     await mkdir(foreign, { recursive: true })
     await writeFile(join(foreign, 'SKILL.md'), '---\nname: theirs\n---\n')
-    const sgHome = await mkdtemp(join(tmpdir(), 'sg-m10-root-'))
+    const sgHome = await mkdtemp(join(tmpdir(), 'sg-m4.2-root-'))
     await saveToolLock(sgHome, { version: 1, tools: {} })
 
     const report = await doctor({

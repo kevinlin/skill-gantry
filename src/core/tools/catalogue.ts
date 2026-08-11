@@ -76,7 +76,7 @@ export const SKILL_UP_TOOL_ID = 'skill-up'
  * installable form, with the probe output behind each omission recorded in
  * docs/specs/plan-m3.md, and promptfoo because it drives off a per-skill config
  * no skill carries — docs/specs/decision-log.md §10. SkillHone was a fourth
- * until M9: that probe asked whether it is published as a *CLI*, and it is not,
+ * until M4.1: that probe asked whether it is published as a *CLI*, and it is not,
  * but it is published as a bundle of agent skills — decision-log.md §13.
  */
 export const CATALOGUE: readonly ToolSpec[] = [

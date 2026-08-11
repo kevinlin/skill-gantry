@@ -48,13 +48,13 @@ const bundleExec =
   }
 
 const seedHome = async (): Promise<string> => {
-  const home = await mkdtemp(join(tmpdir(), 'sg-m9-'))
+  const home = await mkdtemp(join(tmpdir(), 'sg-m4.1-'))
   await mkdir(join(home, '.claude', 'skills'), { recursive: true })
   await mkdir(join(home, '.agents', 'skills'), { recursive: true })
   return home
 }
 
-describe('M9 exit criteria', () => {
+describe('M4.1 exit criteria', () => {
   it('installs by clone, per-skill symlink and a managed venv, with nothing global', async () => {
     const userHome = await seedHome()
     const sgHome = await mkdtemp(join(tmpdir(), 'sg-root-'))
