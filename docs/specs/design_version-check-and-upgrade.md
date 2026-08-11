@@ -2,7 +2,7 @@
 
 **Layer:** design (layer 2 of 3: [requirements](requirements.md) → design → plan)
 **Traces to:** [requirements.md](requirements.md), [design.md](design.md), [decision-log.md](decision-log.md)
-**Owns:** milestone M12.
+**Owns:** milestone M9.
 
 §20 of [design.md](design.md), held in its own file for [design_tui.md](design_tui.md)'s reason: no
 other section reads it, and it arrives whole rather than as amendments spread across a dozen
@@ -409,11 +409,11 @@ land in `requirements.md` with a milestone owner, or `tests/specs/traceability.t
 
 | Doc | Change |
 |---|---|
-| [requirements.md](requirements.md) | **R13.8** release pipeline and its two assertions · **R13.9** CHANGELOG.md, its format, backfill and the asset · **R13.10** versioned prefixes, atomic relink, retention, ownership · **R13.11** the check: throttle, silent failure, decline, eligibility refusal · **R13.12** the apply: verify-before-adopt, snapshot, no-op on failure, relaunch guard · **R11.24** the prompt · **R12.10** `skillgantry upgrade` · a new **M12** row owning all seven |
+| [requirements.md](requirements.md) | **R13.8** release pipeline and its two assertions · **R13.9** CHANGELOG.md, its format, backfill and the asset · **R13.10** versioned prefixes, atomic relink, retention, ownership · **R13.11** the check: throttle, silent failure, decline, eligibility refusal · **R13.12** the apply: verify-before-adopt, snapshot, no-op on failure, relaunch guard · **R11.24** the prompt · **R12.10** `skillgantry upgrade` · a new **M9** row owning all seven |
 | [design.md](design.md) | **§20** pointing at this file · §15 gains the subcommand · §5.3 gains the `skillgantry-outdated` condition · §17 traceability rows · §18 change history |
 | [design_tui.md](design_tui.md) | **§14.13** the prompt |
 
-M12 exit criteria, for the milestone row:
+M9 exit criteria, for the milestone row:
 
 > A tag whose version disagrees with the manifest, or whose changelog section is missing, fails to
 > publish; a published release carries three assets and a body extracted from the changelog. A
