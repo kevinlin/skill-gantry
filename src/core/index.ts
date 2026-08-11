@@ -115,6 +115,7 @@ export {
   type LifecycleFinding,
   type ToolDriftKind,
   type ToolFinding,
+  type UpgradeFinding,
 } from './tools/doctor.js'
 export { canonicalisePath, saveConfig, saveToolLock } from './config/config.js'
 export {

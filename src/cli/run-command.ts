@@ -36,6 +36,8 @@ export interface CliDeps {
       `maybeUpgrade` reaches the release index, and every test driving the root
       action would otherwise make that request. */
   maybeUpgrade?: (deps: CliDeps) => Promise<'continue' | 'relaunched'>
+  /** The same seam for the same reason, on doctor's §5.3 condition. */
+  upgradeCheck?: (home: string) => Promise<{ current: string; latest: string } | null>
 }
 
 /**

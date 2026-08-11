@@ -5,11 +5,22 @@ import { join } from 'node:path'
 import { saveToolLock } from '../../src/core/config/config.js'
 import { RULE_CLASS_MAP_VERSION, appliedRuleMapVersion, openLedger } from '../../src/core/index.js'
 import { buildProgram, type CliDeps } from '../../src/cli/run-command.js'
+import { formatDoctor } from '../../src/cli/doctor-command.js'
 
 async function deps(): Promise<{ deps: CliDeps; lines: string[] }> {
   const home = await mkdtemp(join(tmpdir(), 'sg-doctor-cli-'))
   const lines: string[] = []
-  return { deps: { home, dbPath: ':memory:', write: (line) => lines.push(line) }, lines }
+  return {
+    deps: {
+      home,
+      dbPath: ':memory:',
+      write: (line) => lines.push(line),
+      // §5.3's condition reaches the release index; the default suite is
+      // offline, so the seam stands in for it.
+      upgradeCheck: async () => null,
+    },
+    lines,
+  }
 }
 
 describe('skillgantry doctor', () => {
@@ -68,5 +79,29 @@ describe('skillgantry doctor', () => {
     expect(appliedRuleMapVersion(after.db)).toBe(RULE_CLASS_MAP_VERSION)
     after.close()
     expect(lines.join('\n')).not.toMatch(/rule-map-pending/)
+  })
+})
+
+describe('formatDoctor and skillgantry-outdated', () => {
+  const empty = { runtimes: [], tools: [], lifecycle: [], failed: false }
+
+  it('names the available version and the command that installs it', () => {
+    const rendered = formatDoctor({
+      ...empty,
+      upgrade: { current: '0.5.1', latest: '0.6.0' },
+    }).join('\n')
+    expect(rendered).toContain('skillgantry-outdated')
+    expect(rendered).toContain('0.5.1')
+    expect(rendered).toContain('0.6.0')
+    expect(rendered).toContain('skillgantry upgrade')
+    expect(rendered).toContain('doctor: no drift')
+  })
+
+  // R3.7's probe-and-report rule: reported, never installed, and never the
+  // reason a machine that is otherwise fine reads as broken.
+  it('omits the line entirely when there is nothing to report', () => {
+    expect(formatDoctor({ ...empty, upgrade: null }).join('\n')).not.toContain(
+      'skillgantry-outdated',
+    )
   })
 })
