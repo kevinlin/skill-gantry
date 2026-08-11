@@ -19,6 +19,7 @@ import { detectInterrupted, formatInterrupted, runRecover } from './recover-comm
 import { runRelease, type ReleaseOptions } from './release-command.js'
 import { runRetire, type RetireOptions } from './retire-command.js'
 import { needsSetup, startSetup, type SetupOptions } from './setup-command.js'
+import { runUpgrade, type UpgradeOptions } from './upgrade-command.js'
 import { startTui, type TuiOptions } from './tui-command.js'
 
 const STAGES: readonly Stage[] = ['validate', 'evaluate', 'security', 'optimise', 'release']
@@ -282,6 +283,18 @@ export function buildProgram(deps: CliDeps): GantryProgram {
       // a prompt on stdout", so a skill with a passing suite and one whose
       // runner is not installed stay distinguishable.
       program.exitCode = await runEvals(deps, selector, opts)
+    })
+
+  program
+    .command('upgrade')
+    .description('check for a newer published release and install it')
+    .option('--yes', 'prior authorisation for the install')
+    .option('--json', 'emit one JSON document')
+    .option('--check', 'report only; install nothing')
+    .action(async (opts: UpgradeOptions) => {
+      // R12.10: the code answers "what happened to the upgrade", not R12.2's
+      // stage question — `fix`'s and `suppress`'s established divergence.
+      program.exitCode = await runUpgrade(deps, opts)
     })
 
   program
