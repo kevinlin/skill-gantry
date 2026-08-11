@@ -413,7 +413,7 @@ R11.1 has said since revision 1 that the Work screen presents "the repo and skil
 
 **Zero rows, and nothing in `layout.ts` moves.** Same panel, same allocation, same `windowFor`, same `GUTTER`; `SKILL_LIST_MIN` and `OVERVIEW_ROWS` are untouched, so §14.1's budget and every Overview tier boundary hold unchanged. A repo row spends the mark column it already has on "some skill in here is marked", which is the one fact a collapsed level hides, and puts the skill count on the right through `padCells`. `repoSummary` is pure and sits beside `repoGroups`, ranking `running` above every settled outcome because something happening outranks any verdict — pure for the reason `overviewRows` and `issueRows` are, so a repo row's content is assertable without rendering Ink. The footer is deliberately not touched: §14.3 measured `HINTS` at 67 columns and an eighth pair costs `q quit`, so the help screen's `h / l` row is amended in place and stays the second tier.
 
-### 14.12 The setup repo step
+### 14.13 The setup repo step
 
 *Satisfies R3.12.*
 

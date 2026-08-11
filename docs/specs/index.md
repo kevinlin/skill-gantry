@@ -14,7 +14,7 @@ Which milestone owns which requirement is a separate question, answered only by 
 |---|---|---|
 | [requirements.md](requirements.md) | Requirements | Numbered R* requirements with milestone ownership table |
 | [design.md](design.md) | Design | Module map, stage contract, outcome model, ledger schema, sidecar layout |
-| [design_tui.md](design_tui.md) | Design | design.md §14 through §14.12, under their own numbers: the Ink store, the responsive row budget, Settings, fix-prompt copy, run rehydration, the Work screen, accepting a finding, the full-length detail view, the release target, the two prompt surfaces, and the setup repo step |
+| [design_tui.md](design_tui.md) | Design | design.md §14 through §14.13, under their own numbers: the Ink store, the responsive row budget, Settings, fix-prompt copy, run rehydration, the Work screen, accepting a finding, the full-length detail view, the release target, the two prompt surfaces, the repo and skill list, and the setup repo step |
 | [design_version-check-and-upgrade.md](design_version-check-and-upgrade.md) | Design | design.md §20, under its own numbers: the GitHub Releases publishing contract, `CHANGELOG.md` and its backfill, the versioned install prefix and atomic relink, the throttled launch-time check, and the prompt, subcommand and doctor condition that reach it. Owns M9 |
 | [decision-log.md](decision-log.md) | Supporting | D* decisions the requirements derive from |
 
@@ -57,5 +57,4 @@ Which milestone owns which requirement is a separate question, answered only by 
 | File | Description |
 |---|---|
 | [meta/convention.md](meta/convention.md) | Naming and structure convention reference (used by spec-lint) |
-| [meta/lint-report-2026-08-09.md](meta/lint-report-2026-08-09.md) | spec-lint findings, 2026-08-09. Point-in-time; not a contract |
 | [meta/lint-report-2026-08-11.md](meta/lint-report-2026-08-11.md) | spec-lint findings, 2026-08-11. Point-in-time; not a contract |

@@ -427,8 +427,8 @@ M12 exit criteria, for the milestone row:
 
 ### 8.1 Pre-existing defect found while designing
 
-[design_tui.md](design_tui.md) carries **two sections numbered `### 14.12`** — "The repo and skill list" and "The
-setup repo step". Unrelated to this work, not fixed here, recorded so it is not lost.
+[design_tui.md](design_tui.md) carried **two sections numbered `### 14.12`** — "The repo and skill list" and "The
+setup repo step". Fixed: the setup repo step is now §14.13.
 
 ---
 
