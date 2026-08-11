@@ -173,8 +173,8 @@ Accepted a false positive? `s` on the Findings pane or the Issues screen writes 
     SKILL.md
   declawed-workspace/
     iteration-1/       whatever you ran by hand before; read-only to SkillGantry
-    skillgantry/runs/<runId>/
-      run.json         digest, git metadata, provenance, tool lock
+    skillgantry/runs/2026-08-11_14-32-07/    named for when the run started
+      run.json         run id, digest, git metadata, provenance, tool lock
       01-validate/     per-tool stdout, stderr, native reports, stage.json
       ...
 ```

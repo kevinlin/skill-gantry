@@ -7,8 +7,9 @@ import {
   fixPromptPathFor,
   maxSeverity,
   readIndex,
-  runsRoot,
+  runDirFor,
   stageDirFor,
+  type IndexEntry,
   type StageResult,
 } from '../core/index.js'
 import type { Severity, SkillRef, Stage } from '../core/types.js'
@@ -63,16 +64,20 @@ const stageDirIn = (runDir: string, stage: Stage): string =>
  * sidecar the evidence, the command already names its skill so no cross-skill
  * query is needed, and a run whose ledger row failed still has complete
  * evidence on disk.
+ *
+ * `--run` takes either identifier, because the directory name is what a user
+ * can see in `ls` and the run id is what `run.json` and the ledger record. The
+ * id is matched first, so a directory that happens to be named like an id can
+ * never make the argument ambiguous.
  */
-async function resolveRunId(skill: SkillRef, requested: string | undefined): Promise<string> {
+async function resolveRun(skill: SkillRef, requested: string | undefined): Promise<IndexEntry> {
   const entries = await readIndex(skill.workspacePath)
   if (requested !== undefined) {
-    if (!entries.some((e) => e.runId === requested)) {
-      throw new Error(`no run ${requested} recorded for ${skill.id}`)
-    }
-    return requested
+    const found = entries.find((e) => e.runId === requested) ?? entries.find((e) => e.dir === requested)
+    if (!found) throw new Error(`no run ${requested} recorded for ${skill.id}`)
+    return found
   }
-  const newest = entries.reduce<string | null>((max, e) => (max === null || e.runId > max ? e.runId : max), null)
+  const newest = entries.reduce<IndexEntry | null>((max, e) => (max === null || e.runId > max.runId ? e : max), null)
   if (newest === null) throw new Error(`no runs recorded for ${skill.id}`)
   return newest
 }
@@ -138,8 +143,9 @@ async function promptFor(
 
 export async function runFix(deps: CliDeps, selector: string, opts: FixOptions): Promise<number> {
   const { skill } = await selectSkill(deps.home, selector)
-  const runId = await resolveRunId(skill, opts.run)
-  const runDir = join(runsRoot(skill.workspacePath), runId)
+  const entry = await resolveRun(skill, opts.run)
+  const runId = entry.runId
+  const runDir = runDirFor(skill.workspacePath, entry)
 
   const meta = await readJson<RunMetaOnDisk>(join(runDir, 'run.json'))
   if (meta === null) throw new Error(`run ${runId} has no run.json under ${runDir}`)

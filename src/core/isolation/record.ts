@@ -56,12 +56,21 @@ async function candidateDirs(workspacePath: string): Promise<string[]> {
   return out
 }
 
-/** Only `active` records: applied or discarded is resolved history. */
-export async function scanSandboxRecords(workspacePath: string): Promise<SandboxRecord[]> {
-  const found: SandboxRecord[] = []
+/**
+ * Only `active` records: applied or discarded is resolved history.
+ *
+ * The directory is returned with the record rather than rebuilt from
+ * `record.runId` by the caller. The scan already knows the real path, and a run
+ * directory is named for its start time — so reconstructing it from the id would
+ * name a directory that does not exist.
+ */
+export async function scanSandboxRecords(
+  workspacePath: string,
+): Promise<{ record: SandboxRecord; dir: string }[]> {
+  const found: { record: SandboxRecord; dir: string }[] = []
   for (const dir of await candidateDirs(workspacePath)) {
     const record = await readSandboxRecord(dir)
-    if (record?.state === 'active') found.push(record)
+    if (record?.state === 'active') found.push({ record, dir })
   }
   return found
 }

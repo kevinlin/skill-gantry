@@ -1,6 +1,7 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { v7 as uuidv7 } from 'uuid'
+import { claimDirIn, runDirName } from '../workspace/writer.js'
 import { openSandbox } from '../isolation/open.js'
 import { RETIRE_STAGE, type ChangeSet } from '../isolation/types.js'
 import { INTERRUPTED_MUTATION_MESSAGE } from './preconditions.js'
@@ -39,15 +40,19 @@ export interface RetireResult {
  * retirement is metadata-only — but the write is a mutation, so it takes the
  * same declared scope, preview, confirmation and journal.
  *
- * The record lives under `retire/<id>/` rather than a run directory so Task 6's
- * scan finds an interrupted retirement with no special case.
+ * The record lives under `retire/<dir>/` rather than a run directory so Task 6's
+ * scan finds an interrupted retirement with no special case — and it is named
+ * and claimed exactly the way a run directory is, so the two groups one scan
+ * walks read the same way.
  */
 export async function retireSkill(input: RetireInput): Promise<RetireResult> {
   if (input.interrupted === true) throw new Error(INTERRUPTED_MUTATION_MESSAGE)
   const relPath = input.skill.relPath === '.' ? 'SKILL.md' : `${input.skill.relPath}/SKILL.md`
   const id = uuidv7()
-  const recordDir = join(input.skill.workspacePath, 'skillgantry', 'retire', id)
-  await mkdir(recordDir, { recursive: true })
+  const recordDir = await claimDirIn(
+    join(input.skill.workspacePath, 'skillgantry', 'retire'),
+    runDirName(new Date()),
+  )
 
   const sandbox = await openSandbox({
     skill: input.skill,

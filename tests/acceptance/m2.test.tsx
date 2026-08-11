@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { readFile, readlink } from 'node:fs/promises'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import {
   createQueue,
   discoverSkills,
+  readIndex,
+  runDirFor,
   runPipeline,
   type RunEvent,
   type SkillRef,
@@ -136,8 +138,12 @@ describe('M2 exit criteria', () => {
       expect(new Set(ids)).toEqual(new Set([a.runId, b.runId]))
       expect(a.runDir).not.toBe(b.runDir)
 
-      const newest = [a.runId, b.runId].sort().at(-1)
-      expect(await readlink(join(skill.workspacePath, 'skillgantry/runs/latest'))).toContain(newest!)
+      // `latest` is still decided by the greatest run id, and now names that
+      // run's directory — which two runs one second apart cannot tell apart.
+      const newest = a.runId > b.runId ? a : b
+      expect(await readlink(join(skill.workspacePath, 'skillgantry/runs/latest'))).toBe(
+        basename(newest.runDir),
+      )
       input.ledger.close()
     },
     30_000,
@@ -302,13 +308,11 @@ describe('M2 exit criteria', () => {
 
       const summary = queue.snapshot().completed[0]
       expect(summary?.state).toBe('done')
+      // The directory is named for the start time, so the index is what maps
+      // this run's id to it — the job summary carries the id alone.
+      const entry = (await readIndex(skill.workspacePath)).find((e) => e.runId === summary!.runId)
       const log = await readFile(
-        join(
-          skill.workspacePath,
-          'skillgantry/runs',
-          summary!.runId!,
-          '03-security/skillspector/stdout.log',
-        ),
+        join(runDirFor(skill.workspacePath, entry!), '03-security/skillspector/stdout.log'),
         'utf8',
       )
       expect(log.trim().split('\n')).toHaveLength(10_000)

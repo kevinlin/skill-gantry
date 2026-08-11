@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import type { ToolLock } from '../config/schema.js'
 import { type Provenance, withAnalysisModes } from '../config/env.js'
 import { getAdapter } from '../adapters/registry.js'
@@ -166,8 +166,11 @@ export function runPipeline(input: RunPipelineInput): RunHandle {
   })
 
   const done = (async (): Promise<RunSummary> => {
-    const startedAt = nowIso()
-    const { runId: id, runDir } = await claimRunDir(input.skill.workspacePath)
+    // One instant serves both the record and the directory name, so the two can
+    // never disagree about when the run started.
+    const startedAtDate = new Date()
+    const startedAt = startedAtDate.toISOString()
+    const { runId: id, runDir } = await claimRunDir(input.skill.workspacePath, startedAtDate)
     observedRunId = id
     resolveRunId(id)
 
@@ -511,7 +514,14 @@ export function runPipeline(input: RunPipelineInput): RunHandle {
 
     cancellation.enter('finalising')
     const endedAt = nowIso()
-    await finalizeRun(input.skill.workspacePath, { runId: id, outcome, endedAt })
+    // The directory name is recorded because it is no longer derivable from the
+    // run id: every reader that used to rebuild the path now reads it here.
+    await finalizeRun(input.skill.workspacePath, {
+      runId: id,
+      dir: basename(runDir),
+      outcome,
+      endedAt,
+    })
 
     const delta = recordRun(input.ledger, {
       skill: input.skill,

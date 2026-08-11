@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { mkdir, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { createQueue, discoverSkills, stageDirFor } from '../../src/core/index.js'
 import type { SkillRef } from '../../src/core/index.js'
 import { claimRunDir, finalizeRun } from '../../src/core/workspace/writer.js'
@@ -179,7 +179,7 @@ describe('rehydrating the last recorded run — R11.10', () => {
     const root = await makeRepo({ files: { 'declawed/SKILL.md': SKILL_MD('declawed') } })
     const skills = await discoverSkills({ id: 'fx', path: root, name: 'fx', isGit: false })
     const workspacePath = skills[0]!.workspacePath
-    const { runId, runDir } = await claimRunDir(workspacePath)
+    const { runId, runDir } = await claimRunDir(workspacePath, new Date())
     const stageDir = stageDirFor(runDir, 3, 'security')
     await mkdir(join(stageDir, 'skillspector'), { recursive: true })
     await writeFile(join(stageDir, 'skillspector', 'findings.sarif'), '{}')
@@ -218,6 +218,7 @@ describe('rehydrating the last recorded run — R11.10', () => {
     )
     await finalizeRun(workspacePath, {
       runId,
+      dir: basename(runDir),
       outcome: 'failed',
       endedAt: '2026-08-02T00:00:00Z',
     })

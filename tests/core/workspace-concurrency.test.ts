@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { mkdir, mkdtemp, readFile, readlink, stat, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import {
   LOCK_STALE_MS,
   claimRunDir,
@@ -13,10 +13,18 @@ import { CORE, runInChild } from '../helpers/child.js'
 
 const ws = async (): Promise<string> => mkdtemp(join(tmpdir(), 'sg-conc-'))
 
-const finaliseInChild = (workspace: string, runId: string, endedAt: string): string => `
+const claim = (root: string) => claimRunDir(root, new Date())
+
+const finaliseInChild = (
+  workspace: string,
+  runId: string,
+  dir: string,
+  endedAt: string,
+): string => `
 import { finalizeRun } from '${CORE}/workspace/writer.js'
 await finalizeRun(${JSON.stringify(workspace)}, {
   runId: ${JSON.stringify(runId)},
+  dir: ${JSON.stringify(dir)},
   outcome: 'passed',
   endedAt: ${JSON.stringify(endedAt)},
 })
@@ -25,9 +33,12 @@ process.stdout.write('ok')
 
 const claimInChild = (workspace: string, count: number): string => `
 import { claimRunDir } from '${CORE}/workspace/writer.js'
-const ids = []
-for (let i = 0; i < ${count}; i += 1) ids.push((await claimRunDir(${JSON.stringify(workspace)})).runId)
-process.stdout.write(JSON.stringify(ids))
+import { basename } from 'node:path'
+const dirs = []
+for (let i = 0; i < ${count}; i += 1) {
+  dirs.push(basename((await claimRunDir(${JSON.stringify(workspace)}, new Date())).runDir))
+}
+process.stdout.write(JSON.stringify(dirs))
 `
 
 describe('two processes finalising one skill — R6.7', () => {
@@ -35,12 +46,12 @@ describe('two processes finalising one skill — R6.7', () => {
     'loses no index entry',
     async () => {
       const root = await ws()
-      const a = await claimRunDir(root)
-      const b = await claimRunDir(root)
+      const a = await claim(root)
+      const b = await claim(root)
 
       await Promise.all([
-        runInChild(finaliseInChild(root, a.runId, '2026-08-01T00:00:00Z')),
-        runInChild(finaliseInChild(root, b.runId, '2026-08-01T00:01:00Z')),
+        runInChild(finaliseInChild(root, a.runId, basename(a.runDir), '2026-08-01T00:00:00Z')),
+        runInChild(finaliseInChild(root, b.runId, basename(b.runDir), '2026-08-01T00:01:00Z')),
       ])
 
       const entries = await readIndex(root)
@@ -54,15 +65,19 @@ describe('two processes finalising one skill — R6.7', () => {
     'agrees on latest when finish order is inverted',
     async () => {
       const root = await ws()
-      const first = await claimRunDir(root)
-      const second = await claimRunDir(root)
+      const first = await claim(root)
+      const second = await claim(root)
       expect(second.runId > first.runId).toBe(true)
 
       // Claimed second, finalised first.
-      await runInChild(finaliseInChild(root, second.runId, '2026-08-01T00:00:00Z'))
-      await runInChild(finaliseInChild(root, first.runId, '2026-08-01T00:05:00Z'))
+      await runInChild(
+        finaliseInChild(root, second.runId, basename(second.runDir), '2026-08-01T00:00:00Z'),
+      )
+      await runInChild(
+        finaliseInChild(root, first.runId, basename(first.runDir), '2026-08-01T00:05:00Z'),
+      )
 
-      expect(await readlink(join(root, 'skillgantry/runs/latest'))).toContain(second.runId)
+      expect(await readlink(join(root, 'skillgantry/runs/latest'))).toBe(basename(second.runDir))
     },
     60_000,
   )
@@ -75,9 +90,12 @@ describe('two processes finalising one skill — R6.7', () => {
         runInChild(claimInChild(root, 20)),
         runInChild(claimInChild(root, 20)),
       ])
-      const ids = [...(JSON.parse(one) as string[]), ...(JSON.parse(two) as string[])]
-      expect(ids).toHaveLength(40)
-      expect(new Set(ids).size).toBe(40)
+      // Directory names, not run ids: ids are unique by construction, so only
+      // the names can prove the exclusive-mkdir claim still separates two
+      // processes now that the name is derived from a shared clock.
+      const dirs = [...(JSON.parse(one) as string[]), ...(JSON.parse(two) as string[])]
+      expect(dirs).toHaveLength(40)
+      expect(new Set(dirs).size).toBe(40)
     },
     60_000,
   )

@@ -11,6 +11,28 @@ export const STAGE_ORDER: readonly Stage[] = [
 
 export const runsRoot = (workspacePath: string): string => join(workspacePath, 'skillgantry', 'runs')
 
+/**
+ * A run directory is named for its start time so `ls` answers "when" without
+ * opening five `run.json` files. Local time, not UTC: the name exists to be
+ * recognised by the person who started the run, and `run.json` already carries
+ * an unambiguous ISO instant. The clock is the caller's — the pipeline has
+ * `startedAt` before it claims the directory.
+ */
+export function runDirName(startedAt: Date): string {
+  const p = (n: number): string => String(n).padStart(2, '0')
+  const date = `${startedAt.getFullYear()}-${p(startedAt.getMonth() + 1)}-${p(startedAt.getDate())}`
+  const time = `${p(startedAt.getHours())}-${p(startedAt.getMinutes())}-${p(startedAt.getSeconds())}`
+  return `${date}_${time}`
+}
+
+/**
+ * The directory a recorded run lives in. An entry written before the directory
+ * name was recorded carries no `dir`, and back then the basename *was* the run
+ * id — so the fallback is not a guess, it is that era's rule.
+ */
+export const runDirFor = (workspacePath: string, entry: { runId: string; dir?: string }): string =>
+  join(runsRoot(workspacePath), entry.dir ?? entry.runId)
+
 export const indexPath = (workspacePath: string): string =>
   join(runsRoot(workspacePath), 'index.ndjson')
 

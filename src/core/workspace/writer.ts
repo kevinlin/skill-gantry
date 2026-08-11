@@ -14,9 +14,9 @@ import { join } from 'node:path'
 import { v7 as uuidv7 } from 'uuid'
 import type { Provenance } from '../config/env.js'
 import type { StageResult } from '../stages/types.js'
-import { indexPath, latestPath, lockPath, runsRoot } from './layout.js'
+import { indexPath, latestPath, lockPath, runDirName, runsRoot } from './layout.js'
 
-export { stageDirFor, toolDirFor } from './layout.js'
+export { runDirFor, runDirName, stageDirFor, toolDirFor } from './layout.js'
 
 const WORKSPACE_MODE = 0o700
 const IGNORE_PATTERNS = ['*-workspace/', '.skillgantry-workspace/']
@@ -32,6 +32,8 @@ export interface RunMeta {
 
 export interface IndexEntry {
   runId: string
+  /** Basename under `runs/`. Absent on entries written before it was recorded. */
+  dir?: string
   outcome: string
   endedAt: string
 }
@@ -42,23 +44,45 @@ export interface ClaimedRun {
 }
 
 /**
- * Uniqueness is claimed by exclusive mkdir, not assumed from the identifier.
- * A collision retries rather than letting two runs share one directory.
+ * Every claim is a fresh name, so the loop makes progress and the bound is only
+ * a runaway guard. It is far above 5 — the old limit, which was safe when each
+ * attempt drew a fresh UUID and so collided only by accident. A name derived
+ * from the clock collides *by construction* for every run started in the same
+ * second, and the bound is now the ceiling on how many that can be.
  */
-export async function claimRunDir(workspacePath: string): Promise<ClaimedRun> {
-  const root = runsRoot(workspacePath)
+const MAX_CLAIM_ATTEMPTS = 100
+
+/**
+ * Uniqueness is claimed by exclusive mkdir, not asserted from the name. The
+ * *name* is what retries: two runs on one skill can start in the same second,
+ * and re-deriving the timestamp would collide again, so a collision takes
+ * `<base>-2`, `<base>-3`. Waiting for the next second instead would stall a run
+ * start on a clock tick.
+ */
+export async function claimDirIn(root: string, base: string): Promise<string> {
   await mkdir(root, { recursive: true, mode: WORKSPACE_MODE })
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const runId = uuidv7()
-    const runDir = join(root, runId)
+  for (let attempt = 1; attempt <= MAX_CLAIM_ATTEMPTS; attempt += 1) {
+    const dir = join(root, attempt === 1 ? base : `${base}-${attempt}`)
     try {
-      await mkdir(runDir, { recursive: false, mode: WORKSPACE_MODE })
-      return { runId, runDir }
+      await mkdir(dir, { recursive: false, mode: WORKSPACE_MODE })
+      return dir
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
     }
   }
-  throw new Error('could not claim a unique run directory after 5 attempts')
+  throw new Error(
+    `could not claim a unique directory under ${root} after ${MAX_CLAIM_ATTEMPTS} attempts`,
+  )
+}
+
+/**
+ * The directory is named for the start time, the run id stays a UUIDv7 recorded
+ * in `run.json`. Keeping them separate is what leaves every ordering rule on the
+ * id: a timestamp ties at one-second granularity, a UUIDv7 cannot.
+ */
+export async function claimRunDir(workspacePath: string, startedAt: Date): Promise<ClaimedRun> {
+  const runDir = await claimDirIn(runsRoot(workspacePath), runDirName(startedAt))
+  return { runId: uuidv7(), runDir }
 }
 
 export async function writeRunJson(runDir: string, meta: RunMeta): Promise<void> {
@@ -238,15 +262,17 @@ export async function finalizeRun(workspacePath: string, entry: IndexEntry): Pro
       await handle.close()
     }
 
-    // `latest` is the greatest run id, not the last finaliser. UUIDv7 orders by
-    // claim time, so two runs finishing out of order still agree.
+    // `latest` points at the greatest run id's directory, not the last
+    // finaliser's. UUIDv7 orders by claim time, so two runs finishing out of
+    // order still agree — which the directory's timestamp could not settle, two
+    // runs in one second sharing it.
     const entries = await readIndex(workspacePath)
-    const newest = entries.reduce((max, e) => (e.runId > max ? e.runId : max), entry.runId)
+    const newest = entries.reduce((max, e) => (e.runId > max.runId ? e : max), entry)
 
     const link = latestPath(workspacePath)
     const temp = `${link}.tmp`
     await rm(temp, { force: true })
-    await symlink(newest, temp)
+    await symlink(newest.dir ?? newest.runId, temp)
     await rename(temp, link)
   })
 }

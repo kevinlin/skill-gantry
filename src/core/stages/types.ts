@@ -44,7 +44,7 @@ export interface StageContext {
   stage: Stage
   /** Absolute path to `<run>/NN-<stage>/`. */
   stageDir: string
-  /** `<workspace>/skillgantry/runs/<runId>` — where sandbox.json and the journal live. */
+  /** `<workspace>/skillgantry/runs/<startTime>` — where sandbox.json and the journal live. */
   runDir: string
   selectedToolIds: readonly string[]
   lock: ToolLock

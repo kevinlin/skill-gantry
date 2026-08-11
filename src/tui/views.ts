@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import {
   STAGE_ORDER,
   readIndex,
-  runsRoot,
+  runDirFor,
   stageDirFor,
   toolDirFor,
   type DashboardStats,
@@ -65,13 +65,16 @@ export async function listArtefacts(runDir: string | null): Promise<string[]> {
 }
 
 /**
- * The greatest run id, never the `latest` symlink — which is absent mid-write
- * (§9.2). One function rather than the same reduce in both readers below,
- * because two copies is how they come to disagree about which run is newest.
+ * The greatest run id's entry, never the `latest` symlink — which is absent
+ * mid-write (§9.2). Ordered on the id, not the entry's directory name: two runs
+ * starting in one second share that name's second, and the id cannot tie.
+ *
+ * One function rather than the same reduce in both readers below, because two
+ * copies is how they come to disagree about which run is newest.
  */
-const newestRunId = (entries: readonly IndexEntry[]): string | null =>
-  entries.reduce<string | null>(
-    (max, entry) => (max === null || entry.runId > max ? entry.runId : max),
+const newestEntry = (entries: readonly IndexEntry[]): IndexEntry | null =>
+  entries.reduce<IndexEntry | null>(
+    (max, entry) => (max === null || entry.runId > max.runId ? entry : max),
     null,
   )
 
@@ -86,8 +89,7 @@ export async function loadSkillStatuses(
   const out: Record<string, string> = {}
   for (const skill of skills) {
     const entries = await readIndex(skill.workspacePath).catch(() => [])
-    const newest = newestRunId(entries)
-    const latest = entries.find((entry) => entry.runId === newest)
+    const latest = newestEntry(entries)
     if (latest) out[skill.id] = latest.outcome
   }
   return out
@@ -144,9 +146,10 @@ async function toolLogLines(stageDir: string, toolId: string): Promise<string[]>
  */
 export async function loadLastRun(workspacePath: string): Promise<LastRun | null> {
   const entries = await readIndex(workspacePath).catch(() => [])
-  const runId = newestRunId(entries)
-  if (runId === null) return null
-  const runDir = join(runsRoot(workspacePath), runId)
+  const entry = newestEntry(entries)
+  if (entry === null) return null
+  const runId = entry.runId
+  const runDir = runDirFor(workspacePath, entry)
 
   const stages: LastRunStage[] = []
   const lines: string[] = []
