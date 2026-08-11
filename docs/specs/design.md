@@ -1515,3 +1515,9 @@ Still open. Two the first draft carried are closed and gone: the adapter contrac
 | Rule-class map goes stale | Unmapped findings degrade to tool-scoped classes; migration is explicit and versioned (§10.6) |
 | Ink responsiveness under sustained output | Ring buffer outside React plus fixed-interval flush; R11.4 is a measurable acceptance test |
 | Upstream tools are young and will change output | Golden fixtures tied to pins with a scripted refresh; parse failure degrades to `errored` with the artefact retained, never to a wrong result |
+
+## 20. Version check and upgrade
+
+Specified in [design_version-check-and-upgrade.md](design_version-check-and-upgrade.md): the GitHub Releases publishing contract and its two pre-publish assertions, `CHANGELOG.md` and the first-parent walk that backfills it, the versioned install prefix and the atomic relink that adopts one, the throttled launch-time check, and the three surfaces that reach it — the prompt (§14.13), `skillgantry upgrade` (§15) and doctor's `skillgantry-outdated` (§5.3).
+
+It is numbered 20 rather than inserted beside §13, because §16–§19 are cited by id from the plans and from `tests/specs/`, and renumbering them to make room would invalidate every one of those citations to buy nothing but adjacency. It is a separate file for [design_tui.md](design_tui.md)'s reason: no other section reads it.

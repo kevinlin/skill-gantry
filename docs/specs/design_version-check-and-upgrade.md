@@ -1,16 +1,21 @@
-# Version check and self-upgrade
+# SkillGantry — Design: version check and upgrade
 
-**Date:** 2026-08-11
-**Status:** design, approved. Implementation plan not yet written.
-**Owns:** a new milestone M12.
+**Layer:** design (layer 2 of 3: [requirements](requirements.md) → design → plan)
+**Traces to:** [requirements.md](requirements.md), [design.md](design.md), [decision-log.md](decision-log.md)
+**Owns:** milestone M12.
+
+§20 of [design.md](design.md), held in its own file for [design_tui.md](design_tui.md)'s reason: no
+other section reads it, and it arrives whole rather than as amendments spread across a dozen
+existing sections. Every `§n` below with no file named is this file's; design.md's are named
+explicitly.
 
 SkillGantry ships from GitHub Releases. On launch the terminal interface asks whether a newer
 release exists, shows what changed, and — only on confirmation — installs it, migrates what needs
 migrating, and relaunches into it.
 
-This document is the validated design. It is not a contract: `docs/specs/requirements.md` and
-`docs/specs/design.md` become the contract once amended, per the precedence rule in `CLAUDE.md`.
-§8 lists exactly which amendments those are.
+**§8 is the load-bearing section for anyone reading this as a contract.** The ids below are
+proposals until they land in [requirements.md](requirements.md) with a milestone owner; until then
+this document describes agreed intent, not a checkable requirement.
 
 ---
 
@@ -403,9 +408,9 @@ land in `requirements.md` with a milestone owner, or `tests/specs/traceability.t
 
 | Doc | Change |
 |---|---|
-| `requirements.md` | **R13.8** release pipeline and its two assertions · **R13.9** CHANGELOG.md, its format, backfill and the asset · **R13.10** versioned prefixes, atomic relink, retention, ownership · **R13.11** the check: throttle, silent failure, decline, eligibility refusal · **R13.12** the apply: verify-before-adopt, snapshot, no-op on failure, relaunch guard · **R11.24** the prompt · **R12.10** `skillgantry upgrade` · a new **M12** row owning all seven |
-| `design.md` | a new **§20 Version check and upgrade** · §15 gains the subcommand · §5.3 gains the `skillgantry-outdated` condition · §17 traceability rows · §18 change history |
-| `design_tui.md` | **§14.13** the prompt |
+| [requirements.md](requirements.md) | **R13.8** release pipeline and its two assertions · **R13.9** CHANGELOG.md, its format, backfill and the asset · **R13.10** versioned prefixes, atomic relink, retention, ownership · **R13.11** the check: throttle, silent failure, decline, eligibility refusal · **R13.12** the apply: verify-before-adopt, snapshot, no-op on failure, relaunch guard · **R11.24** the prompt · **R12.10** `skillgantry upgrade` · a new **M12** row owning all seven |
+| [design.md](design.md) | **§20** pointing at this file · §15 gains the subcommand · §5.3 gains the `skillgantry-outdated` condition · §17 traceability rows · §18 change history |
+| [design_tui.md](design_tui.md) | **§14.13** the prompt |
 
 M12 exit criteria, for the milestone row:
 
@@ -421,7 +426,7 @@ M12 exit criteria, for the milestone row:
 
 ### 8.1 Pre-existing defect found while designing
 
-`design_tui.md` carries **two sections numbered `### 14.12`** — "The repo and skill list" and "The
+[design_tui.md](design_tui.md) carries **two sections numbered `### 14.12`** — "The repo and skill list" and "The
 setup repo step". Unrelated to this work, not fixed here, recorded so it is not lost.
 
 ---
