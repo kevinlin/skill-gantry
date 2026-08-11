@@ -203,6 +203,7 @@ export {
   type SuppressionRequest,
 } from './suppress/target.js'
 export { entriesAbove, parseChangelog } from './upgrade/changelog.js'
+export { resolveEligibility } from './upgrade/eligible.js'
 export { loadUpgradeState, saveUpgradeState } from './upgrade/state.js'
 export type {
   ChangelogEntry,
