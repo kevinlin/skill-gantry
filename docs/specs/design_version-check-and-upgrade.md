@@ -286,7 +286,9 @@ entries for unreleased work. Asset downloads also do not count against the API's
 
 It is fetched only when the check says `available`, and cached in `upgrade.json` **already sliced**
 to the entries above the running version, so a throttled launch still shows notes with no network
-call. A user two versions behind sees both entries.
+call. A user two versions behind sees both entries. The asset's URL is not cached alongside them —
+the slice is the whole reason the fetch happened, and a URL kept past it is a second way to reach
+content the cache already holds.
 
 ```json
 {
@@ -297,7 +299,6 @@ call. A user two versions behind sees both entries.
     "publishedAt": "2026-08-14T10:00:00Z",
     "tarballUrl": "…",
     "sumsUrl": "…",
-    "changelogUrl": "…",
     "releaseUrl": "…",
     "entries": [{ "version": "0.6.0", "lines": ["feat(tui): …"] }]
   }
