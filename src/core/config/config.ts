@@ -45,13 +45,32 @@ export async function canonicalisePath(input: string): Promise<string> {
   return real.length > 1 && real.endsWith(sep) ? real.slice(0, -1) : real
 }
 
+/**
+ * R13.12. A version literal that has moved is the one parse failure a user can
+ * act on, and the raw zod error for it names neither number. Every other
+ * failure keeps the zod error, which already points at the offending key.
+ */
+function versionMismatch(file: string, raw: unknown, expected: number): string | null {
+  const found = (raw as { version?: unknown } | null)?.version
+  if (typeof found !== 'number' || found === expected) return null
+  return (
+    `${file} was written by a different skillgantry (document version ${found}; ` +
+    `this build reads ${expected}). Upgrade with \`skillgantry upgrade\`, or restore ` +
+    `the copy under ~/.skillgantry/backup/.`
+  )
+}
+
 export async function loadConfig(home: string): Promise<GantryConfig> {
+  let raw: unknown
   try {
-    return configSchema.parse(JSON.parse(await readFile(configFile(home), 'utf8')))
+    raw = JSON.parse(await readFile(configFile(home), 'utf8'))
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return DEFAULT_CONFIG
     throw err
   }
+  const mismatch = versionMismatch('config.json', raw, DEFAULT_CONFIG.version)
+  if (mismatch) throw new Error(mismatch)
+  return configSchema.parse(raw)
 }
 
 export async function saveConfig(home: string, config: GantryConfig): Promise<void> {
@@ -130,12 +149,16 @@ export async function updateRepo(
 }
 
 export async function loadToolLock(home: string): Promise<ToolLock> {
+  let raw: unknown
   try {
-    return toolLockSchema.parse(JSON.parse(await readFile(lockFile(home), 'utf8')))
+    raw = JSON.parse(await readFile(lockFile(home), 'utf8'))
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { version: 1, tools: {} }
     throw err
   }
+  const mismatch = versionMismatch('tools/lock.json', raw, 1)
+  if (mismatch) throw new Error(mismatch)
+  return toolLockSchema.parse(raw)
 }
 
 export async function saveToolLock(home: string, lock: ToolLock): Promise<void> {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mkdtemp, symlink } from 'node:fs/promises'
+import { mkdir, mkdtemp, symlink, writeFile } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -7,6 +7,7 @@ import {
   canonicalisePath,
   inspectRepo,
   loadConfig,
+  loadToolLock,
   registerRepo,
   saveConfig,
   updateRepo,
@@ -32,6 +33,47 @@ describe('loadConfig', () => {
     const h = await home()
     await saveConfig(h, { ...DEFAULT_CONFIG, concurrency: 0 } as never).catch(() => undefined)
     await expect(saveConfig(h, { ...DEFAULT_CONFIG, concurrency: 0 } as never)).rejects.toThrow()
+  })
+
+  // The raw zod error for a moved version literal names neither number, so a
+  // user meeting it has nothing to act on.
+  it('names both document versions and the recovery when the version has moved', async () => {
+    const h = await home()
+    await mkdir(h, { recursive: true })
+    await writeFile(join(h, 'config.json'), JSON.stringify({ ...DEFAULT_CONFIG, version: 2 }))
+
+    const error = await loadConfig(h).then(
+      () => null,
+      (err: Error) => err,
+    )
+    expect(error?.message).toContain('2')
+    expect(error?.message).toContain('1')
+    expect(error?.message).toContain('skillgantry upgrade')
+    expect(error?.message).toContain('backup')
+  })
+
+  it('keeps the zod error for a document malformed any other way', async () => {
+    const h = await home()
+    await mkdir(h, { recursive: true })
+    await writeFile(join(h, 'config.json'), JSON.stringify({ ...DEFAULT_CONFIG, concurrency: 0 }))
+
+    await expect(loadConfig(h)).rejects.not.toThrow(/skillgantry upgrade/)
+    await expect(loadConfig(h)).rejects.toThrow()
+  })
+})
+
+describe('loadToolLock', () => {
+  it('names both document versions when the lock version has moved', async () => {
+    const h = await home()
+    await mkdir(join(h, 'tools'), { recursive: true })
+    await writeFile(join(h, 'tools', 'lock.json'), JSON.stringify({ version: 2, tools: {} }))
+
+    const error = await loadToolLock(h).then(
+      () => null,
+      (err: Error) => err,
+    )
+    expect(error?.message).toContain('lock.json')
+    expect(error?.message).toContain('skillgantry upgrade')
   })
 })
 
