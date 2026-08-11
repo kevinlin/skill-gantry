@@ -115,6 +115,7 @@ export {
   type LifecycleFinding,
   type ToolDriftKind,
   type ToolFinding,
+  type UpgradeFinding,
 } from './tools/doctor.js'
 export { canonicalisePath, saveConfig, saveToolLock } from './config/config.js'
 export {
@@ -139,7 +140,7 @@ export {
 } from './isolation/recover.js'
 export { retireSkill, type RetireInput, type RetireResult } from './release/retire.js'
 export { releaseDirtyPaths } from './release/preflight.js'
-export { isBumpLevel, resolveTargetVersion } from './release/version.js'
+export { compareSemver, isBumpLevel, resolveTargetVersion } from './release/version.js'
 export type {
   ChangeEntry,
   ChangeKind,
@@ -202,3 +203,25 @@ export {
   type SuppressionPreview,
   type SuppressionRequest,
 } from './suppress/target.js'
+export {
+  applyUpgrade,
+  type ApplyOptions,
+  type ApplyResult,
+  type ApplyStep,
+} from './upgrade/apply.js'
+export { entriesAbove, parseChangelog } from './upgrade/changelog.js'
+export {
+  DEFAULT_REPO,
+  THROTTLE_MS,
+  checkForUpgrade,
+  type CheckOptions,
+} from './upgrade/check.js'
+export { resolveEligibility } from './upgrade/eligible.js'
+export { loadUpgradeState, saveUpgradeState } from './upgrade/state.js'
+export type {
+  ChangelogEntry,
+  Eligibility,
+  ReleaseInfo,
+  UpgradeCheck,
+  UpgradeState,
+} from './upgrade/types.js'

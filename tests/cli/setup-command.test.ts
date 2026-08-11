@@ -45,6 +45,9 @@ describe('first-run routing', () => {
       startSetup: async () => {
         calls.push('setup')
       },
+      // The launch check reaches the release index; the default suite is
+      // offline, so the root action's seam stands in for it.
+      maybeUpgrade: async () => 'continue',
     }
     await buildProgram(deps).parseAsync(['node', 'skillgantry'])
     expect(calls).toEqual(['setup'])

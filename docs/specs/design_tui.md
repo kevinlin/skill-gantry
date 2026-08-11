@@ -450,3 +450,30 @@ enter save · ↑/↓ choose · esc back · ctrl-d finish
 **Enter never deletes.** An empty field keeps the message it already had, in both slots. Removal is Settings' `d`, behind §14.2's change set, and it stays there: the wizard is a forward walk with no confirmation surface, and a destructive key beside a free-text field is where a stray keystroke costs the most.
 
 **Row budget.** The step had no windowing, having had no unbounded content; the list is unbounded, so it takes the same `listWindow()` the tool list and the install list use, against `setupBodyRows(rows, extras)` less this step's fixed rows — credentials, its warnings, the heading, the blank, the field and the two verdict rows. §14.1's first rule holds unchanged: the `N more` footnote is spent out of the list's allocation, never appended below it. The hint has three phrasings rather than one truncated superset, each measured against `width - 2`, because §14.1's footer rule refuses to cut the row that names the keys — and the phrasing changes with the slot anyway, `enter register` and `enter save` being different promises.
+
+### 14.13 The upgrade prompt
+
+*Satisfies R11.24.*
+
+`src/tui/upgrade-app.tsx` exports `UpgradeApp`, and `src/tui/index.tsx` exports `renderUpgrade(props): Promise<'upgrade' | 'skip'>` beside `renderSetup`. Props in, one answer out: no filesystem read, no spawn, no ledger. `src/cli/` performs the check, hands the resolved release in as props, and acts on the answer — the boundary §3 draws, and the reason this surface is testable through `render-ink.tsx` with no network and no terminal.
+
+```
+╭─ upgrade available ──────────────────────────╮
+│ 0.5.1  ->  0.6.0        released 2026-08-14  │
+│                                              │
+│ 0.6.0                                        │
+│ - two-level repo and skill navigation        │
+│ - reproduce the candidate manifest in the …  │
+│                                              │
+│ installs to ~/.skillgantry/versions/0.6.0    │
+│ and relaunches.   y upgrade    n skip        │
+╰──────────────────────────────────────────────╯
+```
+
+**Two keys, and deliberately no third.** `y` resolves `'upgrade'`, `n` resolves `'skip'`, every other key is inert. No `q`: a quit key at a prompt nobody asked for exists only to be hit by mistake, and `n` already reaches the main screen. Ctrl+C leaves the prompt the way it leaves every other Ink surface here — the process exits, nothing is written, and no decline is recorded, so an interrupt is not silently read as an answer.
+
+**No `alternateScreen`, matching `renderSetup`.** The decision the user just made stays in their scrollback, which is where the apply progress lines land after the prompt unmounts, in `install-cli.sh`'s register.
+
+**It costs nothing from §14.1's row budget.** This is not the main app: it renders, resolves and unmounts before `startTui` is reached, so no panel allocation, no `SKILL_LIST_MIN` and no Overview tier boundary is involved. Its own height is bounded the way the Findings pane's is — the frame and the footer take their rows first, the entries take the remainder, and what does not fit is reported as a count rather than cut silently.
+
+**Newest first, headed by version.** The entries arrive already sliced to those above the running version (§20), so a user two versions behind sees both sections and knows what the intervening release contained. The install path is on screen because the answer authorises a write, and R11.24 requires the prompt to name where it lands.

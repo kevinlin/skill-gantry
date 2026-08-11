@@ -361,3 +361,16 @@ The cost of the omission was not abstract. Optimise had no member in any preset,
 Marking `optimise` opens a surface that hands the maintainer a prompt built from the skill's recorded evidence. SkillGantry installs and composes; it never runs the loop and never applies its result.
 *Why:* SkillHone's optimisation loop is eval-repo-driven and lands PRs — a public skill repo, a private eval repo with datasets and a verifier, per-item solver workdirs, an observation surface backed by Forgejo or the filesystem. SkillGantry models none of that. Wrapping it as a stage executor would mean either modelling all of it or fabricating a degenerate single-shot version and calling it the tool's output. The honest handoff is the evidence, which is exactly R6.10's shape for the same reason: the last time a tool's output could not be applied mechanically, the deliverable was a prompt.
 *Rejected:* an adapter and a stage executor (would need an eval repo concept the ledger has no room for, and a `parse` for a tool that reports nothing SkillGantry reads); writing the prompt to a file like R6.10's (the trigger is a keystroke rather than a run, and the pipeline is the only writer under `runs/`).
+
+## 14. SkillGantry distributes and upgrades itself
+
+**D30. The channel is GitHub Releases, and a version is adopted by rename.**
+CI publishes a packed tarball plus a checksum file and `CHANGELOG.md` against a `v*` tag. A client installs into `<home>/versions/<version>` and swings `~/.local/bin/skillgantry` onto it with one atomic rename.
+*Why:* the npm name is unclaimed and the repo is already the distribution point, so releases cost no new account and no permanent public package. `gh-release.ts` established the download-and-verify shape, and `Integrity` already has a `sha256-asset` member for exactly this. The versioned prefix exists because the flat one cannot be replaced by the process running from it, and the rename exists because `ln -sfn` unlinks before it symlinks, leaving a window with no command on PATH.
+*Rejected:* publishing to npm (claims the name permanently, and buys only the install step); cloning and building on the user's machine (a full toolchain and minutes per upgrade, for a package that packs in seconds).
+
+**D31. The upgrade is offered at launch and adopted by relaunch, with no way to turn the offer off.**
+The check runs before the main screen mounts, at most once per 24 hours, and never blocks or fails the launch. On confirmation the new version is installed, verified, adopted and re-executed with the same arguments.
+*Why:* launch is the only moment in a session with no run in flight and no ledger open, which is what makes "install and relaunch" cheap and safe; mid-session it is neither. Two independent guards stop a respawn loop — the post-install version equality check, and `SG_UPGRADED_FROM` on the child.
+*The cost, accepted:* a machine behind a blocking proxy pays the 2-second timeout once per 24 hours with no switch to flip. An opt-out was considered and dropped as a setting that would exist mainly to be found in a support thread.
+*Rejected:* a background check after mount (interrupts a user already working, and relaunch is then unsafe); applying on exit (upgrades a session already finished, and a Ctrl+C silently drops the upgrade the user agreed to).

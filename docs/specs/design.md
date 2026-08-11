@@ -57,7 +57,7 @@ A pnpm workspace was rejected: the goal is a testable boundary, which a folder p
 
 Distribution acceptance (R13.5): `npm pack` output is installed into a clean temp prefix in CI and `skillgantry --version` is invoked from it. Packaging is verified, not assumed.
 
-Local installation is `pnpm run install:cli`, which packs the working tree, installs it into `~/.skillgantry/cli` and links `~/.local/bin/skillgantry`, verifying by invocation before reporting success. The prefix is wiped on every run, so the command on PATH always reflects current source. It is a shell script rather than a subcommand because a subcommand cannot perform the first install. `SG_HOME` and `SG_BIN_DIR` override both paths, which is how the acceptance test installs without touching a real home. This is the one place SkillGantry writes outside a directory it owns; R3.1 binds managed tools, not SkillGantry's own binary.
+Local installation is `pnpm run install:cli`, which packs the working tree, installs it into `~/.skillgantry/versions/<version>` and links `~/.local/bin/skillgantry` onto it with one atomic rename, verifying by invocation before reporting success. That version's prefix is wiped on every run, so the command on PATH always reflects current source; sibling versions are retained two deep, which §20 relies on for a rollback. It is a shell script rather than a subcommand because a subcommand cannot perform the first install. `SG_HOME` and `SG_BIN_DIR` override both paths, which is how the acceptance test installs without touching a real home. This is the one place SkillGantry writes outside a directory it owns; R3.1 binds managed tools, not SkillGantry's own binary.
 
 ## 3. Module map
 
@@ -329,6 +329,8 @@ skill-upper is in no preset and on no row of the tool list, and is installed whe
 Every preset includes vercel `skills`, because the release stage cannot run its installability gate without it.
 
 Doctor reports four drift kinds per tool: `missing` (in lock, absent on disk), `unverifiable` (present, will not run), `version-drift` (runs, reports a version other than `resolvedVersion`), and `unlocked` (installed under the tool root but absent from the lock). Three further conditions are reported and do not fail the report: `integrity-unverified`, a lock entry recording `integrity: "none"` per §5.2; `lifecycle-drift` per §13; `rule-map-pending`, a ledger whose applied rule-map version trails the shipped one per §10.6; `skillhone-deps`, a managed venv whose interpreter cannot import the bundle's requirements; `claude-cli-missing`, no `claude` on PATH, which `claude-agent-sdk` shells out to, so its absence surfaces not at install time but as a `FileNotFoundError` at the optimisation loop's first run; §5.4's three, `skillhone-config-missing`, `skillhone-config-unmanaged` and `skillhone-config-stale`; and `skill-link-unmanaged`, a runtime skills directory holding a bundled skill through a link SkillGantry did not create. Those six are R3.7's probe-and-report rule applied to a tool's own runtime dependency, its own configuration and a directory it shares with the user rather than to a host runtime: named, never installed and never written.
+
+One further condition is reported and does not fail the report: `skillgantry-outdated`, a published release newer than the running build (§20). It names the version available and the command that installs it, `skillgantry upgrade`, and doctor never installs it — R3.7's probe-and-report rule applied to SkillGantry's own binary. It is not a `ToolDriftKind`: SkillGantry is not one of the tools in the lock, and widening that union would put it into every per-tool loop over the kinds. The check runs in `src/cli/` and is passed in as data, exactly as the lifecycle cache already is, so `src/core/tools/` gains no network dependency.
 
 `skill-link-unmanaged` needs a kind of its own because the two states beside it already have one and neither describes it. A catalogued, selected tool with no lock entry is `unlocked`; a link SkillGantry made and something deleted fails `verifyGitSkill` into `missing`. The third is a foreign copy, which *works* — the agent has the skill, it is simply not ours — so it does not fail the report, and its detail names the link, its target, and that removing it and re-running `skillgantry setup` puts the pinned copy in place. Failing a report on a machine that is fine is how a doctor report stops being read, which is the same trade `integrity-unverified` and `lifecycle-drift` already make. None means a tool cannot run. `rule-map-pending` is resolved by `skillgantry doctor --migrate-rule-map`, which is the explicit trigger R8.14 requires — the migration never runs as a side effect of opening the ledger.
 
@@ -1351,7 +1353,7 @@ Specified in [design_tui.md](design_tui.md), which holds §14 through §14.6 und
 
 ## 15. Headless interface
 
-*Satisfies R12.1–R12.4, R12.5a, R12.5b, R12.6, R12.7, R12.8, R12.9.*
+*Satisfies R12.1–R12.4, R12.5a, R12.5b, R12.6, R12.7, R12.8, R12.9, R12.10.*
 
 ```
 skillgantry run <skill> --stage validate,evaluate,security [--json] [--yes]
@@ -1368,6 +1370,7 @@ skillgantry suppress <skill> --tool <id> --rule <nativeRuleId> --path <skillRelP
 skillgantry suppress <skill> --fingerprint <fp> --reason <text> [--yes] [--json]
 skillgantry optimise <skill> [--json]
 skillgantry evals <skill> [--json]
+skillgantry upgrade [--yes] [--json] [--check]
 skillgantry [--concurrency <n>]                    # no subcommand: the TUI
 ```
 
@@ -1452,6 +1455,11 @@ There is no `--then-run`, unlike §14.7's toggle. The shell composes `suppress &
 | Suppression round trip | A fake tool branching on `--baseline`, through the whole CLI (`tests/acceptance/m8.test.ts`) | The gate fails, `suppress` writes the rule, the re-run passes, the issue reads suppressed and still `open` with its history, and deleting the entry brings the finding back |
 | The written rule matches | A real installed skillspector, twice over a real skill (`SG_INTEGRATION=1`) | The rule SkillGantry wrote is one the tool's own `fnmatch` matches. The acceptance tier cannot prove this: its fake tool branches on whether the flag arrived, which is a different question from whether the rule inside the file matches, and a wrong path shape loads cleanly and suppresses nothing |
 | Palette and titled border | `tokens.ts` asserted as data, plus a source scan over `src/tui/**`; `Panel`'s title row measured against the box beneath it | Every token is a hex triple and no background or body foreground is set anywhere in the tree; the title row and its box agree to the cell, so no corner tears; the saved row reaches the layout budget — R11.15, §14.6 |
+| Upgrade check | An injected `fetchImpl` serving a canned `releases/latest` and changelog asset | The throttle skips the request and still answers from the cache; a failed request records nothing, so it buys no silence; a decline sticks for its version and lapses for the one above it; `force` ignores both; a missing asset is `unreachable`, never a throw — R13.11 |
+| Upgrade apply | A fake `Exec` standing in for npm, so every assertion is about ordering rather than about npm | A checksum mismatch and a post-install version mismatch each leave the link resolving where it did and no `versions/<new>`; the snapshot precedes the relink; retention is exactly two; the legacy flat prefix goes only after a successful relink — R13.12 |
+| Upgrade eligibility | Fixture homes with a link into the versioned prefix, into the legacy one, and a development tree | Ours is adopted, a foreign tree is refused by name, and an entry point that is not a symlink is refused because there is nothing to swing — R13.10 |
+| Upgrade end to end | A real `install-cli.sh`, a second `npm pack` at a bumped version served from a local `http` server, driven through the installed link (`tests/acceptance/m9.test.ts`) | The link resolves into `versions/<new>`, the binary reports the new version, the previous prefix survives and `backup/<old>/config.json` was written |
+| Upgrade crash safety | The same upgrade paused inside the window before the relink and killed with `SIGKILL` (`tests/acceptance/m9.test.ts`) | The link is intact and the binary still reports the **old** version. A unit test can only fabricate this state; killing a real child is what proves the ordering — the `isolation` row's rule, applied to our own binary |
 
 Fixture capture is a scripted, repeatable step tied to the pinned tool versions, so fixtures and pins cannot drift apart.
 
@@ -1477,8 +1485,11 @@ Fixture capture is a scripted, repeatable step tied to the pinned tool versions,
 | R9 release | 12.4 |
 | R10 mutation safety | 12.1, 12.2, 12.3, 12.5 |
 | R11 terminal interface | [design_tui.md](design_tui.md) 14, 14.1, 14.2, 14.3, 14.5, 14.6, 14.7, 14.8, 14.9, 14.10, 14.11 |
+| R11.24 the upgrade prompt | [design_tui.md](design_tui.md) 14.13 |
 | R12 headless | 15 |
+| R12.10 `skillgantry upgrade` | 15 |
 | R13 quality and distribution | 2, 16 |
+| R13.8–R13.12 release contract, changelog, versioned prefix, check and apply | 20, 5.3, 15 |
 
 The mapping is checkable rather than asserted: every `*Satisfies …*` label in this document is parsed by a spec test, unioned, and compared against the requirement ids in requirements.md. A requirement claimed by no section, or a section claiming a requirement that does not exist, fails the build. That is what caught §12 claiming R9.1–R9.10 while implementing R9.11, and §14 and §15 omitting R11.6 and the release subcommand.
 
@@ -1500,6 +1511,7 @@ Every pass below is recorded in full somewhere else — the two reviews are thei
 | M7 extension | Navigation, and the surface a truncating pane cannot be: a key that moves focus to what it selects rather than acting at a distance, both arrow pairs as aliases, the Issues tab's own cursor and a tagged query response, the dashboard key on every Overview tier that renders, and a full-length view of one finding or one issue (§14.2, §14.6, §14.8) | [plan_m7.1-work-screen-navigation.md](plan_m7.1-work-screen-navigation.md) |
 | M4.1 | SkillHone catalogued as a skill bundle rather than a CLI, which gave the optimise stage something behind it: the `git-skill` install kind and its three-fact verification (§5.1, §5.2, §5.3), the R6.12 prompt (§9.4a), the surface that presents it (§14.10) and the subcommand that prints it (§15); then, in revision 2, the configuration file that install left uncomposed (§5.1, §5.3, §5.4) | [plan_m4.1-skillhone-optimise.md](plan_m4.1-skillhone-optimise.md) |
 | M4.2 | A way for the evaluate gate to start: skill-upper catalogued as a `git-skill` bundle with no dependencies at all (§5.1a, §5.2), doctor's report of a skill link that is not ours (§5.3), the eval bootstrap prompt (§9.4b), the pane it shares with optimise and the pre-flight that opens it (§14.11), and the subcommand that prints it (§15) | [plan_m4.2-skillup-first-eval.md](plan_m4.2-skillup-first-eval.md) |
+| M9 | Distribution became a thing the product does rather than a thing the maintainer does: a release contract with two pre-publish assertions, a changelog the client reads from the release's own asset, versioned install prefixes adopted by one atomic rename, and the launch-time offer that uses them (§20, §5.3, §15, §14.13) | [plan_m9-version-check-and-upgrade.md](plan_m9-version-check-and-upgrade.md) |
 
 ## 19. Risks carried into implementation
 
@@ -1517,6 +1529,8 @@ Still open. Two the first draft carried are closed and gone: the adapter contrac
 | Upstream tools are young and will change output | Golden fixtures tied to pins with a scripted refresh; parse failure degrades to `errored` with the artefact retained, never to a wrong result |
 
 ## 20. Version check and upgrade
+
+*Satisfies R13.8–R13.12.*
 
 Specified in [design_version-check-and-upgrade.md](design_version-check-and-upgrade.md): the GitHub Releases publishing contract and its two pre-publish assertions, `CHANGELOG.md` and the first-parent walk that backfills it, the versioned install prefix and the atomic relink that adopts one, the throttled launch-time check, and the three surfaces that reach it — the prompt (§14.13), `skillgantry upgrade` (§15) and doctor's `skillgantry-outdated` (§5.3).
 

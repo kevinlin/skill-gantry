@@ -68,10 +68,21 @@ export interface LifecycleFinding {
   ledger: LifecycleState
 }
 
+/**
+ * Not a `ToolDriftKind`: SkillGantry is not one of the tools in the lock, and
+ * widening that union would put it into every per-tool loop over the kinds.
+ */
+export interface UpgradeFinding {
+  current: string
+  latest: string
+}
+
 export interface DoctorReport {
   runtimes: RuntimeStatus[]
   tools: ToolFinding[]
   lifecycle: LifecycleFinding[]
+  /** §5.3's `skillgantry-outdated`, reported and never failing the report. */
+  upgrade: UpgradeFinding | null
   failed: boolean
 }
 
@@ -92,6 +103,13 @@ export interface DoctorInput {
    * a test can point the check at a temp home.
    */
   userHome?: string
+  /**
+   * Supplied by src/cli, exactly as `ruleMap` is and for the same rule: the
+   * check reaches the network, and `tools` owns no network dependency. `null`
+   * covers both "nothing newer" and "the check could not be made" — neither is
+   * something to report, and neither fails the report (§5.3).
+   */
+  upgradeAvailable?: { current: string; latest: string } | null
   exec?: Exec
 }
 
@@ -367,6 +385,7 @@ export async function doctor(input: DoctorInput): Promise<DoctorReport> {
     runtimes: await probeRuntimes(runtimesFor(CATALOGUE), exec),
     tools,
     lifecycle: await lifecycleDrift(input.skills, input.ledgerLifecycle),
+    upgrade: input.upgradeAvailable ?? null,
     failed: tools.some((finding) => FAILING.has(finding.kind)),
   }
 }

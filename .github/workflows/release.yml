@@ -1,0 +1,82 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      # R13.8. A tag whose asset carries a different version makes the client
+      # loop: it installs, receives a version it did not ask for, and still
+      # sees the upgrade available.
+      - name: Tag matches the manifest
+        run: |
+          manifest="v$(node -p 'require("./package.json").version')"
+          [ "$manifest" = "$GITHUB_REF_NAME" ] || {
+            echo "tag $GITHUB_REF_NAME does not match package.json ($manifest)" >&2
+            exit 1
+          }
+
+      # R13.8. A missing section makes the upgrade prompt render blank.
+      - name: Changelog has a section for this version
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          grep -q "^## $version " CHANGELOG.md || {
+            echo "CHANGELOG.md has no '## $version' section" >&2
+            exit 1
+          }
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run checks
+        run: pnpm check
+
+      - name: Pack
+        run: |
+          mkdir -p release
+          pnpm pack --pack-destination release
+
+      - name: Checksums
+        working-directory: release
+        run: sha256sum ./*.tgz > SHA256SUMS
+
+      - name: Release notes
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '
+            $0 ~ "^## " v " " { on = 1; next }
+            on && /^## / { exit }
+            on { print }
+          ' CHANGELOG.md > release/NOTES.md
+          cp CHANGELOG.md release/CHANGELOG.md
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file release/NOTES.md \
+            release/*.tgz release/SHA256SUMS release/CHANGELOG.md

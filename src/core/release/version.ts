@@ -30,7 +30,7 @@ export function parseSemver(value: string): Parsed | null {
 }
 
 /** A release is greater than a prerelease of the same numbers, per semver. */
-function compare(a: Parsed, b: Parsed): number {
+function compareParsed(a: Parsed, b: Parsed): number {
   if (a.major !== b.major) return a.major - b.major
   if (a.minor !== b.minor) return a.minor - b.minor
   if (a.patch !== b.patch) return a.patch - b.patch
@@ -75,8 +75,22 @@ export function resolveTargetVersion(current: string | null, spec: string): stri
   }
 
   const parsedTarget = parseSemver(target) as Parsed
-  if (parsedCurrent && compare(parsedTarget, parsedCurrent) <= 0) {
+  if (parsedCurrent && compareParsed(parsedTarget, parsedCurrent) <= 0) {
     throw new Error(`${target} is not greater than ${current}`)
   }
   return target
+}
+
+/**
+ * Exported for the upgrade check (§20), which asks the same question release
+ * asks: is this version greater than that one. A second comparator is how the
+ * two come to disagree about what "newer" means — the prerelease rule above is
+ * exactly the part a hand-rolled second copy gets wrong.
+ */
+export function compareSemver(a: string, b: string): number {
+  const left = parseSemver(a)
+  const right = parseSemver(b)
+  if (!left) throw new Error(`${a} is not a semver`)
+  if (!right) throw new Error(`${b} is not a semver`)
+  return compareParsed(left, right)
 }

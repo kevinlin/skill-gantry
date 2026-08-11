@@ -19,6 +19,7 @@ import { detectInterrupted, formatInterrupted, runRecover } from './recover-comm
 import { runRelease, type ReleaseOptions } from './release-command.js'
 import { runRetire, type RetireOptions } from './retire-command.js'
 import { needsSetup, startSetup, type SetupOptions } from './setup-command.js'
+import { maybeUpgrade, runUpgrade, type UpgradeOptions } from './upgrade-command.js'
 import { startTui, type TuiOptions } from './tui-command.js'
 
 const STAGES: readonly Stage[] = ['validate', 'evaluate', 'security', 'optimise', 'release']
@@ -31,6 +32,12 @@ export interface CliDeps {
   startTui?: (options: TuiOptions) => Promise<void>
   /** Test seam. Defaults to the real wizard. */
   startSetup?: (options: SetupOptions) => Promise<void>
+  /** Test seam, and the one that keeps the default suite offline: the real
+      `maybeUpgrade` reaches the release index, and every test driving the root
+      action would otherwise make that request. */
+  maybeUpgrade?: (deps: CliDeps) => Promise<'continue' | 'relaunched'>
+  /** The same seam for the same reason, on doctor's §5.3 condition. */
+  upgradeCheck?: (home: string) => Promise<{ current: string; latest: string } | null>
 }
 
 /**
@@ -43,7 +50,11 @@ export interface GantryProgram extends Command {
 }
 
 export function defaultDeps(): CliDeps {
-  const home = join(homedir(), '.skillgantry')
+  // `install-cli.sh` has honoured `SG_HOME` since M1 so the acceptance suite can
+  // install without touching a real home. The binary has to honour the same
+  // variable or the upgrade acceptance test would relink the developer's own
+  // `~/.local/bin/skillgantry` while proving that the rename works.
+  const home = process.env['SG_HOME'] ?? join(homedir(), '.skillgantry')
   return {
     home,
     dbPath: join(home, 'gantry.db'),
@@ -285,6 +296,18 @@ export function buildProgram(deps: CliDeps): GantryProgram {
     })
 
   program
+    .command('upgrade')
+    .description('check for a newer published release and install it')
+    .option('--yes', 'prior authorisation for the install')
+    .option('--json', 'emit one JSON document')
+    .option('--check', 'report only; install nothing')
+    .action(async (opts: UpgradeOptions) => {
+      // R12.10: the code answers "what happened to the upgrade", not R12.2's
+      // stage question — `fix`'s and `suppress`'s established divergence.
+      program.exitCode = await runUpgrade(deps, opts)
+    })
+
+  program
     .command('suppress')
     .description("record a finding in its tool's own suppression file")
     .argument('<skill>', 'skill id or unambiguous name')
@@ -311,6 +334,9 @@ export function buildProgram(deps: CliDeps): GantryProgram {
         return
       }
       await noticeInterrupted(deps)
+      // R11.24: before the main screen mounts, and after the mutation-record
+      // scan for its reason — both are launch-time work that never blocks.
+      if ((await (deps.maybeUpgrade ?? maybeUpgrade)(deps)) === 'relaunched') return
       const launch = deps.startTui ?? startTui
       await launch({
         home: deps.home,

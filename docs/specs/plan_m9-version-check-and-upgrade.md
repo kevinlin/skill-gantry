@@ -1,8 +1,8 @@
-# M12 — Version check and self-upgrade
+# M9 — Version check and self-upgrade
 
 > **For agentic workers:** REQUIRED SUB-SKILL: use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task by task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** planned.
+**Status:** shipped.
 
 **Goal:** Publish SkillGantry from GitHub Releases, and have the terminal interface offer — never impose — the newer release it finds at launch, installing it into a versioned prefix and relaunching into it.
 
@@ -12,7 +12,7 @@
 
 ## Specification
 
-Layer 1: [requirements.md](requirements.md) — R13.8–R13.12, R11.24, R12.10, all new, plus a new **M12** row in § Milestone ownership.
+Layer 1: [requirements.md](requirements.md) — R13.8–R13.12, R11.24, R12.10, all new, plus a new **M9** row in § Milestone ownership.
 Layer 2: [design_version-check-and-upgrade.md](design_version-check-and-upgrade.md), reached from [design.md](design.md) §20. Amends design.md §5.3, §15, §17, §18 and [design_tui.md](design_tui.md) §14.13.
 Decisions: **D30** and **D31**, appended to [decision-log.md](decision-log.md), which currently ends at D29.
 
@@ -77,7 +77,7 @@ Surfaces last: the prompt, then the subcommand that can use it, then the root ac
 - Test: `tests/specs/traceability.test.ts` (existing; must stay green)
 
 **Interfaces:**
-- Produces: requirement ids **R13.8–R13.12**, **R11.24**, **R12.10** and milestone **M12**, cited by every later task.
+- Produces: requirement ids **R13.8–R13.12**, **R11.24**, **R12.10** and milestone **M9**, cited by every later task.
 
 - [ ] **Step 1: Run the traceability test to confirm it is green before you touch anything**
 
@@ -110,10 +110,10 @@ Append to § R11, § R12 and § R13 respectively, in declaration order (the test
   - *Rationale:* the ordering is the whole safety argument — nothing the running installation resolves through is touched until both verifications have passed, so there is no partially-updated state for a marker to describe and no journal is needed. Without the relaunch guard, a release whose packed version disagrees with its tag relaunches forever.
 ```
 
-- [ ] **Step 3: Add the M12 row to § Milestone ownership**
+- [ ] **Step 3: Add the M9 row to § Milestone ownership**
 
 ```markdown
-| M12 | R11.24, R12.10, R13.8–R13.12 | A tag whose version disagrees with the manifest, or whose changelog section is missing, fails to publish; a published release carries three assets and a body extracted from the changelog. A client one version behind prompts once per 24 hours, shows that version's changelog entry, and after `n` never prompts for it again while `doctor` still reports it. A corrupt tarball, an unreachable API and a post-install version mismatch each leave the installation byte-identical and the launch unaffected. A successful upgrade relinks atomically, retains exactly the previous prefix, snapshots `config.json` and `tools/lock.json` first, and relaunches into the new version without re-checking. A binary running from a development working tree reports the new version and refuses to upgrade itself |
+| M9 | R11.24, R12.10, R13.8–R13.12 | A tag whose version disagrees with the manifest, or whose changelog section is missing, fails to publish; a published release carries three assets and a body extracted from the changelog. A client one version behind prompts once per 24 hours, shows that version's changelog entry, and after `n` never prompts for it again while `doctor` still reports it. A corrupt tarball, an unreachable API and a post-install version mismatch each leave the installation byte-identical and the launch unaffected. A successful upgrade relinks atomically, retains exactly the previous prefix, snapshots `config.json` and `tools/lock.json` first, and relaunches into the new version without re-checking. A binary running from a development working tree reports the new version and refuses to upgrade itself |
 ```
 
 - [ ] **Step 4: Run the traceability test — it must fail on design coverage, not on ownership**
@@ -173,7 +173,7 @@ Expected: PASS.
 
 ```bash
 git add docs/specs
-git commit -m "docs(specs): specify the version check and self-upgrade (M12)"
+git commit -m "docs(specs): specify the version check and self-upgrade (M9)"
 ```
 
 ---
@@ -1493,12 +1493,29 @@ git commit -m "test(m12): prove an upgrade adopts atomically and survives a kill
 | R13.12 verify before adopt, snapshot, no-op on failure, relaunch guard | 8, 10, 13, 15 |
 | R11.24 the prompt, two answers, decline recorded, interrupt is not an answer | 11, 13 |
 | R12.10 `skillgantry upgrade`, `--check` exit direction, no relaunch, coded failures | 12 |
-| M12 spec amendments, D30–D31 | 1 |
+| M9 spec amendments, D30–D31 | 1 |
 
 ## Deviations found while implementing
 
-*(Filled in during implementation. Every plan in this tree ends with this section; an empty one means the work has not started.)*
+**Task 1 — the milestone is M9, not M12.** The plan was written against a milestone numbering the tree renumbered before implementation started: `index.md` and this file's own name say M9. The plan body and [design_version-check-and-upgrade.md](design_version-check-and-upgrade.md) said M12 throughout and were rewritten to M9. The pre-existing `| M9 | R11.23 |` row — [plan_m7.2-repo-skill-navigation.md](plan_m7.2-repo-skill-navigation.md)'s work, which `index.md` now calls M7.2 — was left as it stands by decision, so § Milestone ownership carries two rows labelled M9. The traceability test keys on the requirement id rather than on the label, so this passes; the table is the thing that reads wrong, and correcting it is a separate pass over the shipped rows.
+
+**Task 1 — `tests/specs/traceability.test.ts` has a third case the plan did not mention.** `states the revision the body has actually reached` compares requirements.md's `**Status:** revision N` header against the highest `(rev N)` marker in the body, so the seven new requirements marked *(rev 25)* failed the build until the header was bumped to 25 and the running paragraph gained its rev 25 sentence. Step 4's expected failure was therefore two failures, not one.
+
+**Task 1 — §17's table is not what the coverage test parses.** The test unions every `*Satisfies …*` label in design.md and design_tui.md; §17's requirement-group table is prose. Adding the three rows Step 5 asks for therefore left the test red, and the labels are what closed it: `*Satisfies R13.8–R13.12.*` opening §20, `R12.10` appended to §15's label, and `*Satisfies R11.24.*` opening §14.13.
+
+**Task 6 — the roots are `realpath`'d too, or every install reads as foreign.** `resolveEligibility` resolves the entry point and compares it against `<home>/versions`, and the plan compared a resolved path against an unresolved root. On macOS `os.tmpdir()` alone is `/var/folders/…` while the resolved entry point is `/private/var/folders/…`, so the owned case never matched. `resolveRoot` resolves each root and falls back to its literal spelling when it does not exist — a root that is not there cannot contain the entry point either.
+
+**Task 7 — `latest` caches `null` for "checked, nothing newer".** The plan's own test requires it and the implementation has to slice for it: the resolved release is compared against the running version *before* the state is written, so the throttled path never reports a version it would have to re-compare.
+
+**Task 9 — the layout is named in four more places than the plan lists.** `tests/acceptance/install-cli.test.ts` asserted `cli/node_modules/.bin` directly and failed the moment the prefix moved; it now asserts the versioned prefix and that the link resolves into the one named after the version the binary reports. `README.md`, `CLAUDE.md` and design.md §2 each documented `~/.skillgantry/cli`, including a `rm -rf` a user would copy, and were corrected with it.
+
+**Task 12 — `runUpgrade` takes a trailing injection parameter.** The plan's test list needs `fetchImpl`, `Exec`, the entry path and the TTY answer all replaced, and none of them belongs on `UpgradeOptions`, which is commander's flags. `runUpgrade(deps, options, inject = {})` is `runEvals(…, userHome)`'s established shape: every field defaults to the real thing, and the subcommand's own call site passes none of them.
+
+**Tasks 13 and 14 — two new `CliDeps` seams, and they are what keeps `pnpm test` offline.** The root action and `doctor` both now reach the release index, so *every* existing test driving either would have made a real request — `tests/cli/tui-command.test.ts`, `tests/cli/setup-command.test.ts` and `tests/cli/doctor-command.test.ts` among them. `deps.maybeUpgrade` and `deps.upgradeCheck` default to the real implementations and are stubbed in those suites, exactly as `deps.startTui` and `deps.startSetup` already are.
+
+**Task 15 — the binary had to learn `SG_HOME`, and the release source is two files.** `install-cli.sh` has honoured `SG_HOME` since M1 "so the acceptance test can install without touching a real home"; the binary did not, so `skillgantry upgrade --yes` under test would have installed into the developer's own `~/.skillgantry` and renamed their own `~/.local/bin/skillgantry`. `defaultDeps()` now reads it. `SG_UPGRADE_API_BASE` and `SG_UPGRADE_REPO` were added alongside, read in `src/cli/` and passed down as options, the way `GhReleaseOptions.apiBase` already works. The served release is built from `package.json` plus `dist/` alone — `files: ["dist"]` is the whole package, and `VERSION` reads the manifest, so bumping it is what makes the packed build answer `--version` with the new number.
 
 ## Changelog
 
 - 2026-08-11 — Written.
+- 2026-08-11 — Shipped. Renumbered M12 → M9 to match the tree's plan naming.

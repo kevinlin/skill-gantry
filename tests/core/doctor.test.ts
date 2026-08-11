@@ -447,3 +447,25 @@ describe('doctor on the SkillHone settings file (R3.10)', () => {
     expect(JSON.stringify(report)).not.toContain(TOKEN)
   })
 })
+
+describe('doctor and an available upgrade', () => {
+  it('reports what the caller found without failing the report', async () => {
+    const h = await home()
+    const report = await doctor({
+      home: h,
+      skills: [],
+      ledgerLifecycle: new Map(),
+      ruleMap: CURRENT,
+      upgradeAvailable: { current: '0.5.1', latest: '0.6.0' },
+    })
+    expect(report.upgrade).toEqual({ current: '0.5.1', latest: '0.6.0' })
+    expect(report.failed).toBe(false)
+  })
+
+  it('reports null when the caller found nothing, and when it passed nothing', async () => {
+    const h = await home()
+    const base = { home: h, skills: [], ledgerLifecycle: new Map(), ruleMap: CURRENT }
+    expect((await doctor(base)).upgrade).toBeNull()
+    expect((await doctor({ ...base, upgradeAvailable: null })).upgrade).toBeNull()
+  })
+})
