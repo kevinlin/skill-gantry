@@ -202,6 +202,7 @@ export {
   type SuppressionPreview,
   type SuppressionRequest,
 } from './suppress/target.js'
+export { entriesAbove, parseChangelog } from './upgrade/changelog.js'
 export { loadUpgradeState, saveUpgradeState } from './upgrade/state.js'
 export type {
   ChangelogEntry,
