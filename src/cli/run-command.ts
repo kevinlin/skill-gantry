@@ -262,7 +262,7 @@ export function buildProgram(deps: CliDeps): GantryProgram {
     .description('print the coding-agent fix prompt for a recorded run')
     .argument('<skill>', 'skill id or bare name')
     .option('--stage <stage>', 'restrict to one lifecycle stage')
-    .option('--run <id>', 'a recorded run id; defaults to the most recent')
+    .option('--run <id-or-dir>', 'a recorded run id or its directory name; defaults to the most recent')
     .option('--json', 'emit one JSON document')
     .action(async (selector: string, opts: FixOptions) => {
       // R12.6: the code answers "is there a prompt on stdout", not "did the

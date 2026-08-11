@@ -1,7 +1,7 @@
 # SkillGantry — Design
 
 **Date:** 2026-08-01
-**Status:** revision 3, incorporating [design-review-r2.md](design-review-r2.md); amended in place through M7
+**Status:** revision 3, incorporating [design-review-r2.md](design-review-r2.md); amended in place through M10
 **Layer:** design (layer 2 of 3: [requirements](requirements.md) → design → plan)
 **Traces to:** [requirements.md](requirements.md), [decision-log.md](decision-log.md)
 
@@ -728,8 +728,8 @@ declawed-workspace/                      (mode 0700)
   iteration-3/
   skillgantry/
     runs/
-      019283af-6c21-7b3e-9f04-1d2e3f4a5b6c/
-        run.json
+      2026-08-11_14-32-07/                 ← the run's start time, not its id
+        run.json                           ← where the run id is
         snapshot-pre/                    ← non-git mutation sandbox only
         journal.json                     ← mutation apply journal
         01-validate/
@@ -741,23 +741,27 @@ declawed-workspace/                      (mode 0700)
           skillspector/  stdout.log  stderr.log  findings.sarif
           skill-scanner/ stdout.log  stderr.log  findings.sarif
         evidence/                        ← release stage only
-      latest -> 019283af-…
+      latest -> 2026-08-11_14-32-07
       index.ndjson
 ```
 
 Each tool owns a directory, so two scanners emitting `findings.sarif` cannot collide, and `tool_runs.artefact_dir` identifies exactly one tool's evidence. `stage.json` is written once, after every tool in the stage has finished, and references each tool directory by name.
 
-Run id is a UUIDv7: time-ordered like the old timestamp form, but with no collision assertion to defend. Uniqueness is *claimed*, not asserted — the run directory is created with exclusive `mkdir`, and a collision retries with a fresh id.
+**The directory name and the run id answer different questions.** The name is the run's start time, because a maintainer identifies a run by `ls` and a UUID names no moment. The id is a UUIDv7 recorded in `run.json`, and it stays the identity everywhere it already was: `runs.id` in the ledger, `index.ndjson`, the `--run` selector, and every "which run is later" comparison. Nothing was moved onto the timestamp, and that is the point — a name at one-second precision ties, a UUIDv7 cannot.
+
+Uniqueness is *claimed*, not asserted: the directory is created with exclusive `mkdir`, and a collision retries the **name** as `<base>-2`, `<base>-3`. Retrying the id would be no help, because two runs started in the same second derive the same name from the clock; waiting for the next second instead would stall a run start on a tick. The claim loop is `claimDirIn`, shared with retirement (§13), so the two groups one recovery scan walks are named and claimed the same way.
+
+Because the name is no longer derivable from the id, the index carries it: each record holds `dir` alongside `runId`, and a record without one is read as a run whose directory is named by its id — the rule that held when such records were written. Recovery needs no equivalent: `scanSandboxRecords` enumerates the real directories and returns each with its record, so it never reconstructs a path at all.
 
 ### 9.1 Index durability
 
-`index.ndjson` is one JSON object per line. Each record is serialised with its terminating newline and written in a **single** `write()` to a descriptor opened `O_APPEND`, followed by `fsync`, under the per-skill lock. That is the strongest guarantee POSIX offers, and it is not a guarantee of atomicity: a process or power failure can still leave a partial final line. Revision 2 claimed append placement made truncation land on a line boundary, which is not true.
+`index.ndjson` is one JSON object per line — `{ runId, dir, outcome, endedAt }`, `dir` absent on records written before the directory name was recorded. Each record is serialised with its terminating newline and written in a **single** `write()` to a descriptor opened `O_APPEND`, followed by `fsync`, under the per-skill lock. That is the strongest guarantee POSIX offers, and it is not a guarantee of atomicity: a process or power failure can still leave a partial final line. Revision 2 claimed append placement made truncation land on a line boundary, which is not true.
 
 The recovery rule is therefore on the reader, where it belongs. A reader parses line by line and, on a final line that is truncated or invalid JSON, discards it and treats the file as ending at the last newline. An appender that finds the file not ending in a newline writes a leading newline before its record, so one lost record never corrupts the next. A record is a run summary that the run directory already holds in full, so a lost tail line costs an index entry, never evidence.
 
 ### 9.2 `latest` and locking
 
-`latest` names the finalised run with the **greatest run id**. UUIDv7 is time-ordered by claim, so this is one stable field, independent of finish order and of lock acquisition order. Two runs that start in one order and finish in the other therefore agree on `latest` — revision 2 called it deterministic without defining "later", which left exactly that case open. It is rewritten under the per-skill lock via temp-file-and-rename.
+`latest` names the finalised run with the **greatest run id**, and its symlink body is that run's directory. UUIDv7 is time-ordered by claim, so this is one stable field, independent of finish order and of lock acquisition order. Two runs that start in one order and finish in the other therefore agree on `latest` — revision 2 called it deterministic without defining "later", which left exactly that case open. Ordering on the directory name instead would reopen it for the pair that starts in one second. It is rewritten under the per-skill lock via temp-file-and-rename.
 
 The per-skill lock is an **advisory OS lock held on an open descriptor**, so the kernel releases it when the holding process dies. A crashed run cannot leave a lock that blocks future work, which a plain lockfile can. Where the platform cannot provide one, the fallback is a lockfile carrying holder pid and a heartbeat mtime, with a stale threshold of three heartbeat intervals after which a waiter may break and reclaim it; breaking is logged. The lock covers the finalisation critical section only, meaning the index append and the `latest` rewrite, not the run itself, so concurrent read-only runs against one skill proceed in parallel and serialise only at the end.
 
@@ -1127,7 +1131,7 @@ run:error        { runId, message }
 ### 11.3 Sequence
 
 1. `queue` worker takes the job and calls `pipeline.run()`. Read-only runs against one skill proceed in parallel; only finalisation is serialised, per §9.2
-2. `workspace.claimRun()` → exclusive `mkdir` on a UUIDv7 directory
+2. `workspace.claimRun()` → exclusive `mkdir` on a directory named for the start time
 3. `workspace.ensureGitignore()`, **then** `discovery.candidateManifest()` and `skillDigest()`. That order is R2.12: the gitignore write is itself a repo change, so digesting first would record one its own side effect invalidates
 4. `run.json` written with the tool lock, the skill digest, and provenance including each selected tool's `analysisMode`
 5. Per stage: `executor.plan()` resolves the selection and declares the mutation scope
@@ -1343,7 +1347,7 @@ Retirement writes `metadata.deprecated: true` into `SKILL.md` frontmatter throug
 - Reversal is one file write; the ledger follows on discovery.
 - A mismatch is not an error state. It is reported in `doctor` as `lifecycle-drift` and resolved by reconciling to the file.
 
-**Invocation.** `skillgantry retire <skill> [--undo] [--superseded-by <id>] [--yes] [--json] [--allow-dirty]`. Retirement is not one of the five stages, so it does not run through the pipeline; it runs the same declared-scope, diff-preview, confirmation and journal path directly, with its sandbox and journal under `<workspacePath>/skillgantry/retire/<id>/`. That directory shape is deliberate: startup recovery scans for `sandbox.json` under the workspace, so an interrupted retirement is recovered by the same code as an interrupted release, with no special case.
+**Invocation.** `skillgantry retire <skill> [--undo] [--superseded-by <id>] [--yes] [--json] [--allow-dirty]`. Retirement is not one of the five stages, so it does not run through the pipeline; it runs the same declared-scope, diff-preview, confirmation and journal path directly, with its sandbox and journal under `<workspacePath>/skillgantry/retire/<dir>/`, named and claimed the way a run directory is (§9). That directory shape is deliberate: startup recovery scans for `sandbox.json` under the workspace, so an interrupted retirement is recovered by the same code as an interrupted release, with no special case.
 
 The cache still earns its place: the Issues and Dashboard screens filter deprecated skills across every registered repo without reading 76 files.
 
@@ -1364,7 +1368,7 @@ skillgantry release <skill> --version <semver|major|minor|patch>
 skillgantry retire <skill> [--undo] [--superseded-by <id>]
                            [--yes] [--json] [--allow-dirty]
 skillgantry recover [--restore <runId>] [--forget <runId>] [--json]
-skillgantry fix <skill> [--stage <stage>] [--run <id>] [--json]
+skillgantry fix <skill> [--stage <stage>] [--run <id-or-dir>] [--json]
 skillgantry suppress <skill> --tool <id> --rule <nativeRuleId> --path <skillRelPath>
                              --reason <text> [--yes] [--json]
 skillgantry suppress <skill> --fingerprint <fp> --reason <text> [--yes] [--json]
@@ -1396,7 +1400,7 @@ Every launch, headless or not, first scans for an unresolved mutation record and
 
 There is no `--then-run`, unlike §14.7's toggle. The shell composes `suppress && run`, and duplicating stage selection into a second command is how the two come to disagree.
 
-**It resolves the run from the sidecar, not the ledger.** The default is the greatest run id in `index.ndjson` — not the `latest` symlink, which is absent mid-write, and not `runs.sidecar_path`, because R8.2 makes the sidecar the evidence, the command already names its skill so no cross-skill query is needed, and a run whose ledger row failed still has complete evidence on disk. When the prompt file is absent but that stage's `stage.json` carries findings, `fix` rebuilds it in memory and marks it `onDisk: false`; it never writes, so the pipeline stays the only writer and runs recorded before §9.4 existed are answerable without rewriting their evidence.
+**It resolves the run from the sidecar, not the ledger.** The default is the greatest run id in `index.ndjson` — not the `latest` symlink, which is absent mid-write, and not `runs.sidecar_path`, because R8.2 makes the sidecar the evidence, the command already names its skill so no cross-skill query is needed, and a run whose ledger row failed still has complete evidence on disk. `--run` accepts either the run id or the directory name, matching the id first: the directory is the handle a maintainer can see in `ls`, the id is the one `run.json` and the ledger record, and matching the id first means a directory named like an id cannot make the argument ambiguous. When the prompt file is absent but that stage's `stage.json` carries findings, `fix` rebuilds it in memory and marks it `onDisk: false`; it never writes, so the pipeline stays the only writer and runs recorded before §9.4 existed are answerable without rewriting their evidence.
 
 ## 16. Test strategy
 
@@ -1512,6 +1516,7 @@ Every pass below is recorded in full somewhere else — the two reviews are thei
 | M4.1 | SkillHone catalogued as a skill bundle rather than a CLI, which gave the optimise stage something behind it: the `git-skill` install kind and its three-fact verification (§5.1, §5.2, §5.3), the R6.12 prompt (§9.4a), the surface that presents it (§14.10) and the subcommand that prints it (§15); then, in revision 2, the configuration file that install left uncomposed (§5.1, §5.3, §5.4) | [plan_m4.1-skillhone-optimise.md](plan_m4.1-skillhone-optimise.md) |
 | M4.2 | A way for the evaluate gate to start: skill-upper catalogued as a `git-skill` bundle with no dependencies at all (§5.1a, §5.2), doctor's report of a skill link that is not ours (§5.3), the eval bootstrap prompt (§9.4b), the pane it shares with optimise and the pre-flight that opens it (§14.11), and the subcommand that prints it (§15) | [plan_m4.2-skillup-first-eval.md](plan_m4.2-skillup-first-eval.md) |
 | M9 | Distribution became a thing the product does rather than a thing the maintainer does: a release contract with two pre-publish assertions, a changelog the client reads from the release's own asset, versioned install prefixes adopted by one atomic rename, and the launch-time offer that uses them (§20, §5.3, §15, §14.14) | [plan_m9-version-check-and-upgrade.md](plan_m9-version-check-and-upgrade.md) |
+| M10 | A run directory named for the moment it started rather than for its own id, which meant separating the name a maintainer reads from the identity everything joins on: the claim loop retrying the name, the index carrying it, recovery returning the directory it scanned instead of rebuilding one, and `--run` taking either handle (§9, §9.1, §9.2, §11.3, §13, §15) | [plan_m10-timestamped-run-directories.md](plan_m10-timestamped-run-directories.md) |
 
 ## 19. Risks carried into implementation
 

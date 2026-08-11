@@ -16,6 +16,12 @@ import type { StageResult } from '../../src/core/stages/types.js'
 
 const ws = async (): Promise<string> => mkdtemp(join(tmpdir(), 'sg-ws-'))
 
+/** The clock is the caller's, so every test that does not care passes now. */
+const claim = (root: string, at: Date = new Date()) => claimRunDir(root, at)
+
+const latestOf = async (root: string): Promise<string> =>
+  readlink(join(root, 'skillgantry/runs/latest'))
+
 const stageResult = (): StageResult => ({
   stage: 'security',
   outcome: 'failed',
@@ -37,30 +43,42 @@ const stageResult = (): StageResult => ({
 })
 
 describe('claimRunDir', () => {
-  it('creates a uuidv7 directory and returns both id and path', async () => {
-    const { runId, runDir } = await claimRunDir(await ws())
+  it('names the directory for the start time and keeps a uuidv7 run id', async () => {
+    const { runId, runDir } = await claimRunDir(await ws(), new Date(2026, 7, 11, 14, 32, 7))
     expect(runId).toMatch(/^[0-9a-f-]{36}$/)
-    expect(basename(runDir)).toBe(runId)
+    expect(basename(runDir)).toBe('2026-08-11_14-32-07')
   })
 
   it('produces time-ordered ids', async () => {
     const root = await ws()
-    const a = await claimRunDir(root)
+    const a = await claim(root)
     await new Promise((r) => setTimeout(r, 5))
-    const b = await claimRunDir(root)
+    const b = await claim(root)
     expect([a.runId, b.runId].sort()).toEqual([a.runId, b.runId])
+  })
+
+  it('suffixes the name for a second run started in the same second', async () => {
+    const root = await ws()
+    const at = new Date(2026, 7, 11, 14, 32, 7)
+    const a = await claimRunDir(root, at)
+    const b = await claimRunDir(root, at)
+    expect(basename(a.runDir)).toBe('2026-08-11_14-32-07')
+    expect(basename(b.runDir)).toBe('2026-08-11_14-32-07-2')
+    expect((await stat(a.runDir)).isDirectory()).toBe(true)
+    expect((await stat(b.runDir)).isDirectory()).toBe(true)
+    expect(a.runId).not.toBe(b.runId)
   })
 
   it('creates the runs root with owner-only permissions', async () => {
     const root = await ws()
-    const { runDir } = await claimRunDir(root)
+    const { runDir } = await claim(root)
     expect((await stat(runDir)).mode & 0o777).toBe(0o700)
   })
 })
 
 describe('writeRunJson and writeStageJson', () => {
   it('writes provenance and tool lock as siblings, with no token', async () => {
-    const { runDir, runId } = await claimRunDir(await ws())
+    const { runDir, runId } = await claim(await ws())
     await writeRunJson(runDir, {
       runId,
       skillId: 'fx/declawed',
@@ -83,7 +101,7 @@ describe('writeRunJson and writeStageJson', () => {
   })
 
   it('records unredacted artefacts so the exposure is visible', async () => {
-    const { runDir } = await claimRunDir(await ws())
+    const { runDir } = await claim(await ws())
     const stageDir = stageDirFor(runDir, 3, 'security')
     await writeStageJson(stageDir, stageResult(), { skillspector: ['findings.sarif'] })
     const doc = JSON.parse(await readFile(join(stageDir, 'stage.json'), 'utf8'))
@@ -93,7 +111,7 @@ describe('writeRunJson and writeStageJson', () => {
   })
 
   it('numbers stage directories by lifecycle position', async () => {
-    const { runDir } = await claimRunDir(await ws())
+    const { runDir } = await claim(await ws())
     expect(basename(stageDirFor(runDir, 3, 'security'))).toBe('03-security')
   })
 })
@@ -101,26 +119,39 @@ describe('writeRunJson and writeStageJson', () => {
 describe('finalizeRun', () => {
   it('appends one line per run and points latest at the newest', async () => {
     const root = await ws()
-    const a = await claimRunDir(root)
-    await finalizeRun(root, { runId: a.runId, outcome: 'passed', endedAt: '2026-08-01T00:00:00Z' })
-    const b = await claimRunDir(root)
-    await finalizeRun(root, { runId: b.runId, outcome: 'failed', endedAt: '2026-08-01T00:01:00Z' })
+    const a = await claim(root)
+    await finalizeRun(root, {
+      runId: a.runId,
+      dir: basename(a.runDir),
+      outcome: 'passed',
+      endedAt: '2026-08-01T00:00:00Z',
+    })
+    const b = await claim(root)
+    await finalizeRun(root, {
+      runId: b.runId,
+      dir: basename(b.runDir),
+      outcome: 'failed',
+      endedAt: '2026-08-01T00:01:00Z',
+    })
 
     const lines = (await readFile(join(root, 'skillgantry/runs/index.ndjson'), 'utf8'))
       .trim()
       .split('\n')
     expect(lines).toHaveLength(2)
     expect(JSON.parse(lines[1]!).outcome).toBe('failed')
-    expect(await readlink(join(root, 'skillgantry/runs/latest'))).toContain(b.runId)
+    expect(await latestOf(root)).toBe(basename(b.runDir))
   })
 
   it('loses no line when three runs finalise concurrently', async () => {
     const root = await ws()
-    const claims = await Promise.all([claimRunDir(root), claimRunDir(root), claimRunDir(root)])
+    const claims = await Promise.all([claim(root), claim(root), claim(root)])
+    // Three claims in one second, so the suffix is what keeps them distinct.
+    expect(new Set(claims.map((c) => basename(c.runDir))).size).toBe(3)
     await Promise.all(
       claims.map((c, i) =>
         finalizeRun(root, {
           runId: c.runId,
+          dir: basename(c.runDir),
           outcome: 'passed',
           endedAt: `2026-08-01T00:0${i}:00Z`,
         }),
@@ -133,31 +164,49 @@ describe('finalizeRun', () => {
     expect(new Set(lines.map((l) => JSON.parse(l).runId)).size).toBe(3)
   })
 
-  it('points latest at the greatest run id even when finish order is inverted', async () => {
+  it("points latest at the greatest run id's directory even when finish order is inverted", async () => {
     const root = await ws()
-    const first = await claimRunDir(root)
-    const second = await claimRunDir(root)
+    const first = await claim(root)
+    const second = await claim(root)
     expect(second.runId > first.runId).toBe(true)
 
     // Second claimed later but finalises first.
     await finalizeRun(root, {
       runId: second.runId,
+      dir: basename(second.runDir),
       outcome: 'passed',
       endedAt: '2026-08-01T00:00:00Z',
     })
     await finalizeRun(root, {
       runId: first.runId,
+      dir: basename(first.runDir),
       outcome: 'passed',
       endedAt: '2026-08-01T00:05:00Z',
     })
-    expect(await readlink(join(root, 'skillgantry/runs/latest'))).toContain(second.runId)
+    expect(await latestOf(root)).toBe(basename(second.runDir))
+  })
+
+  /**
+   * A workspace written before the directory name was recorded holds entries
+   * with no `dir`, and back then the basename was the run id. `latest` must
+   * still resolve, so the fallback is exercised where it is decided.
+   */
+  it('points latest at an entry with no recorded directory by its run id', async () => {
+    const root = await ws()
+    await mkdir(join(root, 'skillgantry/runs/019fcf6e'), { recursive: true })
+    await finalizeRun(root, {
+      runId: '019fcf6e',
+      outcome: 'passed',
+      endedAt: '2026-08-01T00:00:00Z',
+    })
+    expect(await latestOf(root)).toBe('019fcf6e')
   })
 })
 
 describe('index recovery', () => {
   it('discards a truncated final line and keeps every earlier record', async () => {
     const root = await ws()
-    const a = await claimRunDir(root)
+    const a = await claim(root)
     await finalizeRun(root, { runId: a.runId, outcome: 'passed', endedAt: '2026-08-01T00:00:00Z' })
 
     const path = join(root, 'skillgantry/runs/index.ndjson')
@@ -174,7 +223,7 @@ describe('index recovery', () => {
     await mkdir(dirname(path), { recursive: true })
     await writeFile(path, '{"runId":"partial","outc')
 
-    const b = await claimRunDir(root)
+    const b = await claim(root)
     await finalizeRun(root, { runId: b.runId, outcome: 'passed', endedAt: '2026-08-01T00:01:00Z' })
 
     const entries = await readIndex(root)

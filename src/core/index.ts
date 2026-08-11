@@ -61,6 +61,8 @@ export { buildEvalPrompt, type EvalPromptInput } from './stages/eval-prompt.js'
 export {
   STAGE_ORDER,
   fixPromptPathFor,
+  runDirFor,
+  runDirName,
   runsRoot,
   stageDirFor,
   toolDirFor,

@@ -112,13 +112,13 @@ declawed-workspace/
   iteration-3/
   skillgantry/
     runs/
-      2026-07-31T0833-a1b2/
+      2026-08-11_14-32-07/         ← the run's start time; the id is in run.json, see D32
         run.json                   ← provenance snapshot, see D11
         01-validate/  stdout.log  stage.json
         02-evaluate/  report.json stage.json
         03-security/  findings.sarif stage.json
-      latest -> 2026-07-31T0833-a1b2
-      index.json
+      latest -> 2026-08-11_14-32-07
+      index.ndjson
 ```
 
 SkillGantry also resolves the gitignore drift by writing a single `*-workspace/` entry.
@@ -374,3 +374,11 @@ The check runs before the main screen mounts, at most once per 24 hours, and nev
 *Why:* launch is the only moment in a session with no run in flight and no ledger open, which is what makes "install and relaunch" cheap and safe; mid-session it is neither. Two independent guards stop a respawn loop — the post-install version equality check, and `SG_UPGRADED_FROM` on the child.
 *The cost, accepted:* a machine behind a blocking proxy pays the 2-second timeout once per 24 hours with no switch to flip. An opt-out was considered and dropped as a setting that would exist mainly to be found in a support thread.
 *Rejected:* a background check after mount (interrupts a user already working, and relaunch is then unsafe); applying on exit (upgrades a session already finished, and a Ctrl+C silently drops the upgrade the user agreed to).
+
+## 15. A run directory names when, not which
+
+**D32. The run directory is the start time; the run id stays the identity.**
+A run writes to `runs/YYYY-MM-DD_HH-mm-ss/`, suffixed `-2` on a collision, and its UUIDv7 id lives in `run.json`. The index records the directory name so the two can be joined.
+*Why:* the directory is the surface a maintainer reads — `ls` on a workspace was six UUIDs, and finding a run meant opening `run.json` in each. Nothing was moved onto the timestamp: `latest`, gate authority, issue reconciliation and the rule-map migration all still order on the id, because a name at one-second precision ties and a UUIDv7 cannot. Splitting the two is what makes both correct at once.
+*Why the name retries, not the id:* the name derives from the clock, so every run started in the same second collides by construction and a fresh id would collide again. Exclusive `mkdir` is still the claim.
+*Rejected:* appending the id to the timestamp (collision-free, but restores the unreadable name the change exists to remove); waiting for the next second (exact format always, at the price of stalling a run start on a clock tick); migrating existing directories (a rename under a workspace the ledger's `sidecar_path` already points at, to gain nothing — an index record with no directory name is read by the rule that held when it was written).

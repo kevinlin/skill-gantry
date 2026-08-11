@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import {
   createQueue,
   discoverSkills,
@@ -26,13 +26,14 @@ async function fixture(): Promise<{ skills: SkillRef[]; runDir: string }> {
   })
   const skills = await discoverSkills({ id: 'fx', path: root, name: 'fx', isGit: false })
   const skill = skills[0]!
-  const { runId, runDir } = await claimRunDir(skill.workspacePath)
+  const { runId, runDir } = await claimRunDir(skill.workspacePath, new Date())
   await mkdir(join(runDir, '03-security', 'skillspector'), { recursive: true })
   await writeFile(join(runDir, '03-security', 'skillspector', 'findings.sarif'), '{}')
   await writeFile(join(runDir, '03-security', 'skillspector', 'stdout.log'), 'scanning\n')
   await writeFile(join(runDir, 'run.json'), '{}')
   await finalizeRun(skill.workspacePath, {
     runId,
+    dir: basename(runDir),
     outcome: 'failed',
     endedAt: '2026-08-01T00:00:00Z',
   })

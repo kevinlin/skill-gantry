@@ -6,8 +6,9 @@ import {
   buildOptimisePrompt,
   loadToolLock,
   readIndex,
-  runsRoot,
+  runDirFor,
   stageDirFor,
+  type IndexEntry,
   type OptimisePromptInput,
   type StageResult,
 } from '../core/index.js'
@@ -31,12 +32,16 @@ const readJson = async <T>(path: string): Promise<T | null> => {
 
 /**
  * The greatest run id in the index, never the `latest` symlink, which is absent
- * mid-write — §14.5's resolution rule, and `fix-command.ts`'s.
+ * mid-write — §14.5's resolution rule, and `fix-command.ts`'s. The entry, not
+ * the id: the run's directory is named for its start time, so the index is what
+ * maps one to the other.
  */
-const newestRun = async (skill: SkillRef): Promise<string | null> => {
+const newestRun = async (skill: SkillRef): Promise<IndexEntry | null> => {
   const entries = await readIndex(skill.workspacePath).catch(() => [])
-  const ids = entries.map((entry) => entry.runId).sort()
-  return ids[ids.length - 1] ?? null
+  return entries.reduce<IndexEntry | null>(
+    (max, entry) => (max === null || entry.runId > max.runId ? entry : max),
+    null,
+  )
 }
 
 export interface OptimisePlan {
@@ -67,10 +72,11 @@ export async function planOptimiseFor(home: string, skill: SkillRef): Promise<Op
   // `loadLastRun`: that one is shaped for the rail — LastRunStage carries an
   // outcome and flattened FindingRows — and carries neither the digest nor the
   // git state R6.12 requires the prompt to name.
-  const runId = await newestRun(skill)
+  const newest = await newestRun(skill)
   let lastRun: OptimisePromptInput['lastRun'] = null
-  if (runId !== null) {
-    const runDir = join(runsRoot(skill.workspacePath), runId)
+  if (newest !== null) {
+    const runId = newest.runId
+    const runDir = runDirFor(skill.workspacePath, newest)
     const meta = await readJson<RunMetaOnDisk>(join(runDir, 'run.json'))
     if (meta !== null) {
       const stages: Array<{ stage: Stage; result: StageResult }> = []

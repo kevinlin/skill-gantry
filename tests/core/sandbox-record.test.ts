@@ -56,7 +56,10 @@ describe('sandbox record', () => {
     await writeSandboxRecord(retireDir, record('ret-b'))
     await writeSandboxRecord(settled, record('run-c', 'applied'))
     const found = await scanSandboxRecords(ws)
-    expect(found.map((r) => r.runId).sort()).toEqual(['ret-b', 'run-a'])
+    expect(found.map((f) => f.record.runId).sort()).toEqual(['ret-b', 'run-a'])
+    // The scanned directory is returned, so recovery never rebuilds a path from
+    // the run id — the names here are deliberately unrelated to it.
+    expect(found.map((f) => f.dir).sort()).toEqual([retireDir, runDir].sort())
   })
 
   it('ignores an unreadable record rather than failing the scan', async () => {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { buildProgram } from '../../src/cli/run-command.js'
 import { loadToolLock, registerRepo, saveToolLock } from '../../src/core/config/config.js'
 import { installAndLock } from '../../src/core/tools/install.js'
@@ -157,6 +157,12 @@ describe('M1 exit criterion 1: a headless security run writes evidence and popul
     expect(code).toBe(1) // findings present, so the gate is red
 
     const runDir = await runDirOf(h.repoPath)
+    // R6.1: the directory is the run's start time, and the run id lives in
+    // run.json — the two together are what makes a run identifiable by `ls`.
+    expect(basename(runDir)).toMatch(/^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$/)
+    const meta = JSON.parse(await readFile(join(runDir, 'run.json'), 'utf8'))
+    expect(meta.runId).toMatch(/^[0-9a-f-]{36}$/)
+
     const files = (await walkFiles(runDir)).map((f) => f.replace(`${runDir}/`, ''))
     expect(files).toContain('run.json')
     expect(files).toContain('03-security/stage.json')

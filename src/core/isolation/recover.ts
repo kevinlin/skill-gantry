@@ -5,7 +5,7 @@ import { type Exec, defaultExec } from '../tools/exec.js'
 import { readJournal, rollbackJournal, sweepApplyTemps } from './journal.js'
 import { markSandboxRecord, scanSandboxRecords } from './record.js'
 import { restoreSnapshot } from './snapshot.js'
-import { RETIRE_STAGE, type SandboxRecord } from './types.js'
+import type { SandboxRecord } from './types.js'
 
 export interface InterruptedMutation {
   record: SandboxRecord
@@ -30,15 +30,11 @@ export interface RecoveryOutcome {
   paths: string[]
 }
 
-const recordDirFor = (record: SandboxRecord, workspacePath: string): string => {
-  const group = record.stage === RETIRE_STAGE ? 'retire' : 'runs'
-  return join(workspacePath, 'skillgantry', group, record.runId)
-}
-
 /**
- * The inverse of `recordDirFor`: `<workspacePath>/skillgantry/<group>/<runId>`
- * strips to `workspacePath` in three `dirname` steps. Recovery reconstructs it
- * from the record alone (no discovery re-run), which is what lets
+ * `<workspacePath>/skillgantry/<group>/<dir>` strips to `workspacePath` in three
+ * `dirname` steps — depth, never the name, which is why a run directory named
+ * for its start time changes nothing here. Recovery derives the workspace from
+ * the scanned directory (no discovery re-run), which is what lets
  * `restoreInterrupted` take just an `InterruptedMutation` and still call
  * `restoreSnapshot`, whose signature requires a `SkillRef`.
  */
@@ -79,8 +75,7 @@ export async function scanInterrupted(
 ): Promise<InterruptedMutation[]> {
   const found: InterruptedMutation[] = []
   for (const skill of skills) {
-    for (const record of await scanSandboxRecords(skill.workspacePath)) {
-      const recordDir = recordDirFor(record, skill.workspacePath)
+    for (const { record, dir: recordDir } of await scanSandboxRecords(skill.workspacePath)) {
       const journal = await readJournal(recordDir)
       found.push({
         record,

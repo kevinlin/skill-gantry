@@ -40,6 +40,12 @@ const stageJson = (stage: string, findings: unknown[]) =>
 
 interface RunSpec {
   id: string
+  /**
+   * Directory name, when it differs from the id — which is the shape the
+   * pipeline writes. Omitted, the run models a sidecar written before the
+   * directory name was recorded, and the index entry carries no `dir`.
+   */
+  dir?: string
   /** stage name → findings on that stage. */
   stages: Record<string, unknown[]>
   /** Stages whose fix-prompt.md is written, as the pipeline would. */
@@ -65,7 +71,7 @@ async function harness(runs: RunSpec[]) {
   await mkdir(runsRoot, { recursive: true })
 
   for (const spec of runs) {
-    const runDir = join(runsRoot, spec.id)
+    const runDir = join(runsRoot, spec.dir ?? spec.id)
     await mkdir(runDir, { recursive: true })
     await writeFile(
       join(runDir, 'run.json'),
@@ -88,7 +94,12 @@ async function harness(runs: RunSpec[]) {
     }
     await writeFile(
       join(runsRoot, 'index.ndjson'),
-      `${JSON.stringify({ runId: spec.id, outcome: 'failed', endedAt: '2026-08-04T00:00:00Z' })}\n`,
+      `${JSON.stringify({
+        runId: spec.id,
+        ...(spec.dir === undefined ? {} : { dir: spec.dir }),
+        outcome: 'failed',
+        endedAt: '2026-08-04T00:00:00Z',
+      })}\n`,
       { flag: 'a' },
     )
   }
@@ -134,6 +145,29 @@ describe('R12.6 skillgantry fix', () => {
 
     out.length = 0
     await run(['fix', 'sk', '--run', 'run-1'])
+    expect(out.join('\n')).toContain('stored prompt for security')
+  })
+
+  /**
+   * The directory is named for the start time, so it is the handle a maintainer
+   * can see in `ls` — and the run id is what `run.json` and the ledger record.
+   * `--run` takes either, and the run whose id is absent from the index at all
+   * proves the resolution goes through the entry rather than the path.
+   */
+  it('--run accepts the directory name as well as the run id', async () => {
+    const { out, run } = await harness([
+      {
+        id: '019fcf6e-3a11-7c02-9f04-1d2e3f4a5b6c',
+        dir: '2026-08-11_14-32-07',
+        stages: { security: [FINDING] },
+        withPrompt: ['security'],
+      },
+    ])
+    await run(['fix', 'sk', '--run', '2026-08-11_14-32-07'])
+    expect(out.join('\n')).toContain('stored prompt for security')
+
+    out.length = 0
+    await run(['fix', 'sk', '--run', '019fcf6e-3a11-7c02-9f04-1d2e3f4a5b6c'])
     expect(out.join('\n')).toContain('stored prompt for security')
   })
 
