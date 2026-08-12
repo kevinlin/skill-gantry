@@ -3,8 +3,9 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { getAdapter } from '../core/adapters/registry.js'
 import { RULE_CLASS_MAP_VERSION } from '../core/adapters/rule-classes.js'
+import { satisfyingAlternatives } from '../core/adapters/types.js'
 import { loadConfig, loadToolLock, saveConfig } from '../core/config/config.js'
-import { loadEnvFile } from '../core/config/env.js'
+import { loadEnvFile, spawnEnv } from '../core/config/env.js'
 import { discoverSkills } from '../core/discovery/discover.js'
 import { type Ledger, openLedger } from '../core/ledger/db.js'
 import { issueDetectionRules, listIssues, setIssueState } from '../core/ledger/issue-queries.js'
@@ -42,12 +43,21 @@ function withLedger<T>(dbPath: string, read: (ledger: Ledger) => T): T {
 
 /**
  * Presence, never a value. A credential set is satisfied when every key of one
- * declared alternative is present and non-empty (R4.2a), which is the same rule
- * the runner classifies row 2 of §8.1 with.
+ * declared alternative is present and non-empty (R4.2a), and the environment
+ * that question is asked of is the one a spawn composes — `spawnEnv`'s ambient
+ * layer included — because that is what row 2 of §8.1 is decided against. Read
+ * from `.env` alone, this row said `missing` for a key the shell exported and
+ * the gate then accepted, and said it under the heading of a file that could
+ * not have fixed it.
+ *
+ * `fileVars` is consulted for the origin only: a satisfying alternative drawing
+ * any key from outside `.env` is labelled, since R11.7 asks a value's source to
+ * be on screen beside it and the group's heading names the file.
  */
 function credentialsOf(
   toolIds: readonly string[],
-  vars: Record<string, string>,
+  env: Readonly<Record<string, string | undefined>>,
+  fileVars: Record<string, string>,
 ): SettingsCredential[] {
   const out: SettingsCredential[] = []
   for (const toolId of toolIds) {
@@ -56,15 +66,18 @@ function credentialsOf(
       out.push({ label: toolId, satisfied: true, detail: 'no credential required' })
       continue
     }
-    const satisfied = requirement.alternatives.filter((alternative) =>
-      alternative.required.every((key) => (vars[key] ?? '').length > 0),
+    const satisfied = satisfyingAlternatives(requirement, env)
+    const fromShell = satisfied.some((alternative) =>
+      alternative.required.some((key) => (fileVars[key] ?? '') === ''),
     )
     out.push({
       label: toolId,
       satisfied: satisfied.length > 0,
       detail:
         satisfied.length > 0
-          ? `via ${satisfied.map((alternative) => alternative.provider).join(', ')}`
+          ? `via ${satisfied.map((alternative) => alternative.provider).join(', ')}${
+              fromShell ? ' (shell)' : ''
+            }`
           : `needs one of ${requirement.alternatives.map((a) => a.provider).join(', ')}`,
     })
   }
@@ -153,7 +166,9 @@ export function createGantryViews(deps: CliDeps): GantryViews {
         stageTools: config.stageTools,
         lockedTools,
         toolTimeouts,
-        credentials: credentialsOf(selected, env.vars),
+        // The same expression `tui-command.ts` hands the pipeline, so the row
+        // and the gate cannot answer differently.
+        credentials: credentialsOf(selected, spawnEnv(process.env, env.vars), env.vars),
         envWarnings: env.present ? env.warnings : [`${deps.home}/.env is absent`],
         ruleMap: withLedger(deps.dbPath, (ledger) => ({
           applied: appliedRuleMapVersion(ledger.db),

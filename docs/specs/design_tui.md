@@ -98,8 +98,11 @@ Execution                        ~/.skillgantry/config.json
   validate           skill-lint  config.json
 Credentials                      ~/.skillgantry/.env          read-only
   skillspector       ok  via anthropic
+  skill-scanner      ok  via Local or gateway model (shell)
 Ledger and tools                 ~/.skillgantry/gantry.db, tools/lock.json
 ```
+
+**A credential row answers the gate's question, with the gate's predicate.** §4.1 composes a child environment out of the ambient one, `.env` and one derived key, and §8.1 row 2 is decided against that composition — so this row is too, through the same `satisfyingAlternatives`. Against `.env` alone it reported `missing` for a key the user's shell exported and the run accepted, which is the one thing the screen exists to rule out. The `(shell)` suffix is what keeps the group's heading true once the row can be satisfied from somewhere the heading does not name; R7.3 is untouched, since presence is all that is read and no value reaches the view.
 
 Origin costs a second read of the raw file, because `loadConfig` parses through the schema and the schema substitutes a default for every absent key — by the time the config reaches a screen, a value the user wrote and a value nobody wrote are the same number. `settings()` therefore reports which top-level keys were literally present. Without it the screen invites a user to edit a file that does not contain the setting they are looking at.
 

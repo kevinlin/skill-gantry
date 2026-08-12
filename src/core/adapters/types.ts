@@ -111,13 +111,31 @@ export interface AdapterManifest {
   timeoutMs: number
 }
 
+/**
+ * Every alternative this environment satisfies — an alternative being satisfied
+ * when all of its required keys are set and non-empty.
+ *
+ * Exported alongside the boolean because Settings needs the providers by name
+ * and the gate needs only the verdict, and the two hand-rolling one predicate
+ * is how they came to disagree: the screen tested `.env` alone while the gate
+ * tested the composed child environment, so a credential exported by the shell
+ * read `missing` on screen and satisfied the run.
+ */
+export function satisfyingAlternatives(
+  req: CredentialRequirement,
+  env: Readonly<Record<string, string | undefined>>,
+): readonly CredentialSet[] {
+  if (req.kind === 'none') return []
+  return req.alternatives.filter((alt) => alt.required.every((key) => (env[key] ?? '') !== ''))
+}
+
 /** Satisfied by `none`, or by any one alternative whose required keys are all set. */
 export function credentialsSatisfied(
   req: CredentialRequirement,
   env: Readonly<Record<string, string | undefined>>,
 ): boolean {
   if (req.kind === 'none') return true
-  return req.alternatives.some((alt) => alt.required.every((key) => (env[key] ?? '') !== ''))
+  return satisfyingAlternatives(req, env).length > 0
 }
 
 /** Names what is missing, for the wizard and for the skip summary. */
