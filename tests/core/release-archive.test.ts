@@ -25,6 +25,7 @@ async function scene(rootSkill = false) {
     relPath: rootSkill ? '.' : 'sk',
     repo: { id: 'repo', path: repo, name: 'repo', isGit: false },
     rootSkill,
+    frontmatterReadable: true,
     workspacePath: workspacePath(repo, rootSkill ? '.' : 'sk', rootSkill),
     deprecated: false,
     supersededBy: null,

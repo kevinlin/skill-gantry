@@ -13,6 +13,7 @@ const skill: SkillRef = {
   relPath: 'sk',
   repo: { id: 'repo', path: '/repo', name: 'repo', isGit: false },
   rootSkill: false,
+  frontmatterReadable: true,
   workspacePath: workspacePath('/repo', 'sk', false),
   deprecated: false,
   supersededBy: null,

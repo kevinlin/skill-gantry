@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite'
 import type { Severity } from '../types.js'
+import { runDirOf } from '../workspace/layout.js'
 import {
   detectorSaysGone,
   type IssueAction,
@@ -34,7 +35,13 @@ export interface IssueRow {
   detectors: string[]
   /** Those that have not since reported a conclusive absence — R8.8's blockers. */
   blockedBy: string[]
+  /** The identity, which every comparison and join still orders on — R6.7. */
   lastSeenRun: string | null
+  /**
+   * R6.1: the same run's directory name, which is what a surface shows a user.
+   * Null when the run has no row left to name it, never when it has one.
+   */
+  lastSeenRunDir: string | null
   /** R8.15: every tool still reporting it reports it suppressed. */
   suppressed: boolean
   /** The tool's own justification, or null when not suppressed. */
@@ -78,9 +85,13 @@ export function listIssues(db: DatabaseSync, filter: IssueFilter): IssueRow[] {
               i.rule_class as ruleClass, i.rel_path as relPath,
               i.severity_max as severity, i.state as state,
               i.occurrence_count as occurrenceCount, i.last_seen_run as lastSeenRun,
+              r.sidecar_path as lastSeenRunDir,
               i.suppressed_run is not null as suppressed,
               i.suppressed_reason as suppressionReason
          from issues i join skills k on k.id = i.skill_id
+         -- Left, so an issue whose run row is gone still reports the sighting it
+         -- has: an inner join would silently drop the row from the audit surface.
+         left join runs r on r.id = i.last_seen_run
         where 1 = 1 ${clauses.length === 0 ? '' : `and ${clauses.join(' and ')}`}
         -- Suppressed last, not hidden: a decided issue should not head the
         -- triage list, but the audit surface must still carry it (R8.15).
@@ -114,6 +125,8 @@ export function listIssues(db: DatabaseSync, filter: IssueFilter): IssueRow[] {
     const mine = detectorRows.filter((detector) => detector.fp === row.fingerprint)
     return {
       ...row,
+      // The column selected into this field is the run's whole `sidecar_path`.
+      lastSeenRunDir: row.lastSeenRunDir === null ? null : runDirOf(row.lastSeenRunDir),
       // SQLite has no boolean type, so the projected 0/1 is narrowed here
       // rather than leaking a number through `IssueRow`.
       suppressed: row.suppressed === 1,

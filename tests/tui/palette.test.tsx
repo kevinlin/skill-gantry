@@ -82,6 +82,7 @@ describe(': command palette', () => {
       relPath: 'sk',
       repo: { id: 'repo', path: '/repo', name: 'repo', isGit: true },
       rootSkill: false,
+      frontmatterReadable: true,
       workspacePath: '/repo/sk-workspace',
       deprecated: false,
       supersededBy: null,

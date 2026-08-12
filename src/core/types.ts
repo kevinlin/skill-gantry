@@ -144,6 +144,11 @@ export interface SkillRef {
   /** R1.6: read from SKILL.md frontmatter, which is the authority. */
   deprecated: boolean
   supersededBy: string | null
+  /**
+   * R2.5, carried through from `Frontmatter.readable`, which states why the
+   * distinction exists. Doctor reports it; nothing else changes behaviour on it.
+   */
+  frontmatterReadable: boolean
 }
 
 export interface RawFinding {

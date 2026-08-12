@@ -12,6 +12,7 @@ const SKILL = {
   dir: '/repo/declawed',
   relPath: 'declawed',
   rootSkill: false,
+  frontmatterReadable: true,
   workspacePath: '/repo/declawed-workspace',
   deprecated: false,
   supersededBy: null,

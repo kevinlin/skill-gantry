@@ -83,7 +83,7 @@ describe('skillgantry doctor', () => {
 })
 
 describe('formatDoctor and skillgantry-outdated', () => {
-  const empty = { runtimes: [], tools: [], lifecycle: [], failed: false }
+  const empty = { runtimes: [], tools: [], lifecycle: [], skills: [], failed: false }
 
   it('names the available version and the command that installs it', () => {
     const rendered = formatDoctor({

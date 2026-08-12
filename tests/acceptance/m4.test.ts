@@ -159,6 +159,7 @@ const skillRef: SkillRef = {
   relPath: SKILL,
   repo: { id: 'zapac', path: '/tmp/zapac', name: 'zapac', isGit: true },
   rootSkill: false,
+  frontmatterReadable: true,
   workspacePath: `/tmp/zapac/${SKILL}-workspace`,
   deprecated: false,
   supersededBy: null,

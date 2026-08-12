@@ -14,6 +14,7 @@ const skill: SkillRef = {
   relPath: 'declawed',
   repo: { id: 'fx', path: '/repo', name: 'fx', isGit: false },
   rootSkill: false,
+  frontmatterReadable: true,
   workspacePath: '/repo/declawed-workspace',
   deprecated: false,
   supersededBy: null,
@@ -52,6 +53,7 @@ const issue: IssueRow = {
   detectors: ['skillspector'],
   blockedBy: ['skillspector'],
   lastSeenRun: 'r1',
+  lastSeenRunDir: '2026-08-11_17-40-46',
   suppressed: false,
   suppressionReason: null,
 }

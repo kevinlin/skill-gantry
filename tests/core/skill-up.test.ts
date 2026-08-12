@@ -11,6 +11,7 @@ const skill: SkillRef = {
   relPath: 'declawed',
   repo: { id: 'zapac', path: '/tmp/zapac', name: 'zapac', isGit: true },
   rootSkill: false,
+  frontmatterReadable: true,
   workspacePath: '/tmp/zapac/declawed-workspace',
   deprecated: false,
   supersededBy: null,

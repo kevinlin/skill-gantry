@@ -71,6 +71,24 @@ describe('R11.23 repo groups', () => {
     expect(repoSummary(rows, ['spec-lint'], zapac).marked).toBe(true)
     expect(repoSummary(rows, ['ui-lab'], zapac).marked).toBe(false)
   })
+
+  // The repo belongs to the level above, so no skill row may carry it. A skill
+  // whose frontmatter would not parse has no name, and the id it fell back to
+  // is qualified — which put `<repoId>/` in the narrowest column in the frame.
+  it('names a nameless skill by its directory and never by its qualified id', () => {
+    const nameless = skillRef('zapac/zuhlke-slides', {
+      name: null,
+      dir: '/zapac/zuhlke-slides',
+      relPath: 'zuhlke-slides',
+      frontmatterReadable: false,
+      repo: { id: 'zapac', path: '/zapac', name: 'zapac', isGit: false },
+    })
+    const row = initialState([nameless], 2).skills[0]!
+    expect(row.label).toBe('zuhlke-slides')
+    expect(row.label).not.toContain('/')
+    // The id is untouched: it is the handle every other surface joins on.
+    expect(row.skillId).toBe('zapac/zuhlke-slides')
+  })
 })
 
 describe('R11.23 the entry level follows the repo count', () => {

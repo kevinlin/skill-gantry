@@ -44,6 +44,7 @@ async function harness(replacement: string = OPTIMISED) {
     relPath: 'sk',
     repo: { id: 'repo', path: repo, name: 'repo', isGit: true },
     rootSkill: false,
+    frontmatterReadable: true,
     workspacePath: workspacePath(repo, 'sk', false),
     deprecated: false,
     supersededBy: null,

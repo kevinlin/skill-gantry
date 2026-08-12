@@ -189,7 +189,10 @@ export function dashboardRows(state: AppState, width: number): ScreenRow[] {
   line('Run history', { heading: true })
   for (const row of stats.history) {
     line(
-      `  ${row.startedAt.slice(0, 16).replace('T', ' ')}  ${row.outcome.padEnd(8)} ${row.skillId}`,
+      // The run's own directory name, not a second format cut out of
+      // `startedAt`: both answer "when", and only one of them is a string the
+      // reader can `ls` for — R6.1.
+      `  ${row.runDir}  ${row.outcome.padEnd(8)} ${row.skillId}`,
       // Through the shared map rather than a ternary: the ternary painted
       // `skipped` the same yellow as `errored`, so a stage nobody ran read as a
       // stage that broke.
@@ -264,6 +267,16 @@ export function toolsRows(state: AppState, width: number): ScreenRow[] {
         `  ${drift.skillId.padEnd(20)} lifecycle-drift  file ${drift.file}, ledger ${drift.ledger}`,
         { colour: STATUS.warn },
       )
+    }
+  }
+
+  if (report.skills.length > 0) {
+    line('Skills', { heading: true })
+    for (const skill of report.skills) {
+      // R2.5 keeps the scan going, so this is the one surface that says a skill
+      // is nameless because its file would not parse rather than because it
+      // never named itself. Doctor's vocabulary, for the lifecycle row's reason.
+      line(`  ${skill.skillId.padEnd(20)} ${skill.kind}  ${skill.detail}`, { colour: STATUS.warn })
     }
   }
 
@@ -580,7 +593,13 @@ export function findingDetailRows(row: FindingRow, width: number): ScreenRow[] {
 }
 
 export function issueDetailRows(row: IssueRow, width: number): ScreenRow[] {
-  const seen = row.lastSeenRun === null ? 'never seen in a run' : `last seen ${row.lastSeenRun}`
+  // The directory names the run, because it says when — R6.1. The id is the
+  // fallback and not the label: it is reachable only when nothing is left to
+  // name that run, and there an unreadable handle beats no handle at all.
+  const seen =
+    row.lastSeenRun === null
+      ? 'never seen in a run'
+      : `last seen ${row.lastSeenRunDir ?? row.lastSeenRun}`
   const rows: ScreenRow[] = [
     {
       text: `${row.severity}  ${row.ruleClass}`,
@@ -591,11 +610,15 @@ export function issueDetailRows(row: IssueRow, width: number): ScreenRow[] {
     { text: `${row.skillId} · ${row.repoId}`, dim: true },
     { text: '' },
     { text: 'State', heading: true },
-    {
-      text: `${STATE_MARK[row.state] ?? '?'} ${row.state} · ${row.occurrenceCount} occurrence${
+    // Wrapped like the rows either side of it, not pushed bare: this is the one
+    // row here that names a run, and at 46 columns a run label is what carries
+    // it past §14.1's bound — silently, since nothing else measures it.
+    ...wrapCells(
+      `${STATE_MARK[row.state] ?? '?'} ${row.state} · ${row.occurrenceCount} occurrence${
         row.occurrenceCount === 1 ? '' : 's'
       } · ${seen}`,
-    },
+      width,
+    ).map((text) => ({ text })),
     { text: `detected by ${row.detectors.join(', ')}`, dim: true },
   ]
   // R8.8's blockers spelled out rather than glyphed: the row has `⟂ a,b` and no

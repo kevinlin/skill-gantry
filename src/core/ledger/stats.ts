@@ -1,6 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite'
 import type { Severity, Stage } from '../types.js'
-import { STAGE_ORDER } from '../workspace/layout.js'
+import { STAGE_ORDER, runDirOf } from '../workspace/layout.js'
 import type { ProvenanceLike } from './fingerprint.js'
 
 export interface StatsFilter {
@@ -45,6 +45,8 @@ export interface RuleClassCount {
 
 export interface RunHistoryRow {
   runId: string
+  /** R6.1: the run's directory name, which is how a surface names it. */
+  runDir: string
   skillId: string
   repoId: string
   outcome: string
@@ -255,16 +257,20 @@ export function openIssueCounts(
 
 export function runHistory(db: DatabaseSync, filter: StatsFilter, limit = 20): RunHistoryRow[] {
   const scope = runScope(filter)
-  return db
+  const rows = db
     .prepare(
-      `select r.id as runId, r.skill_id as skillId, k.repo_id as repoId,
+      `select r.id as runId, r.sidecar_path as runDir, r.skill_id as skillId,
+              k.repo_id as repoId,
               r.outcome as outcome, r.started_at as startedAt, r.ended_at as endedAt,
               r.provenance_fp as provenanceFp
          from runs r join skills k on k.id = r.skill_id
         where 1 = 1 ${scope.sql}
+        -- Ordered on the id and not the directory name: two runs starting in one
+        -- second share that name, and the id cannot tie (R6.7).
         order by r.id desc limit ?`,
     )
     .all(...scope.params, limit) as unknown as RunHistoryRow[]
+  return rows.map((row) => ({ ...row, runDir: runDirOf(row.runDir) }))
 }
 
 export function provenanceOptions(db: DatabaseSync): ProvenanceOption[] {

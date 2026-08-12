@@ -54,6 +54,24 @@ describe('discoverSkills', () => {
     expect(skills).toHaveLength(2)
     expect(skills.find((s) => s.id === 'fx/broken')?.name).toBeNull()
   })
+
+  // R2.5: tolerating it is not the same as saying nothing about it. Without the
+  // flag, `name: null` reads the same whether the file failed or declared nothing.
+  it('records which skills have frontmatter it could not read', async () => {
+    const root = await makeRepo({
+      files: {
+        'broken/SKILL.md': '---\ndescription: use for work: creating a deck\n---\n',
+        'ok/SKILL.md': SKILL_MD('ok'),
+        'silent/SKILL.md': '# no frontmatter at all\n',
+      },
+    })
+    const skills = await discoverSkills(repoRef(root))
+    const readable = (id: string): boolean | undefined =>
+      skills.find((s) => s.id === id)?.frontmatterReadable
+    expect(readable('fx/broken')).toBe(false)
+    expect(readable('fx/ok')).toBe(true)
+    expect(readable('fx/silent')).toBe(true)
+  })
 })
 
 describe('workspacePath', () => {

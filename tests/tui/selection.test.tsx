@@ -15,6 +15,7 @@ const issue = (over: Partial<IssueRow> = {}): IssueRow => ({
   detectors: ['skill-lint'],
   blockedBy: [],
   lastSeenRun: 'run1',
+  lastSeenRunDir: '2026-08-11_17-40-46',
   suppressed: false,
   suppressionReason: null,
   ...over,

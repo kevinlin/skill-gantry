@@ -39,6 +39,7 @@ const skill = (id: string): SkillRef => ({
   relPath: id,
   repo: { id: 'fx', path: '/repo', name: 'fx', isGit: false },
   rootSkill: false,
+  frontmatterReadable: true,
   workspacePath: `/repo/${id}-workspace`,
   deprecated: false,
   supersededBy: null,
@@ -259,6 +260,7 @@ const BUSY_VIEWS = () =>
         detectors: ['skillspector', 'skill-scanner'],
         blockedBy: ['skill-scanner'],
         lastSeenRun: '019283af-0000-7000-8000-000000000001',
+        lastSeenRunDir: '2026-08-11_17-40-46',
       })),
     tools: async () => ({
       runtimes: [
@@ -276,6 +278,11 @@ const BUSY_VIEWS = () =>
         skillId: `alpha/skill-${i}`,
         file: 'deprecated' as const,
         ledger: 'active' as const,
+      })),
+      skills: Array.from({ length: 3 }, (_, i) => ({
+        skillId: `alpha/unreadable-skill-${i}`,
+        kind: 'frontmatter-unreadable' as const,
+        detail: 'name and version unavailable',
       })),
       failed: true,
     }),

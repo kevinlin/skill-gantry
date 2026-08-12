@@ -98,6 +98,40 @@ describe('listIssues — across every registered repo', () => {
     // absence, so it is exactly what reconcile would wait on.
     expect(rows[0]?.blockedBy).toEqual(['skillspector'])
   })
+
+  // R6.1: the identity and the label are both projected, because a screen needs
+  // the second and every join still needs the first.
+  it('carries the last sighting as both the run id and the run directory', () => {
+    const ledger = memoryLedger()
+    recordFixtureRun(ledger, {
+      runId: '019283af-0000-7000-8000-000000000009',
+      skill: ALPHA,
+      // A collision suffix the clock cannot reproduce, so the projection is
+      // proved to read the recorded path rather than reformat `started_at`.
+      sidecarPath: '/tmp/declawed-workspace/skillgantry/runs/2026-08-03_10-00-00-2',
+      stages: [
+        {
+          stage: 'security',
+          outcome: 'failed',
+          findings: [finding('declawed/SKILL.md', 'prompt-injection', 'high')],
+        },
+      ],
+    })
+    expect(listIssues(ledger.db, {})[0]).toMatchObject({
+      lastSeenRun: '019283af-0000-7000-8000-000000000009',
+      lastSeenRunDir: '2026-08-03_10-00-00-2',
+    })
+  })
+
+  it('keeps the sighting when no run row is left to name it', () => {
+    const ledger = seeded()
+    // The left join's whole point: an inner one would drop the issue from the
+    // audit surface because the run it names is gone.
+    ledger.db.prepare(`update issues set last_seen_run = 'vanished'`).run()
+    const row = listIssues(ledger.db, { repoId: 'alpha' })[0]
+    expect(row?.lastSeenRun).toBe('vanished')
+    expect(row?.lastSeenRunDir).toBeNull()
+  })
 })
 
 describe('setIssueState', () => {

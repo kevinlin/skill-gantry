@@ -61,6 +61,9 @@ const skillFor = (found: InterruptedMutation): SkillRef => {
     workspacePath: workspacePathOf(found.recordDir),
     deprecated: false,
     supersededBy: null,
+    // No frontmatter was read here, so nothing observed it failing. `false`
+    // would be a claim about a file this path never opened.
+    frontmatterReadable: true,
   }
 }
 

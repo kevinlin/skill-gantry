@@ -18,6 +18,7 @@ describe('parseFrontmatter', () => {
       version: '1.1.0',
       deprecated: false,
       supersededBy: null,
+      readable: true,
     })
   })
 
@@ -27,6 +28,7 @@ describe('parseFrontmatter', () => {
       version: null,
       deprecated: false,
       supersededBy: null,
+      readable: true,
     })
   })
 
@@ -36,6 +38,7 @@ describe('parseFrontmatter', () => {
       version: null,
       deprecated: false,
       supersededBy: null,
+      readable: true,
     })
   })
 
@@ -45,7 +48,17 @@ describe('parseFrontmatter', () => {
       version: null,
       deprecated: false,
       supersededBy: null,
+      readable: false,
     })
+  })
+
+  // R2.5. The distinction the flag exists for: a block that threw is not a file
+  // that declared nothing, and only the first is worth reporting.
+  it('marks a block it cannot read unreadable and a file with no block readable', () => {
+    const unquoted = '---\ndescription: use for work: creating a deck\n---\n'
+    expect(parseFrontmatter(unquoted).readable).toBe(false)
+    expect(parseFrontmatter('---\njust a scalar\n---\n').readable).toBe(false)
+    expect(parseFrontmatter('# no block at all\n').readable).toBe(true)
   })
 
   it('coerces a numeric version to a string', () => {
@@ -59,6 +72,7 @@ describe('parseFrontmatter', () => {
       version: null,
       deprecated: true,
       supersededBy: null,
+      readable: true,
     })
   })
 

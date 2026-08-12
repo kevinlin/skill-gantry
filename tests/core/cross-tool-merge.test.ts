@@ -16,6 +16,7 @@ const skill: SkillRef = {
   relPath: 'architecture-diagram',
   repo: { id: 'zapac', path: '/tmp/zapac', name: 'zapac', isGit: true },
   rootSkill: false,
+  frontmatterReadable: true,
   workspacePath: '/tmp/zapac/architecture-diagram-workspace',
   deprecated: false,
   supersededBy: null,

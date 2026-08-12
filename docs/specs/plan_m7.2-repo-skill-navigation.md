@@ -93,3 +93,10 @@ All three came out of measuring a rendered frame rather than reasoning from the 
 ## Changelog
 
 - 2026-08-10 — Written and shipped.
+- 2026-08-12 — **A skill row carried its repo id.** One row rendered `zapac-agent-skills/zuhlk…` under a group header already reading `zapac-agent-skills`, because `toRow` fell back `label: skill.name ?? skill.id` and `skill.id` is qualified. The skill was `zuhlke-slides`, whose `SKILL.md` description holds an unquoted `: `, so YAML reads a nested mapping and throws; `parseFrontmatter` swallows it per R2.5 and returns a null name. The label now falls back to `basename(skill.dir)`, which the level above cannot duplicate.
+
+  The parse failure itself was the second half. It also nulls `metadata.version`, so a skill declaring 2.2.0 resolved a release target as "no current version", and nothing on any surface said why. `Frontmatter` gains `readable`, false only when a block is present and will not read as a mapping — an absent block is a file that declares nothing, not one that failed. `SkillRef.frontmatterReadable` carries it, and doctor reports `frontmatter-unreadable` from the flag without reading a file, on both its surfaces, without failing the report.
+
+  Requirements revision 27 amends R2.5 and R11.23 in place, adding no id. Design §5.3 and design_tui.md §14.12 carry the two rules.
+
+  One thing surfaced that was not the reported bug: `basename` is `node:path` inside `src/tui/store.ts`, which the import boundary allows — the TUI may touch fs — and the label is now the only place the store reads a path.

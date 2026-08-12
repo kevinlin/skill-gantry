@@ -22,7 +22,13 @@ export const emptyDashboard: DashboardStats = {
   history: [],
 }
 
-export const emptyDoctor: DoctorReport = { runtimes: [], tools: [], lifecycle: [], failed: false }
+export const emptyDoctor: DoctorReport = {
+  runtimes: [],
+  tools: [],
+  lifecycle: [],
+  skills: [],
+  failed: false,
+}
 
 /** The shipped shapes, so a fixture cannot drift from what `doctor` returns. */
 export const toolFinding = (

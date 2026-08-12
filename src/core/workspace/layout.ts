@@ -1,4 +1,4 @@
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import type { Stage } from '../types.js'
 
 export const STAGE_ORDER: readonly Stage[] = [
@@ -32,6 +32,14 @@ export function runDirName(startedAt: Date): string {
  */
 export const runDirFor = (workspacePath: string, entry: { runId: string; dir?: string }): string =>
   join(runsRoot(workspacePath), entry.dir ?? entry.runId)
+
+/**
+ * The name of the directory a recorded run lives in — the inverse of
+ * `runDirFor`, read off the path the run stored rather than rebuilt from its
+ * `startedAt`: the stored one carries the `-2` a collision added, and was
+ * formatted in the clock that named it.
+ */
+export const runDirOf = (sidecarPath: string): string => basename(sidecarPath)
 
 export const indexPath = (workspacePath: string): string =>
   join(runsRoot(workspacePath), 'index.ndjson')

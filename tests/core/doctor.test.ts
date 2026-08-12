@@ -116,6 +116,35 @@ describe('doctor', () => {
     expect(report.failed).toBe(false)
   })
 
+  it('names a skill whose frontmatter would not parse, without failing', async () => {
+    const h = await home()
+    await saveToolLock(h, { version: 1, tools: {} })
+    const root = await makeRepo({
+      files: {
+        // Unquoted `: ` inside a plain scalar: yaml reads a nested mapping and
+        // throws, so the skill has no name and no version and said so nowhere.
+        'slides/SKILL.md': '---\ndescription: use for work: creating a deck\n---\n',
+        'gap/SKILL.md': SKILL_MD('gap'),
+      },
+    })
+    const report = await doctor({
+      home: h,
+      skills: await discoverSkills({ id: 'r', path: root, name: 'r', isGit: false }),
+      ledgerLifecycle: new Map(),
+      ruleMap: CURRENT,
+    })
+    expect(report.skills).toEqual([
+      {
+        skillId: 'r/slides',
+        kind: 'frontmatter-unreadable',
+        detail: 'name and version unavailable',
+      },
+    ])
+    // R3.7's probe-and-report rule: nothing here stops a tool running, and a
+    // report that fails on a machine that is fine is a report nobody reads.
+    expect(report.failed).toBe(false)
+  })
+
   it('probes exactly the runtimes the catalogue needs', async () => {
     const h = await home()
     await saveToolLock(h, { version: 1, tools: {} })

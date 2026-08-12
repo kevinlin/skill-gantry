@@ -9,9 +9,25 @@ export interface Frontmatter {
   deprecated: boolean
   /** R1.4's optional pointer at the replacement. */
   supersededBy: string | null
+  /**
+   * R2.5. False when a block is there and could not be read as a mapping. A
+   * file declaring nothing is not a file that failed, so an absent block is
+   * `true`: without the distinction, a skill nameless because its YAML threw
+   * is indistinguishable from one that never named itself, and the only
+   * symptom is metadata silently missing everywhere.
+   */
+  readable: boolean
 }
 
-const EMPTY: Frontmatter = { name: null, version: null, deprecated: false, supersededBy: null }
+const ABSENT: Frontmatter = {
+  name: null,
+  version: null,
+  deprecated: false,
+  supersededBy: null,
+  readable: true,
+}
+
+const UNPARSABLE: Frontmatter = { ...ABSENT, readable: false }
 
 function asString(value: unknown): string | null {
   if (typeof value === 'string') return value
@@ -25,15 +41,15 @@ function asString(value: unknown): string | null {
  */
 export function parseFrontmatter(source: string): Frontmatter {
   const match = FRONTMATTER.exec(source)
-  if (!match?.[1]) return EMPTY
+  if (!match?.[1]) return ABSENT
 
   let doc: unknown
   try {
     doc = parseYaml(match[1])
   } catch {
-    return EMPTY
+    return UNPARSABLE
   }
-  if (typeof doc !== 'object' || doc === null) return EMPTY
+  if (typeof doc !== 'object' || doc === null) return UNPARSABLE
 
   const record = doc as Record<string, unknown>
   const metadata =
@@ -46,5 +62,6 @@ export function parseFrontmatter(source: string): Frontmatter {
     version: asString(metadata.version),
     deprecated: metadata.deprecated === true,
     supersededBy: asString(metadata.superseded_by),
+    readable: true,
   }
 }

@@ -1,3 +1,4 @@
+import { basename } from 'node:path'
 import {
   STAGE_ORDER,
   hasAdapter,
@@ -594,7 +595,11 @@ const emptyStages = (): Record<Stage, StageCell> =>
 
 const toRow = (skill: SkillRef): SkillRow => ({
   skillId: skill.id,
-  label: skill.name ?? skill.id,
+  // The directory, never `skill.id`: the id is qualified, so a skill whose
+  // frontmatter failed to parse was labelled `<repoId>/<dir>` — spending the
+  // narrowest column in the frame on the repo the group header above it
+  // already names, and truncating the one word that tells the rows apart.
+  label: skill.name ?? basename(skill.dir),
   dir: skill.dir,
   workspacePath: skill.workspacePath,
   status: 'idle',

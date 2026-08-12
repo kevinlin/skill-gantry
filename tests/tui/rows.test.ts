@@ -49,6 +49,7 @@ describe('dashboardRows', () => {
         history: [
           {
             runId: '019283af-0000-7000-8000-000000000001',
+            runDir: '2026-08-03_10-00-00',
             skillId: 'alpha/declawed',
             repoId: 'alpha',
             outcome: 'passed',
@@ -74,6 +75,9 @@ describe('dashboardRows', () => {
       'prompt-injection',
       'Run history',
       'alpha/declawed',
+      // R6.1: the run's directory, which is the handle a reader can `ls` for —
+      // not a second time format cut out of `startedAt`.
+      '2026-08-03_10-00-00',
     ]) {
       expect(text).toContain(expected)
     }
@@ -126,6 +130,13 @@ describe('toolsRows', () => {
           toolFinding('skill-up', 'version-drift', 'locked 0.4.0, reports 0.5.0'),
         ],
         lifecycle: [{ skillId: 'alpha/declawed', file: 'deprecated', ledger: 'active' }],
+        skills: [
+          {
+            skillId: 'alpha/zuhlke-slides',
+            kind: 'frontmatter-unreadable' as const,
+            detail: 'name and version unavailable',
+          },
+        ],
         failed: true,
       },
     })
@@ -137,6 +148,10 @@ describe('toolsRows', () => {
     expect(text).toContain('brew install go')
     expect(text).toContain('version-drift')
     expect(text).toContain('lifecycle-drift')
+    // R2.5: a skill nameless because its frontmatter would not parse is named
+    // here, in doctor's own vocabulary, or it is named nowhere.
+    expect(text).toContain('zuhlke-slides')
+    expect(text).toContain('frontmatter-unreadable')
     expect(text).toContain('drift found')
   })
 
@@ -144,7 +159,7 @@ describe('toolsRows', () => {
     // R8.14: the migration is explicit, and this screen is not a trigger.
     const state = reducer(initialState([], 2), {
       type: 'set-tools',
-      report: { runtimes: [], tools: [], lifecycle: [], failed: false },
+      report: { runtimes: [], tools: [], lifecycle: [], skills: [], failed: false },
     })
     expect(
       toolsRows(state, 80)

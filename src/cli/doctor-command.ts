@@ -41,6 +41,12 @@ export function formatDoctor(report: DoctorReport): string[] {
       `${drift.skillId.padEnd(16)}lifecycle-drift  file ${drift.file}, ledger ${drift.ledger}`,
     )
   }
+  for (const skill of report.skills) {
+    // Padded to 15 and joined with a space, so the kind lands in the same
+    // column as the tool rows' and a qualified skill id — which is longer than
+    // any tool id — still cannot run into the word beside it.
+    lines.push(`${skill.skillId.padEnd(15)} ${skill.kind}  ${skill.detail}`)
+  }
   if (report.upgrade) {
     lines.push(
       `${'skillgantry'.padEnd(16)}skillgantry-outdated  ` +

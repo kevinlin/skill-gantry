@@ -39,7 +39,8 @@ const issue = (over: Partial<IssueRow> = {}): IssueRow => ({
   occurrenceCount: 3,
   detectors: ['skill-lint', 'skillspector'],
   blockedBy: ['skillspector'],
-  lastSeenRun: 'run1',
+  lastSeenRun: '019ff63f-f1be-7402-8d75-3eb77b20eaf1',
+  lastSeenRunDir: '2026-08-11_17-40-46',
   suppressed: false,
   suppressionReason: null,
   ...over,
@@ -53,6 +54,7 @@ const skill: SkillRef = {
   relPath: 'declawed',
   repo: { id: 'zapac', path: '/repo', name: 'zapac', isGit: false },
   rootSkill: false,
+  frontmatterReadable: true,
   workspacePath: '/repo/declawed-workspace',
   deprecated: false,
   supersededBy: null,
@@ -111,8 +113,29 @@ describe('R11.18 the full-length view', () => {
     expect(text).toContain('fingerprint fp1')
   })
 
+  // R6.1: the directory says when the sighting was; the run id says nothing a
+  // reader can use, and 36 cells of it crowded out the rest of the row.
+  it('names the last sighting by its run directory and not by the run id', () => {
+    const text = issueDetailRows(issue(), 70)
+      .map((row) => row.text)
+      .join('\n')
+    expect(text).toContain('last seen 2026-08-11_17-40-46')
+    expect(text).not.toContain('019ff63f')
+  })
+
+  // The one case where the id is all there is. Falling back to it beats a row
+  // that reports a sighting and cannot say which run it came from.
+  it('falls back to the run id when nothing is left to name the run', () => {
+    // Joined with a space, not a newline: the State row wraps, so the id can
+    // land on a row of its own.
+    const text = issueDetailRows(issue({ lastSeenRunDir: null }), 70)
+      .map((row) => row.text)
+      .join(' ')
+    expect(text).toContain('last seen 019ff63f-f1be-7402-8d75-3eb77b20eaf1')
+  })
+
   it('says so rather than printing null when the issue has never been seen', () => {
-    const text = issueDetailRows(issue({ lastSeenRun: null, blockedBy: [] }), 70)
+    const text = issueDetailRows(issue({ lastSeenRun: null, lastSeenRunDir: null, blockedBy: [] }), 70)
       .map((row) => row.text)
       .join('\n')
     expect(text).toContain('never seen in a run')

@@ -19,6 +19,7 @@ export const skillRef = (
     relPath: id,
     repo: { id: 'fx', path: '/repo', name: 'fx', isGit },
     rootSkill: false,
+    frontmatterReadable: true,
     workspacePath: `/repo/${id}-workspace`,
     deprecated: false,
     supersededBy: null,

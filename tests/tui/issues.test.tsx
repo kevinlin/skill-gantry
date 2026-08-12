@@ -17,6 +17,7 @@ const issue = (over: Partial<IssueRow>): IssueRow => ({
   detectors: ['skillspector', 'skill-scanner'],
   blockedBy: ['skill-scanner'],
   lastSeenRun: '019283af-0000-7000-8000-000000000001',
+  lastSeenRunDir: '2026-08-11_17-40-46',
   suppressed: false,
   suppressionReason: null,
   ...over,

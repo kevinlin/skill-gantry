@@ -99,6 +99,29 @@ describe('dashboard — R8.9 across every registered repo', () => {
     expect(stats.history.map((row) => row.skillId)).toEqual(['beta/spec-lint', 'alpha/declawed'])
   })
 
+  // R6.1: the row names a run, and the name is the directory the run recorded.
+  // Ordering stays on the id, which is why this asserts both at once.
+  it('names each run by its directory while ordering on the identity', () => {
+    const ledger = memoryLedger()
+    for (const [runId, dir] of [
+      ['019283af-0000-7000-8000-00000000000a', '2026-08-03_10-00-00'],
+      ['019283af-0000-7000-8000-00000000000b', '2026-08-03_10-00-00-2'],
+    ] as const) {
+      recordFixtureRun(ledger, {
+        runId,
+        skill: ALPHA,
+        sidecarPath: `/tmp/declawed-workspace/skillgantry/runs/${dir}`,
+        stages: [{ stage: 'validate', outcome: 'passed' }],
+      })
+    }
+    // Two runs claimed in the same second, so the directory names tie and only
+    // the id can order them.
+    expect(dashboard(ledger.db, {}).history.map((row) => row.runDir)).toEqual([
+      '2026-08-03_10-00-00-2',
+      '2026-08-03_10-00-00',
+    ])
+  })
+
   it('narrows to one skill', () => {
     const stats = dashboard(seeded().db, { skillId: 'alpha/declawed' })
     expect(stats.runs).toBe(1)

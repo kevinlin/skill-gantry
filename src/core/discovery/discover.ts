@@ -1,7 +1,7 @@
 import { access, readFile, readdir } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import type { RepoRef, SkillRef } from '../types.js'
-import { parseFrontmatter } from './frontmatter.js'
+import { type Frontmatter, parseFrontmatter } from './frontmatter.js'
 
 export const WORKSPACE_SUFFIX = '-workspace'
 export const ROOT_WORKSPACE_DIR = '.skillgantry-workspace'
@@ -40,11 +40,16 @@ async function toSkill(
   relPath: string,
   rootSkill: boolean,
 ): Promise<SkillRef> {
-  let front = {
-    name: null as string | null,
-    version: null as string | null,
+  // Annotated rather than inferred, so the four nulls need no `as` to widen and
+  // a new `Frontmatter` field fails here instead of silently defaulting.
+  // `readable: false` because a file that cannot be read is frontmatter that
+  // cannot be read: the catch below lands on the flag the parser would set.
+  let front: Frontmatter = {
+    name: null,
+    version: null,
     deprecated: false,
-    supersededBy: null as string | null,
+    supersededBy: null,
+    readable: false,
   }
   try {
     front = parseFrontmatter(await readFile(join(dir, 'SKILL.md'), 'utf8'))
@@ -62,6 +67,7 @@ async function toSkill(
     workspacePath: workspacePath(repo.path, relPath, rootSkill),
     deprecated: front.deprecated,
     supersededBy: front.supersededBy,
+    frontmatterReadable: front.readable,
   }
 }
 

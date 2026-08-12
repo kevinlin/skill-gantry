@@ -12,6 +12,7 @@ const skill: SkillRef = {
   relPath: 'insight-profile',
   repo: { id: 'zapac', path: '/tmp/zapac', name: 'zapac', isGit: true },
   rootSkill: false,
+  frontmatterReadable: true,
   workspacePath: '/tmp/zapac/insight-profile-workspace',
   deprecated: false,
   supersededBy: null,

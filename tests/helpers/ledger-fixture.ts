@@ -12,6 +12,7 @@ export function skillFixture(repoId: string, name: string): SkillRef {
     relPath: name,
     repo: { id: repoId, path: `/${repoId}`, name: repoId, isGit: false },
     rootSkill: false,
+    frontmatterReadable: true,
     workspacePath: workspacePath(`/${repoId}`, name, false),
     deprecated: false,
     supersededBy: null,
@@ -34,6 +35,8 @@ export interface RunSpec {
   stages: StageSpec[]
   provenance?: Record<string, unknown>
   digest?: string
+  /** R6.1's timestamped directory, for the queries that name a run by it. */
+  sidecarPath?: string
 }
 
 /** Sequential ISO instants, so wall clock and run order are both assertable. */
@@ -52,7 +55,7 @@ export function recordFixtureRun(ledger: Ledger, spec: RunSpec): void {
     git: { commit: null, dirty: false },
     provenanceJson: JSON.stringify(spec.provenance ?? {}),
     toolLockJson: '{}',
-    sidecarPath: `/tmp/${spec.runId}`,
+    sidecarPath: spec.sidecarPath ?? `/tmp/${spec.runId}`,
     stages: spec.stages.map((stage) => {
       const startedAt = at(clock)
       clock += stage.seconds ?? 1

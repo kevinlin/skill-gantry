@@ -69,6 +69,18 @@ export interface LifecycleFinding {
 }
 
 /**
+ * R2.5's other half. Discovery tolerates frontmatter it cannot read, which is
+ * what keeps one bad skill from failing the scan — and left the skill nameless
+ * and unversioned with nothing on any surface saying why. Not a
+ * `ToolDriftKind`, for `UpgradeFinding`'s reason below.
+ */
+export interface SkillFinding {
+  skillId: string
+  kind: 'frontmatter-unreadable'
+  detail: string
+}
+
+/**
  * Not a `ToolDriftKind`: SkillGantry is not one of the tools in the lock, and
  * widening that union would put it into every per-tool loop over the kinds.
  */
@@ -81,7 +93,9 @@ export interface DoctorReport {
   runtimes: RuntimeStatus[]
   tools: ToolFinding[]
   lifecycle: LifecycleFinding[]
-  /** §5.3's `skillgantry-outdated`, reported and never failing the report. */
+  // Both reported and neither failing the report: nothing in either stops a
+  // tool running. `upgrade` is §5.3's `skillgantry-outdated`.
+  skills: SkillFinding[]
   upgrade: UpgradeFinding | null
   failed: boolean
 }
@@ -223,6 +237,20 @@ async function lifecycleDrift(
   }
   return findings
 }
+
+/**
+ * No file read, unlike `lifecycleDrift`, which re-reads because it compares the
+ * file against the ledger's cache. This fact has no second copy: it is what
+ * discovery saw when it parsed the frontmatter.
+ */
+const skillFindings = (skills: readonly SkillRef[]): SkillFinding[] =>
+  skills
+    .filter((skill) => !skill.frontmatterReadable)
+    .map((skill) => ({
+      skillId: skill.id,
+      kind: 'frontmatter-unreadable' as const,
+      detail: 'name and version unavailable',
+    }))
 
 /**
  * R3.10's three conditions, decided by comparing digests. Neither the file's
@@ -385,6 +413,7 @@ export async function doctor(input: DoctorInput): Promise<DoctorReport> {
     runtimes: await probeRuntimes(runtimesFor(CATALOGUE), exec),
     tools,
     lifecycle: await lifecycleDrift(input.skills, input.ledgerLifecycle),
+    skills: skillFindings(input.skills),
     upgrade: input.upgradeAvailable ?? null,
     failed: tools.some((finding) => FAILING.has(finding.kind)),
   }

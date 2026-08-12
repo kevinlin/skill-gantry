@@ -14,6 +14,7 @@ const skill = (isGit = true): SkillRef => ({
   relPath: 'declawed',
   repo: { id: 'zapac', path: '/repo', name: 'zapac-agent-skills', isGit },
   rootSkill: false,
+  frontmatterReadable: true,
   workspacePath: '/repo/declawed-workspace',
   deprecated: false,
   supersededBy: null,
