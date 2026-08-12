@@ -42,6 +42,15 @@ const RUNNER_ID = 'skill-up'
 const CREDENTIAL_KEYS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'QODER_PERSONAL_ACCESS_TOKEN']
 
 /**
+ * The same credential in the shape a gateway user holds it. Naming only the
+ * three above described a machine SkillGantry does not require: an Anthropic
+ * credential reaches a spawned tool as this pair as often as it does as
+ * `ANTHROPIC_API_KEY`, `spawnEnv` derives one form from the other, and the
+ * setup wizard already reports the token by this name. Keys, never values.
+ */
+const GATEWAY_KEYS = ['ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL']
+
+/**
  * The stage's real argv with its two substitutions resolved, so the agent reads
  * the command that will actually run rather than a hand-written approximation
  * of it. Read from the manifest for §9.4's reason: a pin bump moves the prompt
@@ -152,7 +161,8 @@ export function buildEvalPrompt(input: EvalPromptInput): string {
   )
   lines.push(
     `- The engine is declared by the suite itself and authenticated by that CLI. If it wants a ` +
-      `credential, it will ask for one of ${CREDENTIAL_KEYS.map((key) => `\`${key}\``).join(', ')}. ` +
+      `credential, it will ask for one of ${CREDENTIAL_KEYS.map((key) => `\`${key}\``).join(', ')}, ` +
+      `or, against a gateway, the pair ${GATEWAY_KEYS.map((key) => `\`${key}\``).join(' and ')}. ` +
       'Ask the user; never write a key into a YAML file.',
   )
   lines.push(

@@ -2,7 +2,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { Command } from 'commander'
 import { loadConfig, loadToolLock } from '../core/config/config.js'
-import { loadEnvFile, provenanceOf } from '../core/config/env.js'
+import { loadEnvFile, provenanceOf, spawnEnv } from '../core/config/env.js'
 import { discoverSkills } from '../core/discovery/discover.js'
 import { openLedger } from '../core/ledger/db.js'
 import { syncLifecycle } from '../core/ledger/lifecycle.js'
@@ -165,7 +165,7 @@ export function buildProgram(deps: CliDeps): GantryProgram {
           stageTools: config.stageTools,
           lock,
           ledger,
-          env: { ...process.env, ...env.vars },
+          env: spawnEnv(process.env, env.vars),
           secrets: env.secrets,
           provenance: provenanceOf(env.vars),
           artefactSizeCapBytes: config.artefactSizeCapBytes,

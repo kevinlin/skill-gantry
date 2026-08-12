@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { chmod, mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { loadEnvFile, provenanceOf, withAnalysisModes } from '../../src/core/config/env.js'
+import { loadEnvFile, provenanceOf, spawnEnv, withAnalysisModes } from '../../src/core/config/env.js'
 
 const ENV = [
   'ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic',
@@ -69,5 +69,51 @@ describe('provenanceOf', () => {
 
   it('yields a null host when no base url is set', () => {
     expect(provenanceOf({}).baseUrlHost).toBeNull()
+  })
+})
+
+describe('spawnEnv', () => {
+  const GATEWAY = {
+    ANTHROPIC_BASE_URL: 'https://api.deepseek.com/anthropic',
+    ANTHROPIC_AUTH_TOKEN: 'sk-testtokenvalue000000000000000000',
+  }
+
+  it('derives the api-key form of a gateway credential — R7.3', () => {
+    const env = spawnEnv({}, GATEWAY)
+    expect(env.ANTHROPIC_API_KEY).toBe(GATEWAY.ANTHROPIC_AUTH_TOKEN)
+    expect(env.ANTHROPIC_AUTH_TOKEN).toBe(GATEWAY.ANTHROPIC_AUTH_TOKEN)
+  })
+
+  it('never overwrites a key the file or the shell already carries', () => {
+    expect(spawnEnv({}, { ...GATEWAY, ANTHROPIC_API_KEY: 'sk-explicit' }).ANTHROPIC_API_KEY).toBe(
+      'sk-explicit',
+    )
+    const ambient = spawnEnv({ ANTHROPIC_API_KEY: 'sk-ambient' }, GATEWAY)
+    expect(ambient.ANTHROPIC_API_KEY).toBe('sk-ambient')
+  })
+
+  it('derives nothing without a base url', () => {
+    const env = spawnEnv({}, { ANTHROPIC_AUTH_TOKEN: GATEWAY.ANTHROPIC_AUTH_TOKEN })
+    expect(env.ANTHROPIC_API_KEY).toBeUndefined()
+  })
+
+  it('derives nothing against api.anthropic.com, where the two forms differ', () => {
+    // A bearer token sent as an `x-api-key` is a 401, so the direct endpoint
+    // keeps whatever auth it already had rather than gaining a broken one.
+    const env = spawnEnv({}, { ...GATEWAY, ANTHROPIC_BASE_URL: 'https://api.anthropic.com' })
+    expect(env.ANTHROPIC_API_KEY).toBeUndefined()
+  })
+
+  it('lets the credential file win over the ambient environment', () => {
+    const shell = { ANTHROPIC_MODEL: 'shell-model', PATH: '/usr/bin' }
+    const env = spawnEnv(shell, { ...GATEWAY, ANTHROPIC_MODEL: 'file-model' })
+    expect(env.ANTHROPIC_MODEL).toBe('file-model')
+    expect(env.PATH).toBe('/usr/bin')
+  })
+
+  it('derives a value redaction already covers — R7.4', async () => {
+    const { vars, secrets } = await loadEnvFile(await homeWithEnv())
+    const env = spawnEnv({}, vars)
+    expect(secrets).toContain(env.ANTHROPIC_API_KEY)
   })
 })

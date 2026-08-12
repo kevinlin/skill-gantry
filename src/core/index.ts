@@ -35,7 +35,7 @@ export {
   type ConfigChange,
   type ScalarField,
 } from './config/edit.js'
-export { loadEnvFile, provenanceOf } from './config/env.js'
+export { loadEnvFile, provenanceOf, spawnEnv } from './config/env.js'
 export { createQueue, type QueueOptions } from './queue/pool.js'
 export {
   MUTATING_STAGES,

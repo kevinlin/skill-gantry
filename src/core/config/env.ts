@@ -77,6 +77,46 @@ export async function loadEnvFile(home: string): Promise<EnvLoad> {
   return { present: true, vars, secrets, warnings }
 }
 
+/**
+ * The child environment for every spawned tool: the ambient environment, then
+ * `.env`, then one derived key (R7.3).
+ *
+ * A gateway credential is the pair `ANTHROPIC_BASE_URL` + `ANTHROPIC_AUTH_TOKEN`,
+ * and a tool that probes `ANTHROPIC_API_KEY` alone reads that as no credential
+ * at all — skill-up logs `ANTHROPIC_API_KEY not set, claude-code will rely on
+ * existing login state if available` against a fully configured gateway, once
+ * per case. §5.4's `profileEnv` already emits both forms into the file it
+ * composes for the same reason; the spawn is where R7.3 says the injection
+ * actually happens, so it derives the same pair.
+ *
+ * Guarded twice, each guard against a way of making auth worse. An explicit
+ * `ANTHROPIC_API_KEY` is never overwritten. And nothing is derived without a
+ * base URL, nor against `api.anthropic.com`, where a bearer token and an
+ * `x-api-key` are different credentials and sending one as the other turns
+ * working auth into a 401. An unparsable base URL is a gateway: the direct
+ * endpoint is the case being excluded, and it is spelled exactly.
+ */
+export function spawnEnv(
+  ambient: NodeJS.ProcessEnv,
+  vars: Record<string, string>,
+): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...ambient, ...vars }
+  const token = env.ANTHROPIC_AUTH_TOKEN
+  const base = env.ANTHROPIC_BASE_URL
+  if (token && base && !env.ANTHROPIC_API_KEY && !isAnthropicDirect(base)) {
+    env.ANTHROPIC_API_KEY = token
+  }
+  return env
+}
+
+function isAnthropicDirect(base: string): boolean {
+  try {
+    return new URL(base).host === 'api.anthropic.com'
+  } catch {
+    return false
+  }
+}
+
 export function provenanceOf(vars: Record<string, string>): Provenance {
   const base = vars.ANTHROPIC_BASE_URL ?? vars.OPENAI_BASE_URL
   let host: string | null = null

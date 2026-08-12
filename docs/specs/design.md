@@ -94,7 +94,7 @@ Release is a module, not an adapter: it has no external tool to wrap, so it has 
 
 ### 4.1 Config schema
 
-*Satisfies R7.1, R7.2.*
+*Satisfies R7.1, R7.2, R7.3.*
 
 `~/.skillgantry/config.json`:
 
@@ -121,6 +121,10 @@ Release is a module, not an adapter: it has no external tool to wrap, so it has 
 Repo paths are canonicalised on registration: expanded, resolved through symlinks, trailing separator stripped. Registering a path that canonicalises onto an existing repo is rejected. `id` is a slug derived from the directory name, deduplicated with a numeric suffix.
 
 Credentials live outside this file. They are read from a single `~/.skillgantry/.env`, in whatever format the user supplied, and never written back. A mode more permissive than 600 is reported as a warning rather than an error: the file is the user's, so SkillGantry says what is wrong with it and does not change it.
+
+**The child environment of a spawned tool** is composed once, by `spawnEnv(process.env, vars)`, and the runner passes it through untouched — there is no allowlist. Three layers, in order: the ambient environment, then `.env`, then one derived key. `loadEnvFile` keeps returning the file's literal contents (R7.1), so Settings, provenance and the credential gate all report what the file holds; the derivation belongs to the spawn, which is the thing R7.3 is about.
+
+The derived key is `ANTHROPIC_API_KEY`, taken from `ANTHROPIC_AUTH_TOKEN` when a gateway is configured. §5.4's `profileEnv` already emits both forms into the file it composes, for the reason a gateway token needs the bearer form; the spawn path derived nothing, so a tool probing only the API key read a fully configured gateway as no credential — skill-up logged `ANTHROPIC_API_KEY not set, claude-code will rely on existing login state if available` once per eval case, and a tool that gated rather than warned would have skipped. Two guards, each against a way of making auth worse: an `ANTHROPIC_API_KEY` already in the merge is never overwritten, and nothing is derived without `ANTHROPIC_BASE_URL` or against `api.anthropic.com`, where a bearer token and an `x-api-key` are different credentials and sending one as the other turns working auth into a 401. An unparsable base URL counts as a gateway — the direct endpoint is the case being excluded, and it is spelled exactly. Redaction needs no extension: the derived value *is* the token value, which the `_TOKEN` suffix already put in the scrub set.
 
 ### 4.2 Discovery algorithm
 
@@ -825,7 +829,7 @@ It lives in `stages` beside `fix-prompt.ts` and `optimise-prompt.ts` for §9.4a'
 
 **The invocation and the artefact name are read from the manifest**, §9.4's rule and for its reason, so a pin bump moves the prompt with it rather than leaving a hand-written argv line describing the previous release.
 
-**Credentials are named as keys, never as values** (R7.3). skill-upper's own step 5 reads `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `QODER_PERSONAL_ACCESS_TOKEN`, or `~/.skill-up/credentials.yaml`, and stops to ask rather than writing a secret into YAML — which is the correct behaviour, so the prompt names which key is wanted and leaves the asking where it is. The engine is the skill's own declaration (`engine: { name: claude_code }` in every reference suite) authenticated by that CLI, which is why §5.3's `claude-cli-missing` probe is a fact this prompt can name.
+**Credentials are named as keys, never as values** (R7.3). skill-upper's own step 5 reads `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `QODER_PERSONAL_ACCESS_TOKEN`, or `~/.skill-up/credentials.yaml`, and stops to ask rather than writing a secret into YAML — which is the correct behaviour, so the prompt names which key is wanted and leaves the asking where it is. It names the gateway pair `ANTHROPIC_AUTH_TOKEN` + `ANTHROPIC_BASE_URL` beside those three: an Anthropic credential reaches a spawned tool in that shape as often as in the other, §4.1 derives one form from it, and the setup wizard reports the token by that name — so naming only the API key described a machine SkillGantry does not require. The engine is the skill's own declaration (`engine: { name: claude_code }` in every reference suite) authenticated by that CLI, which is why §5.3's `claude-cli-missing` probe is a fact this prompt can name.
 
 **No "after" section.** Adding `evals/` moves the skill digest, so R9.9 refuses a release against gates recorded before it. That is a fact about SkillGantry and belongs on a SkillGantry surface, not in a document handed to an agent working in the user's repo.
 
@@ -1490,7 +1494,7 @@ Fixture capture is a scripted, repeatable step tied to the pinned tool versions,
 | R5.2, R5.12–R5.14, R12.4 | 11.1, 11.4, 11.5 |
 | R5.3–R5.8, R5.10 queue | 11.1, 11.4 |
 | R6 artefacts | 9, 9.1, 9.2, 9.4, 9.4a, 9.4b |
-| R7 credentials and redaction | 9.3, 10.2 |
+| R7 credentials and redaction | 4.1, 9.3, 10.2 |
 | R8 ledger and issues | 10 |
 | R9 release | 12.4 |
 | R10 mutation safety | 12.1, 12.2, 12.3, 12.5 |

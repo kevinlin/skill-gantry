@@ -109,6 +109,10 @@ describe('buildEvalPrompt', () => {
     const body = buildEvalPrompt(input())
 
     expect(body).toContain('`ANTHROPIC_API_KEY`')
+    // The gateway pair is the same credential in the shape `spawnEnv` derives
+    // from, and the shape the setup wizard reports — naming only the API key
+    // described a machine SkillGantry does not require.
+    expect(body).toContain('`ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_BASE_URL`')
     expect(body).toContain('never write a key into a YAML file')
     expect(body).not.toMatch(/sk-[A-Za-z0-9]/)
   })

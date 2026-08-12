@@ -4,6 +4,7 @@ import {
   openLedger,
   provenanceOf,
   runPipeline,
+  spawnEnv,
   syncLifecycle,
 } from '../core/index.js'
 import { detectInterrupted } from './recover-command.js'
@@ -46,7 +47,7 @@ export async function runRelease(
       stageTools: config.stageTools,
       lock,
       ledger,
-      env: { ...process.env, ...env.vars },
+      env: spawnEnv(process.env, env.vars),
       secrets: env.secrets,
       provenance: provenanceOf(env.vars),
       artefactSizeCapBytes: config.artefactSizeCapBytes,
