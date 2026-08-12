@@ -4,9 +4,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { openSnapshotSandbox } from '../../src/core/isolation/snapshot.js'
 import { readSandboxRecord } from '../../src/core/isolation/record.js'
-import { ROOT_WORKSPACE_DIR, workspacePath } from '../../src/core/discovery/discover.js'
-import type { SkillRef } from '../../src/core/types.js'
+import { ROOT_WORKSPACE_DIR } from '../../src/core/discovery/discover.js'
 import { SKILL_MD_FULL, makeRepo } from '../helpers/tmp-repo.js'
+import { repoSkillRef } from '../helpers/skill-ref.js'
 
 const SCOPE = ['sk/SKILL.md', 'sk/CHANGELOG.md', 'sk/old.txt', 'sk/new.txt', 'sk/run.sh', 'sk/gone.txt']
 
@@ -20,19 +20,7 @@ async function open(scope: readonly string[] = SCOPE) {
     },
   })
   await chmod(join(repo, 'sk/run.sh'), 0o755)
-  const skill: SkillRef = {
-    id: 'repo/sk',
-    name: 'sk',
-    version: '1.0.0',
-    dir: join(repo, 'sk'),
-    relPath: 'sk',
-    repo: { id: 'repo', path: repo, name: 'repo', isGit: false },
-    rootSkill: false,
-    frontmatterReadable: true,
-    workspacePath: workspacePath(repo, 'sk', false),
-    deprecated: false,
-    supersededBy: null,
-  }
+  const skill = repoSkillRef(repo)
   const recordDir = await mkdtemp(join(tmpdir(), 'sg-run-'))
   const sandbox = await openSnapshotSandbox({
     skill,
@@ -125,19 +113,7 @@ describe('SnapshotSandbox', () => {
   it('preserves a symlink as a link, on copy and on restore (R2.10)', async () => {
     const repo = await makeRepo({ files: { 'sk/SKILL.md': SKILL_MD_FULL('sk'), 'sk/old.txt': 'old\n' } })
     await symlink('old.txt', join(repo, 'sk/link.txt'))
-    const skill: SkillRef = {
-      id: 'repo/sk',
-      name: 'sk',
-      version: '1.0.0',
-      dir: join(repo, 'sk'),
-      relPath: 'sk',
-      repo: { id: 'repo', path: repo, name: 'repo', isGit: false },
-      rootSkill: false,
-      frontmatterReadable: true,
-      workspacePath: workspacePath(repo, 'sk', false),
-      deprecated: false,
-      supersededBy: null,
-    }
+    const skill = repoSkillRef(repo)
     const recordDir = await mkdtemp(join(tmpdir(), 'sg-run-'))
     const sandbox = await openSnapshotSandbox({
       skill,
@@ -166,19 +142,7 @@ describe('SnapshotSandbox', () => {
   it('rejects a symlink inside the candidate root that escapes it, by name (R2.10)', async () => {
     const repo = await makeRepo({ files: { 'sk/SKILL.md': SKILL_MD_FULL('sk') } })
     await symlink('../../outside', join(repo, 'sk/escape.txt'))
-    const skill: SkillRef = {
-      id: 'repo/sk',
-      name: 'sk',
-      version: '1.0.0',
-      dir: join(repo, 'sk'),
-      relPath: 'sk',
-      repo: { id: 'repo', path: repo, name: 'repo', isGit: false },
-      rootSkill: false,
-      frontmatterReadable: true,
-      workspacePath: workspacePath(repo, 'sk', false),
-      deprecated: false,
-      supersededBy: null,
-    }
+    const skill = repoSkillRef(repo)
     const recordDir = await mkdtemp(join(tmpdir(), 'sg-run-'))
     await expect(
       openSnapshotSandbox({
@@ -201,19 +165,7 @@ describe('SnapshotSandbox', () => {
     // inside that workspace. Copying the workspace into the snapshot would
     // therefore try to copy the snapshot into itself.
     const repo = await makeRepo({ files: { 'SKILL.md': SKILL_MD_FULL('root') } })
-    const skill: SkillRef = {
-      id: 'repo',
-      name: 'root',
-      version: '1.0.0',
-      dir: repo,
-      relPath: '.',
-      repo: { id: 'repo', path: repo, name: 'repo', isGit: false },
-      rootSkill: true,
-      frontmatterReadable: true,
-      workspacePath: workspacePath(repo, '.', true),
-      deprecated: false,
-      supersededBy: null,
-    }
+    const skill = repoSkillRef(repo, '.')
     const recordDir = join(repo, ROOT_WORKSPACE_DIR, 'skillgantry', 'runs', 'run-1')
     await mkdir(recordDir, { recursive: true })
     const sandbox = await openSnapshotSandbox({
@@ -246,19 +198,7 @@ describe('SnapshotSandbox', () => {
         'root_0.9.0.zip': 'a previous release\n',
       },
     })
-    const skill: SkillRef = {
-      id: 'repo',
-      name: 'root',
-      version: '1.0.0',
-      dir: repo,
-      relPath: '.',
-      repo: { id: 'repo', path: repo, name: 'repo', isGit: false },
-      rootSkill: true,
-      frontmatterReadable: true,
-      workspacePath: workspacePath(repo, '.', true),
-      deprecated: false,
-      supersededBy: null,
-    }
+    const skill = repoSkillRef(repo, '.')
     const recordDir = join(repo, ROOT_WORKSPACE_DIR, 'skillgantry', 'runs', 'run-1')
     await mkdir(recordDir, { recursive: true })
     const sandbox = await openSnapshotSandbox({

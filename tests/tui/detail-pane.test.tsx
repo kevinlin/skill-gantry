@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createQueue, type IssueRow, type SkillRef } from '../../src/core/index.js'
+import { createQueue, type IssueRow } from '../../src/core/index.js'
 import { App } from '../../src/tui/app.js'
 import { layoutFor, screenBodyRows, wrapCells } from '../../src/tui/layout.js'
 import { findingDetailRows, issueDetailRows } from '../../src/tui/rows.js'
@@ -7,6 +7,7 @@ import { initialState, reducer, type FindingRow } from '../../src/tui/store.js'
 import { fakeRun } from '../helpers/fake-run.js'
 import { fakeViews } from '../helpers/fake-views.js'
 import { renderInk } from '../helpers/render-ink.js'
+import { skillRef } from '../helpers/skill-ref.js'
 
 /** Long enough that the Findings pane cuts it at every supported width. */
 const MESSAGE =
@@ -46,19 +47,9 @@ const issue = (over: Partial<IssueRow> = {}): IssueRow => ({
   ...over,
 })
 
-const skill: SkillRef = {
-  id: 'declawed',
-  name: 'declawed',
-  version: '1.0.0',
-  dir: '/repo/declawed',
-  relPath: 'declawed',
+const skill = skillRef('declawed', {
   repo: { id: 'zapac', path: '/repo', name: 'zapac', isGit: false },
-  rootSkill: false,
-  frontmatterReadable: true,
-  workspacePath: '/repo/declawed-workspace',
-  deprecated: false,
-  supersededBy: null,
-}
+})
 
 function harness(views = fakeViews(), size = { columns: 100, rows: 30 }) {
   const queue = createQueue({ concurrency: 1, startRun: () => fakeRun('run-1').handle })

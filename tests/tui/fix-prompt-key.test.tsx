@@ -8,6 +8,7 @@ import { App } from '../../src/tui/app.js'
 import { fakeRun, type FakeRun } from '../helpers/fake-run.js'
 import { fakeViews } from '../helpers/fake-views.js'
 import { renderInk, waitForFrame } from '../helpers/render-ink.js'
+import { skillRef } from '../helpers/skill-ref.js'
 
 const FINDING: RawFinding = {
   ruleClass: 'excessive-permission',
@@ -17,20 +18,6 @@ const FINDING: RawFinding = {
   line: 1,
   message: 'no declared permissions',
 }
-
-const skill = (id: string): SkillRef => ({
-  id,
-  name: id,
-  version: '1.0.0',
-  dir: `/repo/${id}`,
-  relPath: id,
-  repo: { id: 'fx', path: '/repo', name: 'fx', isGit: false },
-  rootSkill: false,
-  frontmatterReadable: true,
-  workspacePath: `/repo/${id}-workspace`,
-  deprecated: false,
-  supersededBy: null,
-})
 
 const stageResult = (findings: RawFinding[]): StageResult => ({
   stage: 'security',
@@ -90,7 +77,7 @@ async function harness({
   })
   const ui = renderInk(
     <App
-      skills={[skill('declawed')]}
+      skills={[skillRef('declawed')]}
       queue={queue}
       stages={['security']}
       concurrency={1}
@@ -317,7 +304,7 @@ describe('R11.10 the y binding over a rehydrated run', () => {
       join(workspacePath, 'skillgantry', 'runs', 'index.ndjson'),
       `${JSON.stringify({ runId: 'run-b', outcome: 'failed', endedAt: '2026-08-02T00:00:00Z' })}\n`,
     )
-    return { skill: { ...skill('declawed'), workspacePath }, body }
+    return { skill: skillRef('declawed', { workspacePath }), body }
   }
 
   it('copies the recorded prompt with no run started this session', async () => {

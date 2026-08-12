@@ -1,24 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { createQueue } from '../../src/core/index.js'
-import type { IssueRow, RawFinding, SkillRef, ToolRunRecord } from '../../src/core/index.js'
+import type { IssueRow, RawFinding, ToolRunRecord } from '../../src/core/index.js'
 import { App } from '../../src/tui/app.js'
 import { fakeRun, type FakeRun } from '../helpers/fake-run.js'
 import { fakeViews } from '../helpers/fake-views.js'
 import { renderInk, waitForFrame } from '../helpers/render-ink.js'
+import { skillRef } from '../helpers/skill-ref.js'
 
-const skill: SkillRef = {
-  id: 'declawed',
-  name: 'declawed',
-  version: '1.0.0',
-  dir: '/repo/declawed',
-  relPath: 'declawed',
-  repo: { id: 'fx', path: '/repo', name: 'fx', isGit: false },
-  rootSkill: false,
-  frontmatterReadable: true,
-  workspacePath: '/repo/declawed-workspace',
-  deprecated: false,
-  supersededBy: null,
-}
+const skill = skillRef('declawed')
 
 const finding: RawFinding = {
   ruleClass: 'unsafe-script',

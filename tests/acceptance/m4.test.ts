@@ -17,9 +17,10 @@ import { fingerprint } from '../../src/core/ledger/fingerprint.js'
 import { migrateRuleMap } from '../../src/core/ledger/rule-map-migration.js'
 import { recordRun } from '../../src/core/ledger/record.js'
 import type { StageResult, ToolRunRecord } from '../../src/core/stages/types.js'
-import type { RawFinding, SkillRef } from '../../src/core/types.js'
+import type { RawFinding } from '../../src/core/types.js'
 import { SKILL_MD, makeRepo } from '../helpers/tmp-repo.js'
 import { makeFakeTool } from '../helpers/fake-tool.js'
+import { zapacSkill } from '../helpers/skill-ref.js'
 
 /**
  * R4.3's seal. An ESM namespace cannot be reassigned or spied, so the modules a
@@ -151,19 +152,7 @@ const runDirOf = async (repoPath: string): Promise<string> => {
 
 // ---- ledger-level helpers, for the closure and migration criteria ----
 
-const skillRef: SkillRef = {
-  id: `zapac/${SKILL}`,
-  name: SKILL,
-  version: null,
-  dir: `/tmp/zapac/${SKILL}`,
-  relPath: SKILL,
-  repo: { id: 'zapac', path: '/tmp/zapac', name: 'zapac', isGit: true },
-  rootSkill: false,
-  frontmatterReadable: true,
-  workspacePath: `/tmp/zapac/${SKILL}-workspace`,
-  deprecated: false,
-  supersededBy: null,
-}
+const skillRef = zapacSkill(SKILL)
 
 const finding = (ruleClass: string, path: string, nativeRuleId: string): RawFinding => ({
   ruleClass: ruleClass as RawFinding['ruleClass'],

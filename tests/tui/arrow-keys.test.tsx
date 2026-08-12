@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { createQueue, type SkillRef } from '../../src/core/index.js'
+import { createQueue } from '../../src/core/index.js'
 import { App } from '../../src/tui/app.js'
 import { fakeRun } from '../helpers/fake-run.js'
 import { fakeViews } from '../helpers/fake-views.js'
 import { renderInk } from '../helpers/render-ink.js'
+import { skillRef } from '../helpers/skill-ref.js'
 
 /**
  * R11.11, rev 15. Nothing in the suite had ever sent an arrow key, so the eight
@@ -18,21 +19,7 @@ const DOWN = '\x1b[B'
 const RIGHT = '\x1b[C'
 const LEFT = '\x1b[D'
 
-const skill = (id: string): SkillRef => ({
-  id,
-  name: id,
-  version: '1.0.0',
-  dir: `/repo/${id}`,
-  relPath: id,
-  repo: { id: 'fx', path: '/repo', name: 'fx', isGit: false },
-  rootSkill: false,
-  frontmatterReadable: true,
-  workspacePath: `/repo/${id}-workspace`,
-  deprecated: false,
-  supersededBy: null,
-})
-
-const SKILLS = [skill('declawed'), skill('spec-lint')]
+const SKILLS = [skillRef('declawed'), skillRef('spec-lint')]
 
 function harness() {
   const queue = createQueue({

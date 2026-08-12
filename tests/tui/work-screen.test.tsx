@@ -9,22 +9,9 @@ import { fakeRun, type FakeRun } from '../helpers/fake-run.js'
 import { renderInk, waitForFrame } from '../helpers/render-ink.js'
 import { fakeViews } from '../helpers/fake-views.js'
 import { SKILL_MD, makeRepo } from '../helpers/tmp-repo.js'
+import { skillRef } from '../helpers/skill-ref.js'
 
-const skill = (id: string): SkillRef => ({
-  id,
-  name: id,
-  version: '1.0.0',
-  dir: `/repo/${id}`,
-  relPath: id,
-  repo: { id: 'fx', path: '/repo', name: 'fx', isGit: false },
-  rootSkill: false,
-  frontmatterReadable: true,
-  workspacePath: `/repo/${id}-workspace`,
-  deprecated: false,
-  supersededBy: null,
-})
-
-const SKILLS = [skill('declawed'), skill('spec-lint')]
+const SKILLS = [skillRef('declawed'), skillRef('spec-lint')]
 
 function harness() {
   const runs = new Map<string, FakeRun>()
@@ -283,7 +270,7 @@ describe('rehydrating the last recorded run — R11.10', () => {
   })
 
   it('never shows one skill’s live output under another skill — R11.4’s buffer is per session', async () => {
-    const skills = [...(await recorded()), skill('spec-lint')]
+    const skills = [...(await recorded()), skillRef('spec-lint')]
     const runs = new Map<string, FakeRun>()
     const queue = createQueue({
       concurrency: 2,

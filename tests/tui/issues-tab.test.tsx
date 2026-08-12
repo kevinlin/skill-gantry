@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { createQueue, type IssueRow, type SkillRef } from '../../src/core/index.js'
+import { createQueue, type IssueRow } from '../../src/core/index.js'
 import { App } from '../../src/tui/app.js'
 import { issueRows } from '../../src/tui/rows.js'
 import { PANELS, initialState, reducer } from '../../src/tui/store.js'
 import { fakeRun } from '../helpers/fake-run.js'
 import { fakeViews } from '../helpers/fake-views.js'
 import { renderInk } from '../helpers/render-ink.js'
+import { skillRef } from '../helpers/skill-ref.js'
 
 const issue = (over: Partial<IssueRow> = {}): IssueRow => ({
   fingerprint: 'fp1',
@@ -68,19 +69,9 @@ describe('R11.13 Issues on the output pane', () => {
   // windowing against `outputOffset`, so it drew a cursor the Work screen
   // could not move and the Issues screen's cursor moved under it instead.
   it('moves its own cursor, leaving the Issues screen where the user left it', async () => {
-    const skill: SkillRef = {
-      id: 'declawed',
-      name: 'declawed',
-      version: '1.0.0',
-      dir: '/repo/declawed',
-      relPath: 'declawed',
+    const skill = skillRef('declawed', {
       repo: { id: 'zapac', path: '/repo', name: 'zapac', isGit: false },
-      rootSkill: false,
-      frontmatterReadable: true,
-      workspacePath: '/repo/declawed-workspace',
-      deprecated: false,
-      supersededBy: null,
-    }
+    })
     const rows = [
       issue({ relPath: 'declawed/scripts/scan.py' }),
       issue({ fingerprint: 'fp2', relPath: 'declawed/scripts/other.py' }),

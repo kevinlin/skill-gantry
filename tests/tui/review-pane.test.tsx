@@ -5,20 +5,10 @@ import { renderInk } from '../helpers/render-ink.js'
 import { fakeViews } from '../helpers/fake-views.js'
 import { fakeQueue } from '../helpers/fake-run.js'
 import type { QueueEvent, SkillRef } from '../../src/core/index.js'
+import { skillRef } from '../helpers/skill-ref.js'
 
-const skill = (id: string): SkillRef => ({
-  id,
-  name: id,
-  version: '1.0.0',
-  dir: `/repo/${id}`,
-  relPath: id,
-  repo: { id: 'repo', path: '/repo', name: 'repo', isGit: true },
-  rootSkill: false,
-  frontmatterReadable: true,
-  workspacePath: `/repo/${id}-workspace`,
-  deprecated: false,
-  supersededBy: null,
-})
+const skill = (id: string): SkillRef =>
+  skillRef(id, { repo: { id: 'repo', path: '/repo', name: 'repo', isGit: true } })
 
 const DIFF = [
   'diff --git a/sk/SKILL.md b/sk/SKILL.md',

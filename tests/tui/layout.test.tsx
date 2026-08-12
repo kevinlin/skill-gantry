@@ -5,7 +5,6 @@ import {
   VERSION,
   initialSetupState,
   type JobRecord,
-  type SkillRef,
 } from '../../src/core/index.js'
 import { Setup } from '../../src/tui/components/Setup.js'
 import { StatusBar } from '../../src/tui/components/StatusBar.js'
@@ -23,6 +22,7 @@ import {
   fakeViews,
   toolFinding,
 } from '../helpers/fake-views.js'
+import { skillRef } from '../helpers/skill-ref.js'
 
 function frameAt(node: ReactElement, columns: number, rows: number): string {
   const harness = renderInk(node, { columns, rows })
@@ -30,20 +30,6 @@ function frameAt(node: ReactElement, columns: number, rows: number): string {
   harness.unmount()
   return frame
 }
-
-const skill = (id: string): SkillRef => ({
-  id,
-  name: id,
-  version: '1.0.0',
-  dir: `/repo/${id}`,
-  relPath: id,
-  repo: { id: 'fx', path: '/repo', name: 'fx', isGit: false },
-  rootSkill: false,
-  frontmatterReadable: true,
-  workspacePath: `/repo/${id}-workspace`,
-  deprecated: false,
-  supersededBy: null,
-})
 
 const NAMES = [
   'declawed',
@@ -56,7 +42,7 @@ const NAMES = [
 ]
 
 function busyState(): AppState {
-  const base = initialState(NAMES.map(skill), 2)
+  const base = initialState(NAMES.map((id) => skillRef(id)), 2)
   const jobs: JobRecord[] = [
     { jobId: 'j1', skillId: 'declawed', stages: ['validate', 'security'], state: 'running' },
     { jobId: 'j2', skillId: 'spec-lint', stages: ['validate'], state: 'queued' },
@@ -175,7 +161,7 @@ describe('Work screen fits its terminal', () => {
   })
 
   it('windows a skill list longer than its pane and says how many are hidden', () => {
-    const state = { ...busyState(), skills: initialState(NAMES.map(skill), 2).skills }
+    const state = { ...busyState(), skills: initialState(NAMES.map((id) => skillRef(id)), 2).skills }
     const frame = frameAt(<Work state={state} />, 80, 16)
     expect(frame).toMatch(/\+\d+ more/)
   })
@@ -329,7 +315,7 @@ describe('every M6 screen fits its terminal — §14.1', () => {
         const queue = createQueue({ concurrency: 1, startRun: () => fakeRun('r1').handle })
         const ui = renderInk(
           <App
-            skills={NAMES.map(skill)}
+            skills={NAMES.map((id) => skillRef(id))}
             queue={queue}
             stages={['security']}
             concurrency={2}
@@ -358,7 +344,7 @@ describe('every M6 screen fits its terminal — §14.1', () => {
       const queue = createQueue({ concurrency: 1, startRun: () => fakeRun('r1').handle })
       const ui = renderInk(
         <App
-          skills={NAMES.map(skill)}
+          skills={NAMES.map((id) => skillRef(id))}
           queue={queue}
           stages={['security']}
           concurrency={2}
@@ -424,7 +410,7 @@ describe('every M6 screen fits its terminal — §14.1', () => {
       const queue = createQueue({ concurrency: 1, startRun: () => fakeRun('r1').handle })
       const ui = renderInk(
         <App
-          skills={NAMES.map(skill)}
+          skills={NAMES.map((id) => skillRef(id))}
           queue={queue}
           stages={['security']}
           concurrency={2}
@@ -453,7 +439,7 @@ describe('every M6 screen fits its terminal — §14.1', () => {
       const queue = createQueue({ concurrency: 1, startRun: () => fakeRun('r1').handle })
       const ui = renderInk(
         <App
-          skills={NAMES.map(skill)}
+          skills={NAMES.map((id) => skillRef(id))}
           queue={queue}
           stages={['security']}
           concurrency={2}

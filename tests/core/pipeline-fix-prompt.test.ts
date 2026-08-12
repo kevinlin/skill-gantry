@@ -1,7 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { discoverSkills, workspacePath } from '../../src/core/discovery/discover.js'
+import { discoverSkills } from '../../src/core/discovery/discover.js'
 import { openLedger } from '../../src/core/ledger/db.js'
 import { runPipeline } from '../../src/core/pipeline/run.js'
 import { AdapterStageExecutor } from '../../src/core/stages/adapter-stage.js'
@@ -11,6 +11,7 @@ import { fixPromptPathFor } from '../../src/core/workspace/layout.js'
 import { fakeExecutor } from '../helpers/fake-executor.js'
 import { makeFakeMutatingTool } from '../helpers/fake-mutating-tool.js'
 import { SKILL_MD, SKILL_MD_FULL, makeGitRepo, makeRepo } from '../helpers/tmp-repo.js'
+import { repoSkillRef } from '../helpers/skill-ref.js'
 
 const FINDING: RawFinding = {
   ruleClass: 'excessive-permission',
@@ -137,19 +138,7 @@ describe('R6.10 on the abort paths', () => {
 
   async function mutatingHarness() {
     const repo = await makeGitRepo({ files: { 'sk/SKILL.md': SKILL_MD_FULL('sk') } })
-    const skill: SkillRef = {
-      id: 'repo/sk',
-      name: 'sk',
-      version: '1.0.0',
-      dir: join(repo, 'sk'),
-      relPath: 'sk',
-      repo: { id: 'repo', path: repo, name: 'repo', isGit: true },
-      rootSkill: false,
-      frontmatterReadable: true,
-      workspacePath: workspacePath(repo, 'sk', false),
-      deprecated: false,
-      supersededBy: null,
-    }
+    const skill = repoSkillRef(repo, 'sk', { isGit: true })
     const tool = await makeFakeMutatingTool(OPTIMISED)
     const adapter = fakeAdapter(tool.bin)
     return {

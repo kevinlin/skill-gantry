@@ -1,24 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { createQueue } from '../../src/core/queue/pool.js'
 import type { JobSpec, QueueEvent } from '../../src/core/queue/types.js'
-import type { SkillRef, Stage } from '../../src/core/types.js'
+import type { Stage } from '../../src/core/types.js'
 import { fakeRun, type FakeRun } from '../helpers/fake-run.js'
+import { skillRef } from '../helpers/skill-ref.js'
 
-const skill = (id: string): SkillRef => ({
-  id,
-  name: id,
-  version: '1.0.0',
-  dir: `/repo/${id}`,
-  relPath: id,
-  repo: { id: 'fx', path: '/repo', name: 'fx', isGit: false },
-  rootSkill: false,
-  frontmatterReadable: true,
-  workspacePath: `/repo/${id}-workspace`,
-  deprecated: false,
-  supersededBy: null,
-})
-
-const job = (id: string, stages: Stage[] = ['security']): JobSpec => ({ skill: skill(id), stages })
+const job = (id: string, stages: Stage[] = ['security']): JobSpec => ({ skill: skillRef(id), stages })
 const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 10))
 
 function harness(concurrency: number) {

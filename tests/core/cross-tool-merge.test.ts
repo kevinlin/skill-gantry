@@ -6,21 +6,10 @@ import { openLedger } from '../../src/core/ledger/db.js'
 import { fingerprint } from '../../src/core/ledger/fingerprint.js'
 import { recordRun } from '../../src/core/ledger/record.js'
 import type { StageResult, ToolRunRecord } from '../../src/core/stages/types.js'
-import type { RawFinding, SkillRef } from '../../src/core/types.js'
+import type { RawFinding } from '../../src/core/types.js'
+import { zapacSkill } from '../helpers/skill-ref.js'
 
-const skill: SkillRef = {
-  id: 'zapac/architecture-diagram',
-  name: 'architecture-diagram',
-  version: null,
-  dir: '/tmp/zapac/architecture-diagram',
-  relPath: 'architecture-diagram',
-  repo: { id: 'zapac', path: '/tmp/zapac', name: 'zapac', isGit: true },
-  rootSkill: false,
-  frontmatterReadable: true,
-  workspacePath: '/tmp/zapac/architecture-diagram-workspace',
-  deprecated: false,
-  supersededBy: null,
-}
+const skill = zapacSkill('architecture-diagram')
 
 const MERGED = 'architecture-diagram/scripts/html_to_png.py'
 const LINT_ONLY = 'architecture-diagram/scripts/build_gallery.py'

@@ -2,22 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { openLedger } from '../../src/core/ledger/db.js'
 import { latestGateOutcomes } from '../../src/core/ledger/gates.js'
 import { recordRun } from '../../src/core/ledger/record.js'
-import { workspacePath } from '../../src/core/discovery/discover.js'
-import type { SkillRef, Stage, StageOutcome } from '../../src/core/types.js'
+import type { Stage, StageOutcome } from '../../src/core/types.js'
+import { repoSkillRef } from '../helpers/skill-ref.js'
 
-const skill: SkillRef = {
-  id: 'repo/sk',
-  name: 'sk',
-  version: '1.0.0',
-  dir: '/repo/sk',
-  relPath: 'sk',
-  repo: { id: 'repo', path: '/repo', name: 'repo', isGit: false },
-  rootSkill: false,
-  frontmatterReadable: true,
-  workspacePath: workspacePath('/repo', 'sk', false),
-  deprecated: false,
-  supersededBy: null,
-}
+const skill = repoSkillRef('/repo')
 
 const run = (
   ledger: ReturnType<typeof openLedger>,

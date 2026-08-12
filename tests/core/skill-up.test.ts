@@ -1,21 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { readFile } from 'node:fs/promises'
 import { manifest, parse } from '../../src/core/adapters/skill-up.js'
-import type { SkillRef } from '../../src/core/types.js'
+import { zapacSkill } from '../helpers/skill-ref.js'
 
-const skill: SkillRef = {
-  id: 'zapac/declawed',
-  name: 'declawed',
-  version: null,
-  dir: '/tmp/zapac/declawed',
-  relPath: 'declawed',
-  repo: { id: 'zapac', path: '/tmp/zapac', name: 'zapac', isGit: true },
-  rootSkill: false,
-  frontmatterReadable: true,
-  workspacePath: '/tmp/zapac/declawed-workspace',
-  deprecated: false,
-  supersededBy: null,
-}
+const skill = zapacSkill('declawed')
 
 const REPORT = 'iteration-1/report.json'
 

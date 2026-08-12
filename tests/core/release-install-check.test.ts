@@ -5,9 +5,8 @@ import { join } from 'node:path'
 import { verifyInstallable } from '../../src/core/release/install-check.js'
 import { packageCandidate } from '../../src/core/release/archive.js'
 import { candidateManifest } from '../../src/core/discovery/candidate.js'
-import { workspacePath } from '../../src/core/discovery/discover.js'
-import type { SkillRef } from '../../src/core/types.js'
 import { SKILL_MD_FULL, makeRepo } from '../helpers/tmp-repo.js'
+import { repoSkillRef } from '../helpers/skill-ref.js'
 
 /** Stands in for vercel `skills`: records its argv, cwd and env, then answers. */
 async function fakeSkills(exitCode: number): Promise<{ bin: string; log: string }> {
@@ -31,19 +30,7 @@ async function fakeSkills(exitCode: number): Promise<{ bin: string; log: string 
 
 async function archive() {
   const repo = await makeRepo({ files: { 'sk/SKILL.md': SKILL_MD_FULL('sk') } })
-  const skill: SkillRef = {
-    id: 'repo/sk',
-    name: 'sk',
-    version: '1.0.0',
-    dir: join(repo, 'sk'),
-    relPath: 'sk',
-    repo: { id: 'repo', path: repo, name: 'repo', isGit: false },
-    rootSkill: false,
-    frontmatterReadable: true,
-    workspacePath: workspacePath(repo, 'sk', false),
-    deprecated: false,
-    supersededBy: null,
-  }
+  const skill = repoSkillRef(repo)
   const stagingDir = await mkdtemp(join(tmpdir(), 'sg-stage-'))
   const packaged = await packageCandidate({
     manifest: await candidateManifest(skill),

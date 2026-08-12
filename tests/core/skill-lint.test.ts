@@ -1,21 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { readFile } from 'node:fs/promises'
 import { manifest, parse } from '../../src/core/adapters/skill-lint.js'
-import type { SkillRef } from '../../src/core/types.js'
+import { zapacSkill } from '../helpers/skill-ref.js'
 
-const skill = (relPath: string): SkillRef => ({
-  id: `zapac/${relPath}`,
-  name: relPath,
-  version: null,
-  dir: `/tmp/zapac/${relPath}`,
-  relPath,
-  repo: { id: 'zapac', path: '/tmp/zapac', name: 'zapac', isGit: true },
-  rootSkill: false,
-  frontmatterReadable: true,
-  workspacePath: `/tmp/zapac/${relPath}-workspace`,
-  deprecated: false,
-  supersededBy: null,
-})
+const skill = zapacSkill
 
 const ctx = (stdout: string, relPath: string, exitCode: number) => ({
   skill: skill(relPath),

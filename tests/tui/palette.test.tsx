@@ -4,6 +4,7 @@ import { App } from '../../src/tui/app.js'
 import { fakeQueue, fakeRun } from '../helpers/fake-run.js'
 import { fakeViews } from '../helpers/fake-views.js'
 import { renderInk } from '../helpers/render-ink.js'
+import { skillRef } from '../helpers/skill-ref.js'
 
 /** What a terminal sends for the escape key. */
 const ESC = ''
@@ -74,19 +75,9 @@ describe(': command palette', () => {
 
   it('leaves a pending review on screen — the diff wins over every modal', async () => {
     const queue = fakeQueue()
-    const skill: SkillRef = {
-      id: 'sk',
-      name: 'sk',
-      version: '1.0.0',
-      dir: '/repo/sk',
-      relPath: 'sk',
+    const skill = skillRef('sk', {
       repo: { id: 'repo', path: '/repo', name: 'repo', isGit: true },
-      rootSkill: false,
-      frontmatterReadable: true,
-      workspacePath: '/repo/sk-workspace',
-      deprecated: false,
-      supersededBy: null,
-    }
+    })
     const pending: QueueEvent = {
       type: 'run:event',
       jobId: 'j1',

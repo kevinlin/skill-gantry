@@ -10,12 +10,12 @@ import { openLedger } from '../../src/core/ledger/db.js'
 import { recordRun } from '../../src/core/ledger/record.js'
 import { candidateManifest } from '../../src/core/discovery/candidate.js'
 import { skillDigest } from '../../src/core/discovery/digest.js'
-import { workspacePath } from '../../src/core/discovery/discover.js'
 import { type Exec, defaultExec } from '../../src/core/tools/exec.js'
 import type { StageContext } from '../../src/core/stages/types.js'
 import type { Ledger } from '../../src/core/ledger/db.js'
 import type { SkillRef, Stage } from '../../src/core/types.js'
 import { SKILL_MD_FULL, makeGitRepo } from '../helpers/tmp-repo.js'
+import { repoSkillRef } from '../helpers/skill-ref.js'
 
 const execFileP = promisify(execFile)
 
@@ -53,19 +53,7 @@ async function scene(
           : {}),
     },
   })
-  const skill: SkillRef = {
-    id: 'repo/sk',
-    name: 'sk',
-    version: '1.0.0',
-    dir: join(repo, 'sk'),
-    relPath: 'sk',
-    repo: { id: 'repo', path: repo, name: 'repo', isGit: true },
-    rootSkill: false,
-    frontmatterReadable: true,
-    workspacePath: workspacePath(repo, 'sk', false),
-    deprecated: false,
-    supersededBy: null,
-  }
+  const skill = repoSkillRef(repo, 'sk', { isGit: true })
   const digest = await skillDigest(await candidateManifest(skill))
   const ledger = openLedger(':memory:')
   passGates(ledger, skill, digest)

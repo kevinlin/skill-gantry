@@ -6,9 +6,9 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { openGitWorktreeSandbox } from '../../src/core/isolation/git-worktree.js'
 import { readSandboxRecord } from '../../src/core/isolation/record.js'
-import { workspacePath } from '../../src/core/discovery/discover.js'
 import type { SkillRef } from '../../src/core/types.js'
 import { SKILL_MD_FULL, makeGitRepo } from '../helpers/tmp-repo.js'
+import { repoSkillRef } from '../helpers/skill-ref.js'
 
 const run = promisify(execFile)
 
@@ -37,19 +37,7 @@ async function fixture(): Promise<{ repo: string; skill: SkillRef; recordDir: st
   // opens clean, letting the "mode changed" test flip it back to 644 inside.
   await chmod(join(repo, 'sk/run.sh'), 0o755)
   await run('git', ['commit', '-qam', 'run.sh executable'], { cwd: repo })
-  const skill: SkillRef = {
-    id: 'repo/sk',
-    name: 'sk',
-    version: '1.0.0',
-    dir: join(repo, 'sk'),
-    relPath: 'sk',
-    repo: { id: 'repo', path: repo, name: 'repo', isGit: true },
-    rootSkill: false,
-    frontmatterReadable: true,
-    workspacePath: workspacePath(repo, 'sk', false),
-    deprecated: false,
-    supersededBy: null,
-  }
+  const skill = repoSkillRef(repo, 'sk', { isGit: true })
   return { repo, skill, recordDir: await mkdtemp(join(tmpdir(), 'sg-run-')) }
 }
 

@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { readLifecycleCache, syncLifecycle } from '../../src/core/ledger/lifecycle.js'
 import { openLedger } from '../../src/core/ledger/db.js'
 import { recordRun } from '../../src/core/ledger/record.js'
-import { discoverSkills, workspacePath } from '../../src/core/discovery/discover.js'
+import { discoverSkills } from '../../src/core/discovery/discover.js'
 import type { SkillRef } from '../../src/core/types.js'
 import { SKILL_MD_FULL, makeRepo } from '../helpers/tmp-repo.js'
+import { repoSkillRef } from '../helpers/skill-ref.js'
 
 const deprecatedMd = (name: string) =>
   `---\nname: ${name}\ndescription: d\nmetadata:\n  version: 1.0.0\n  deprecated: true\n  superseded_by: repo/other\n---\n\n# ${name}\n`
@@ -47,19 +48,10 @@ describe('lifecycle authority', () => {
 
   it('records the lifecycle state a run observed rather than a hard-coded active', async () => {
     const ledger = openLedger(':memory:')
-    const skill: SkillRef = {
-      id: 'repo/dead',
-      name: 'dead',
-      version: '1.0.0',
-      dir: '/repo/dead',
-      relPath: 'dead',
-      repo: { id: 'repo', path: '/repo', name: 'repo', isGit: false },
-      rootSkill: false,
-      frontmatterReadable: true,
-      workspacePath: workspacePath('/repo', 'dead', false),
+    const skill = repoSkillRef('/repo', 'dead', {
       deprecated: true,
       supersededBy: 'repo/other',
-    }
+    })
     record(ledger, skill)
     expect(readLifecycleCache(ledger.db).get('repo/dead')).toBe('deprecated')
   })
@@ -86,19 +78,7 @@ describe('lifecycle authority', () => {
 
   it('stamps deprecated_at on a later run that observes deprecation, holds it steady, then clears it on revival', () => {
     const ledger = openLedger(':memory:')
-    const skill: SkillRef = {
-      id: 'repo/sk',
-      name: 'sk',
-      version: '1.0.0',
-      dir: '/repo/sk',
-      relPath: 'sk',
-      repo: { id: 'repo', path: '/repo', name: 'repo', isGit: false },
-      rootSkill: false,
-      frontmatterReadable: true,
-      workspacePath: workspacePath('/repo', 'sk', false),
-      deprecated: false,
-      supersededBy: null,
-    }
+    const skill = repoSkillRef('/repo')
     // Inserted while active: no stamp.
     record(ledger, skill)
     expect(deprecatedAt(ledger, skill.id)).toBeNull()
@@ -121,19 +101,11 @@ describe('lifecycle authority', () => {
 
   it('ignores a skill the ledger has never seen rather than inserting a row', () => {
     const ledger = openLedger(':memory:')
-    const unknown: SkillRef = {
+    const unknown = repoSkillRef('/repo', 'x', {
       id: 'repo/never-run',
-      name: 'x',
       version: null,
-      dir: '/repo/x',
-      relPath: 'x',
-      repo: { id: 'repo', path: '/repo', name: 'repo', isGit: false },
-      rootSkill: false,
-      frontmatterReadable: true,
-      workspacePath: '/repo/x-workspace',
       deprecated: true,
-      supersededBy: null,
-    }
+    })
     expect(syncLifecycle(ledger.db, [unknown]).reconciled).toBe(0)
     expect(readLifecycleCache(ledger.db).size).toBe(0)
   })

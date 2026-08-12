@@ -4,10 +4,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { packageCandidate } from '../../src/core/release/archive.js'
 import { candidateManifest } from '../../src/core/discovery/candidate.js'
-import { workspacePath } from '../../src/core/discovery/discover.js'
 import { defaultExec } from '../../src/core/tools/exec.js'
-import type { SkillRef } from '../../src/core/types.js'
 import { SKILL_MD_FULL, makeRepo } from '../helpers/tmp-repo.js'
+import { repoSkillRef } from '../helpers/skill-ref.js'
 
 async function scene(rootSkill = false) {
   const files = rootSkill
@@ -17,19 +16,9 @@ async function scene(rootSkill = false) {
   const dir = rootSkill ? repo : join(repo, 'sk')
   await chmod(join(dir, rootSkill ? 'scripts/run.sh' : 'scripts/run.sh'), 0o755)
   await symlink('SKILL.md', join(dir, 'alias.md'))
-  const skill: SkillRef = {
-    id: rootSkill ? 'repo' : 'repo/sk',
-    name: 'sk',
-    version: '1.0.0',
-    dir,
-    relPath: rootSkill ? '.' : 'sk',
-    repo: { id: 'repo', path: repo, name: 'repo', isGit: false },
-    rootSkill,
-    frontmatterReadable: true,
-    workspacePath: workspacePath(repo, rootSkill ? '.' : 'sk', rootSkill),
-    deprecated: false,
-    supersededBy: null,
-  }
+  // `name` overridden even at the repo root: the archive is named for the skill,
+  // and both shapes of this fixture package the same `sk`.
+  const skill = repoSkillRef(repo, rootSkill ? '.' : 'sk', { name: 'sk' })
   return { repo, skill, stagingDir: await mkdtemp(join(tmpdir(), 'sg-stage-')) }
 }
 

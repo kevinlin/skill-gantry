@@ -2,22 +2,17 @@ import { workspacePath } from '../../src/core/discovery/discover.js'
 import { type Ledger, openLedger } from '../../src/core/ledger/db.js'
 import { recordRun } from '../../src/core/ledger/record.js'
 import type { Metrics, RawFinding, SkillRef, Stage, StageOutcome } from '../../src/core/types.js'
+import { skillRef } from './skill-ref.js'
 
-export function skillFixture(repoId: string, name: string): SkillRef {
-  return {
-    id: `${repoId}/${name}`,
+/** `skillRef` with the repo id spelled out, for the suites that assert on it. */
+export const skillFixture = (repoId: string, name: string): SkillRef =>
+  skillRef(`${repoId}/${name}`, {
     name,
-    version: '1.0.0',
     dir: `/${repoId}/${name}`,
     relPath: name,
     repo: { id: repoId, path: `/${repoId}`, name: repoId, isGit: false },
-    rootSkill: false,
-    frontmatterReadable: true,
     workspacePath: workspacePath(`/${repoId}`, name, false),
-    deprecated: false,
-    supersededBy: null,
-  }
-}
+  })
 
 export interface StageSpec {
   stage: Stage

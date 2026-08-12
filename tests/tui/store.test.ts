@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import type {
   QueueEvent,
   RunEvent,
-  SkillRef,
   StageResult,
   ToolRunRecord,
 } from '../../src/core/index.js'
@@ -14,22 +13,9 @@ import {
   type AppState,
 } from '../../src/tui/store.js'
 import { emptySettings } from '../helpers/fake-views.js'
+import { skillRef } from '../helpers/skill-ref.js'
 
-const skill = (id: string): SkillRef => ({
-  id,
-  name: id,
-  version: '1.0.0',
-  dir: `/repo/${id}`,
-  relPath: id,
-  repo: { id: 'fx', path: '/repo', name: 'fx', isGit: false },
-  rootSkill: false,
-  frontmatterReadable: true,
-  workspacePath: `/repo/${id}-workspace`,
-  deprecated: false,
-  supersededBy: null,
-})
-
-const SKILLS = [skill('declawed'), skill('spec-lint')]
+const SKILLS = [skillRef('declawed'), skillRef('spec-lint')]
 const start = (): ReturnType<typeof initialState> => initialState(SKILLS, 2)
 
 const run = (event: RunEvent): QueueEvent => ({ type: 'run:event', jobId: 'j1', event })
@@ -473,7 +459,7 @@ describe('config staging', () => {
 
 describe('output pane scrolling', () => {
   const base = (): AppState => ({
-    ...initialState([skill('alpha')], 1),
+    ...initialState([skillRef('alpha')], 1),
     focus: 'output',
     artefacts: Array.from({ length: 40 }, (_, index) => `run/artefact-${index}.json`),
     panel: 'artefacts',

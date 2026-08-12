@@ -1,20 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import type { RawFinding, SkillRef, ToolRunRecord } from '../../src/core/index.js'
+import type { RawFinding, ToolRunRecord } from '../../src/core/index.js'
 import { initialState, reducer } from '../../src/tui/store.js'
+import { skillRef } from '../helpers/skill-ref.js'
 
-const skill: SkillRef = {
-  id: 'declawed',
-  name: 'declawed',
-  version: '1.0.0',
-  dir: '/repo/declawed',
-  relPath: 'declawed',
-  repo: { id: 'fx', path: '/repo', name: 'fx', isGit: false },
-  rootSkill: false,
-  frontmatterReadable: true,
-  workspacePath: '/repo/declawed-workspace',
-  deprecated: false,
-  supersededBy: null,
-}
+const skill = skillRef('declawed')
 
 const finding: RawFinding = {
   ruleClass: 'unsafe-script',

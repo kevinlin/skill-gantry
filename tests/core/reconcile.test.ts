@@ -3,21 +3,16 @@ import { openLedger, type Ledger } from '../../src/core/ledger/db.js'
 import { fingerprint } from '../../src/core/ledger/fingerprint.js'
 import { recordRun, type RunRecordInput } from '../../src/core/ledger/record.js'
 import type { StageResult, ToolRunRecord } from '../../src/core/stages/types.js'
-import type { RawFinding, SkillRef, ToolOutcome } from '../../src/core/types.js'
+import type { RawFinding, ToolOutcome } from '../../src/core/types.js'
+import { skillRef } from '../helpers/skill-ref.js'
 
-const SKILL = {
-  id: 'fx/declawed',
+const SKILL = skillRef('fx/declawed', {
   name: 'declawed',
   version: '1.1.0',
   dir: '/repo/declawed',
   relPath: 'declawed',
-  rootSkill: false,
-  frontmatterReadable: true,
   workspacePath: '/repo/declawed-workspace',
-  deprecated: false,
-  supersededBy: null,
-  repo: { id: 'fx', path: '/repo', name: 'fx', isGit: false },
-} as SkillRef
+})
 
 const finding = (over: Partial<RawFinding> = {}): RawFinding => ({
   ruleClass: 'unsafe-script',

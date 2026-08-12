@@ -2,21 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { readFile } from 'node:fs/promises'
 import { manifest, parse } from '../../src/core/adapters/skill-scanner.js'
 import { credentialsSatisfied, missingCredentials } from '../../src/core/adapters/types.js'
-import type { SkillRef } from '../../src/core/types.js'
+import { zapacSkill } from '../helpers/skill-ref.js'
 
-const skill: SkillRef = {
-  id: 'zapac/insight-profile',
-  name: 'insight-profile',
-  version: null,
-  dir: '/tmp/zapac/insight-profile',
-  relPath: 'insight-profile',
-  repo: { id: 'zapac', path: '/tmp/zapac', name: 'zapac', isGit: true },
-  rootSkill: false,
-  frontmatterReadable: true,
-  workspacePath: '/tmp/zapac/insight-profile-workspace',
-  deprecated: false,
-  supersededBy: null,
-}
+const skill = zapacSkill('insight-profile')
 
 describe('skill-scanner manifest', () => {
   it('declares LLM mode and the credential sets that mode actually accepts', () => {

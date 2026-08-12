@@ -4,26 +4,13 @@ import { join } from 'node:path'
 import { restoreSnapshot } from '../../src/core/isolation/snapshot.js'
 import { forgetInterrupted, restoreInterrupted, scanInterrupted } from '../../src/core/isolation/recover.js'
 import { readSandboxRecord, writeSandboxRecord } from '../../src/core/isolation/record.js'
-import { workspacePath } from '../../src/core/discovery/discover.js'
 import { preimageOf } from '../../src/core/isolation/git-worktree.js'
-import type { SkillRef } from '../../src/core/types.js'
 import { SKILL_MD_FULL, makeRepo } from '../helpers/tmp-repo.js'
+import { repoSkillRef } from '../helpers/skill-ref.js'
 
 async function interrupted() {
   const repo = await makeRepo({ files: { 'sk/SKILL.md': SKILL_MD_FULL('sk') } })
-  const skill: SkillRef = {
-    id: 'repo/sk',
-    name: 'sk',
-    version: '1.0.0',
-    dir: join(repo, 'sk'),
-    relPath: 'sk',
-    repo: { id: 'repo', path: repo, name: 'repo', isGit: false },
-    rootSkill: false,
-    frontmatterReadable: true,
-    workspacePath: workspacePath(repo, 'sk', false),
-    deprecated: false,
-    supersededBy: null,
-  }
+  const skill = repoSkillRef(repo)
   const recordDir = join(skill.workspacePath, 'skillgantry', 'runs', 'run-a')
   const snapshotDir = join(recordDir, 'snapshot-pre')
   await mkdir(join(snapshotDir, 'sk'), { recursive: true })

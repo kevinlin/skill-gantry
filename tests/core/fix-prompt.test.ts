@@ -2,23 +2,20 @@ import { describe, expect, it } from 'vitest'
 import { buildFixPrompt, type FixPromptInput } from '../../src/core/stages/fix-prompt.js'
 import type { StageResult, ToolRunRecord } from '../../src/core/stages/types.js'
 import type { RawFinding, SkillRef } from '../../src/core/types.js'
+import { skillRef } from '../helpers/skill-ref.js'
 
 const RUN_DIR = '/repo/declawed-workspace/skillgantry/runs/019fcd9e'
 const STAGE_DIR = `${RUN_DIR}/03-security`
 
-const skill = (isGit = true): SkillRef => ({
-  id: 'zapac/declawed',
-  name: 'declawed',
-  version: '1.2.0',
-  dir: '/repo/declawed',
-  relPath: 'declawed',
-  repo: { id: 'zapac', path: '/repo', name: 'zapac-agent-skills', isGit },
-  rootSkill: false,
-  frontmatterReadable: true,
-  workspacePath: '/repo/declawed-workspace',
-  deprecated: false,
-  supersededBy: null,
-})
+const skill = (isGit = true): SkillRef =>
+  skillRef('zapac/declawed', {
+    name: 'declawed',
+    version: '1.2.0',
+    dir: '/repo/declawed',
+    relPath: 'declawed',
+    repo: { id: 'zapac', path: '/repo', name: 'zapac-agent-skills', isGit },
+    workspacePath: '/repo/declawed-workspace',
+  })
 
 /** Modelled on run 019fcd9e: skillspector 2.5.1, LP3 + MP2, both medium. */
 const FINDINGS: RawFinding[] = [
