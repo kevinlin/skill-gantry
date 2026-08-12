@@ -11,6 +11,12 @@ rather than replaying its commits. Standalone fixes belonging to no plan are lis
 `parseChangelog` reads only the `- ` lines, and the upgrade prompt gives each one row. So a bullet
 is a headline that fits a terminal, and the paragraph under it carries the detail.
 
+## 0.6.3 — 2026-08-12
+- fix: report a credential against the environment the gate reads
+- fix(config): derive the api-key form of a gateway credential at spawn
+- fix: replace all 36 hand-declaring SkillRef literals with `tests/helpers/skill-ref.ts`
+- fix: Two TUI naming fixes: skill label, run label
+
 ## 0.6.2 — 2026-08-11
 - M1.1 — a run directory named for when the run started (R6.1, R6.4, R6.7)
 
