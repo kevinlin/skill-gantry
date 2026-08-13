@@ -81,13 +81,36 @@ describe('checkForUpgrade', () => {
     await checkForUpgrade({
       home: dir,
       currentVersion: '0.5.1',
-      now: T0 + 25 * 3600_000,
+      now: T0 + 61 * 60_000,
       fetchImpl,
     })
     expect(fetchImpl).toHaveBeenCalledTimes(4)
   })
 
-  // A failed request must not buy 24 hours of silence.
+  // R13.11 (rev 30). The window is a rate limit on the request, and it is also
+  // how long a `latest: null` is believed. At 24 hours that second meaning was
+  // the bug: v0.6.3 was published 80 minutes after a check that correctly found
+  // nothing, and the launch that followed reported `current` without asking.
+  it('sees a release cut after the last check found nothing', async () => {
+    const dir = await home()
+    await checkForUpgrade({
+      home: dir,
+      currentVersion: '0.6.0',
+      now: T0,
+      fetchImpl: fakeFetch(),
+    })
+    expect((await loadUpgradeState(dir))?.latest).toBeNull()
+
+    const later = await checkForUpgrade({
+      home: dir,
+      currentVersion: '0.6.0',
+      now: T0 + 80 * 60_000,
+      fetchImpl: fakeFetch('v0.7.0'),
+    })
+    expect(later.kind).toBe('available')
+  })
+
+  // A failed request must not buy an hour of silence.
   it('reports unreachable and does not record the attempt', async () => {
     const dir = await home()
     const failing = (async () => {

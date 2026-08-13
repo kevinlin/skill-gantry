@@ -163,7 +163,7 @@ comparator is how the release path and the upgrade path come to disagree about w
 
 ```
 loadState()
-  cached age < 24h  ->  use the cached release, no network
+  cached age < 1h   ->  use the cached release, no network
                         (no cached release -> current, silent)
   else              ->  GET releases/latest; on success write state
 compareSemver(latest, VERSION)
@@ -175,12 +175,19 @@ compareSemver(latest, VERSION)
 A check that found nothing newer caches `latest: null`, so the throttled path that follows it is
 silent rather than reporting a version it never saw.
 
+**The window is one hour, and it was a day until rev 30.** It rate-limits the request, and by the
+same number it decides how long that cached `null` is believed — the second meaning is what made
+24 hours wrong. v0.6.3 was published 80 minutes after a check that correctly found 0.6.2 current,
+and every launch for the rest of that day answered `current` with no request while `doctor`, which
+forces, reported the release. One request an hour is well inside GitHub's unauthenticated 60/hour,
+so the cost is paid entirely by the machine behind a blocking proxy, hourly rather than daily.
+
 A user who quits without answering is prompted again next launch, at no API cost. Throttling the
-prompt as well would leave a launch silent for a day about a version already sitting in the cache.
+prompt as well would leave a launch silent about a version already sitting in the cache.
 
 Every failure of the request — offline, 5xx, rate-limited, malformed JSON, 2s timeout — is
 `unreachable`: swallowed, the launch proceeds, and `lastCheckedAt` is **not** written. A failed
-check must not buy 24 hours of silence.
+check must not buy an hour of silence.
 
 ### 4.2 Two keys
 
@@ -438,7 +445,7 @@ M9 exit criteria, for the milestone row:
 
 > A tag whose version disagrees with the manifest, or whose changelog section is missing, fails to
 > publish; a published release carries three assets and a body extracted from the changelog. A
-> client one version behind prompts once per 24 hours, shows that version's changelog entry, and
+> client one version behind prompts once per hour, shows that version's changelog entry, and
 > after `n` never prompts for it again while `doctor` still reports it. A corrupt tarball, an
 > unreachable API and a post-install version mismatch each leave the installation byte-identical and
 > the launch unaffected. A successful upgrade relinks atomically, retains exactly the previous
@@ -487,8 +494,8 @@ installation still works afterwards.
 | GitHub Releases + packed tarball, not npm | An upgrade needs the GitHub API; the npm name stays unclaimed |
 | Install then relaunch | One `spawnSync` and a loop guard, in exchange for the user typing `skillgantry` once |
 | Snapshot and a readable error, no migration registry | The first real migration builds its own mechanism |
-| 24h throttle | A release cut an hour ago may not be seen until tomorrow |
+| 1h throttle *(rev 30, was 24h)* | A release cut minutes ago may not be seen for an hour |
 | `upgrade` command and `doctor` only; no headless note | `run` in CI never mentions a new version |
-| **No opt-out** | A machine behind a blocking proxy pays the 2s timeout once per 24 hours at TUI launch, with no way to switch it off |
+| **No opt-out** | A machine behind a blocking proxy pays the 2s timeout once per hour at TUI launch, with no way to switch it off |
 | Refuse on a foreign install | An `npx` user is told about a release they cannot install from here |
 | Changelog hand-written | A few minutes per release, and a tag that fails to publish when it is forgotten |

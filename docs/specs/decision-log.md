@@ -370,9 +370,9 @@ CI publishes a packed tarball plus a checksum file and `CHANGELOG.md` against a 
 *Rejected:* publishing to npm (claims the name permanently, and buys only the install step); cloning and building on the user's machine (a full toolchain and minutes per upgrade, for a package that packs in seconds).
 
 **D31. The upgrade is offered at launch and adopted by relaunch, with no way to turn the offer off.**
-The check runs before the main screen mounts, at most once per 24 hours, and never blocks or fails the launch. On confirmation the new version is installed, verified, adopted and re-executed with the same arguments.
+The check runs before the main screen mounts, at most once per hour, and never blocks or fails the launch. On confirmation the new version is installed, verified, adopted and re-executed with the same arguments.
 *Why:* launch is the only moment in a session with no run in flight and no ledger open, which is what makes "install and relaunch" cheap and safe; mid-session it is neither. Two independent guards stop a respawn loop — the post-install version equality check, and `SG_UPGRADED_FROM` on the child.
-*The cost, accepted:* a machine behind a blocking proxy pays the 2-second timeout once per 24 hours with no switch to flip. An opt-out was considered and dropped as a setting that would exist mainly to be found in a support thread.
+*The cost, accepted:* a machine behind a blocking proxy pays the 2-second timeout once per hour with no switch to flip. An opt-out was considered and dropped as a setting that would exist mainly to be found in a support thread. The interval was 24 hours until R13.11 rev 30: it also governs how long a check that found nothing is believed, and at a day a freshly cut release stayed invisible to every launch until the next one.
 *Rejected:* a background check after mount (interrupts a user already working, and relaunch is then unsafe); applying on exit (upgrades a session already finished, and a Ctrl+C silently drops the upgrade the user agreed to).
 
 ## 15. A run directory names when, not which

@@ -3,7 +3,15 @@ import { entriesAbove, parseChangelog } from './changelog.js'
 import { loadUpgradeState, saveUpgradeState } from './state.js'
 import type { ReleaseInfo, UpgradeCheck } from './types.js'
 
-export const THROTTLE_MS = 24 * 60 * 60 * 1000
+/**
+ * R13.11. One hour, not a day: this window rate-limits the request *and* decides
+ * how long a `latest: null` is believed, and at 24 hours the second meaning was
+ * a bug — a release cut minutes after a check that correctly found nothing was
+ * invisible to every launch until the next day. One request an hour is well
+ * inside GitHub's unauthenticated 60/hour, and a machine behind a blocking
+ * proxy now pays the 2s timeout hourly rather than daily.
+ */
+export const THROTTLE_MS = 60 * 60 * 1000
 export const DEFAULT_REPO = 'kevinlin/skill-gantry'
 
 const DEFAULT_API_BASE = 'https://api.github.com'
@@ -90,7 +98,7 @@ async function resolveLatest(options: CheckOptions): Promise<ReleaseInfo | null>
 
 /**
  * R13.11. State is written only on a request that succeeded: recording a failed
- * check as a check would buy 24 hours of silence for a request that never
+ * check as a check would buy an hour of silence for a request that never
  * happened.
  */
 export async function checkForUpgrade(options: CheckOptions): Promise<UpgradeCheck> {
