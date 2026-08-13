@@ -11,6 +11,9 @@ rather than replaying its commits. Standalone fixes belonging to no plan are lis
 `parseChangelog` reads only the `- ` lines, and the upgrade prompt gives each one row. So a bullet
 is a headline that fits a terminal, and the paragraph under it carries the detail.
 
+## 0.6.4 — 2026-08-13
+- feat: Cut version check window from 24h to 1h
+
 ## 0.6.3 — 2026-08-12
 - fix: report a credential against the environment the gate reads
 - fix(config): derive the api-key form of a gateway credential at spawn
