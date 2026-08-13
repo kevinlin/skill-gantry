@@ -17,7 +17,7 @@ It does not author skills. It does not serve the consumer lifecycle (discover / 
 
 ## 2. Verified environment facts
 
-Established by inspection, not assumption. These constrain several decisions and should be re-checked if they change.
+Established by inspection at the grilling session, not assumption, and **point-in-time** — several have since moved (SkillSpector is pinned at 2.5.1, SkillHone ships as a skill bundle, promptfoo is gone). The live catalogue is [design.md](design.md) §5.1a; what is recorded here is the ground the decisions below were taken on.
 
 | Fact | Detail |
 |---|---|
@@ -218,9 +218,11 @@ Left rail: repo switcher plus skill list with per-skill status glyph. Right top:
 
 ---
 
-## 6. Open risks
+## 6. Risks as they stood at the grilling session
 
-| Risk | Why it matters | Current mitigation |
+**Superseded as a register by [design.md](design.md) §19**, which carries the risks still open and records the two this table held that implementation has since closed — the adapter contract shaped by Python, disproved when M4 shipped a TypeScript and a Go tool through it unchanged, and SARIF dialect drift, now fixture-tested against both scanners.
+
+| Risk | Why it matters | Mitigation at the time |
 |---|---|---|
 | Adapter contract shaped by Python | 5 of 9 tools are Python; M1 validates against one Python tool only | Revisit at M4 planning; consider pulling skill-lint (TypeScript) forward |
 | Ink re-render under heavy log output | Streaming subprocess output is the app's core loop | Ring buffer, ~10fps render throttle, full logs bypass React state |
@@ -271,9 +273,9 @@ A1 made identity merge-first, so one issue can carry detections from two scanner
 A4's in-repo `.skillgantry-workspace/` put the workspace inside the tree a repo-root skill's tools are pointed at, and revision 2 mitigated that by dropping findings after the scan. Too late: a model-assisted scanner can read a prior run's unredacted artefact and transmit it before SkillGantry sees any finding. A single candidate manifest now defines the skill's bytes for digesting, tool input, snapshotting and packaging, with exact owned-path exclusions rather than basename matching and a symlink rule that holds in every consumer. When the candidate root would contain SkillGantry-owned paths, the manifest is materialised into a private copy and the tool is pointed there — so the exposure is removed by construction rather than filtered afterwards.
 *Record correction:* revision 2's digest excluded "any `snapshot-pre/` directory", which would have let a legitimately named skill directory change without invalidating gate evidence.
 
-## 9. Next
+## 9. Decisions taken after the reviews
 
-Convert the specification set into an implementation plan, M1 first.
+Each section below records one decision the implementation forced, in the order it was taken. §1–§8 above are the grilling session and the two design reviews; everything from here is a change of mind with the run or the milestone that caused it.
 
 ## 10. promptfoo removed from the catalogue
 

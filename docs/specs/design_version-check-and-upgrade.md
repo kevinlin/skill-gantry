@@ -13,21 +13,15 @@ SkillGantry ships from GitHub Releases. On launch the terminal interface asks wh
 release exists, shows what changed, and — only on confirmation — installs it, migrates what needs
 migrating, and relaunches into it.
 
-**§8 is the load-bearing section for anyone reading this as a contract.** The ids below are
-proposals until they land in [requirements.md](requirements.md) with a milestone owner; until then
-this document describes agreed intent, not a checkable requirement.
+Shipped in M9. R11.24, R12.10 and R13.8–R13.12 are its contract; this file is the mechanism.
 
 ---
 
-## 1. What exists today, and what it forces
+## 1. Standing constraints
 
-Facts established while designing, each of which constrains something below.
+The facts this design is built on, each of which forces something below. The npm name
+`skillgantry` is deliberately still unclaimed — distribution is the GitHub release, not the registry.
 
-- The package is `skillgantry` 0.5.1. The repo `kevinlin/skill-gantry` is public and has **no tags,
-  no releases**. The name is **not claimed on npm**.
-- Installation is `scripts/install-cli.sh` from a working tree: build, `pnpm pack`,
-  `npm install --prefix ~/.skillgantry/cli`, symlink `~/.local/bin/skillgantry`, then verify by
-  invoking `--version`. The script `rm -rf`s the prefix on every run.
 - `src/core/tools/gh-release.ts` already downloads GitHub release assets and verifies declared
   integrity. Its `Integrity` union — `sha256-asset`, `sha256-digest`, `none` with a written reason —
   is the vocabulary this design reuses.
@@ -35,13 +29,13 @@ Facts established while designing, each of which constrains something below.
 - The rule-class map migration is deliberately **not** automatic (R8.14); its only trigger is
   `skillgantry doctor --migrate-rule-map`.
 - `config.json` and `tools/lock.json` carry `version: z.literal(1)` and have **no migration path**.
-  `loadConfig` rethrows the raw zod error on a mismatch, so the first release that bumps that
-  literal breaks launch with an unreadable message.
+  Before §7, `loadConfig` rethrew the raw zod error on a mismatch, so the first release that bumps
+  that literal would have broken launch with an unreadable message.
 - Import direction is `cli → tui → core`, lint-enforced. `src/tui/**` may touch the filesystem but
   **may not spawn**. So the check and the apply live in `src/core/`, wired by `src/cli/`, and the
   terminal component is presentation only.
-- `src/core/release/version.ts` already holds a correct semver comparator, including the
-  prerelease rule. It is module-private.
+- `src/core/release/version.ts` holds the semver comparator, including the prerelease rule. It is
+  exported as `compareSemver` rather than duplicated (§4).
 
 ### 1.1 History is not monotonic
 
@@ -122,7 +116,7 @@ symlink is atomic on POSIX; `ln -sfn` is unlink-then-symlink and leaves a window
 is on `PATH`. This is design.md §12.5's "one atomic rename" applied to the binary rather than to a
 baseline file.
 
-`install-cli.sh` moves to the same layout, so the shape has one author rather than two that drift.
+`install-cli.sh` writes the same layout, so the shape has one author rather than two that drift.
 
 **Retention is exactly two** — current and previous. Older prefixes are pruned after a successful
 relink. The previous prefix is what makes rollback a rename rather than a reinstall.
@@ -436,33 +430,13 @@ claim a general downgrade path.
 
 ---
 
-## 8. Spec amendments
+## 8. Where this lands in the spec tree
 
-These are the changes that make this design a contract. Requirement ids are proposals; each must
-land in `requirements.md` with a milestone owner, or `tests/specs/traceability.test.ts` fails.
-
-| Doc | Change |
+| Doc | What it holds |
 |---|---|
-| [requirements.md](requirements.md) | **R13.8** release pipeline and its two assertions · **R13.9** CHANGELOG.md, its format, backfill and the asset · **R13.10** versioned prefixes, atomic relink, retention, ownership · **R13.11** the check: throttle, silent failure, decline, eligibility refusal · **R13.12** the apply: verify-before-adopt, snapshot, no-op on failure, relaunch guard · **R11.24** the prompt · **R12.10** `skillgantry upgrade` · a new **M9** row owning all seven |
-| [design.md](design.md) | **§20** pointing at this file · §15 gains the subcommand · §5.3 gains the `skillgantry-outdated` condition · §17 traceability rows · §18 change history |
-| [design_tui.md](design_tui.md) | **§14.14** the prompt |
-
-M9 exit criteria, for the milestone row:
-
-> A tag whose version disagrees with the manifest, or whose changelog section is missing, fails to
-> publish; a published release carries three assets and a body extracted from the changelog. A
-> client one version behind prompts once per hour, shows that version's changelog entry, and
-> after `n` never prompts for it again while `doctor` still reports it. A corrupt tarball, an
-> unreachable API and a post-install version mismatch each leave the installation byte-identical and
-> the launch unaffected. A successful upgrade relinks atomically, retains exactly the previous
-> prefix, snapshots `config.json` and `tools/lock.json` first, and relaunches into the new version
-> without re-checking. A binary running from a development working tree reports the new version and
-> refuses to upgrade itself.
-
-### 8.1 Pre-existing defect found while designing
-
-[design_tui.md](design_tui.md) carried **two sections numbered `### 14.12`** — "The repo and skill list" and "The
-setup repo step". Fixed: the setup repo step is now §14.13.
+| [requirements.md](requirements.md) | R13.8 the release pipeline and its two assertions · R13.9 `CHANGELOG.md`, its format, backfill and the asset · R13.10 versioned prefixes, atomic relink, retention, ownership · R13.11 the check · R13.12 the apply · R11.24 the prompt · R12.10 `skillgantry upgrade`. M9 owns all seven, with its exit criteria on that row |
+| [design.md](design.md) | §20 points here · §15 the subcommand · §5.3 the `skillgantry-outdated` condition · §17 traceability · §18 change history |
+| [design_tui.md](design_tui.md) | §14.14 the prompt |
 
 ---
 
@@ -486,7 +460,7 @@ Mirrors design.md §16's target-and-guard shape.
   the foreign refusal.
 - `upgrade-app` through `render-ink.tsx`: both answers, and notes truncation at 80×24 and 50×14.
 
-**Acceptance**, `tests/acceptance/m12.test.ts` — the two things a unit test cannot prove, on
+**Acceptance**, `tests/acceptance/m9.test.ts` — the two things a unit test cannot prove, on
 `m5.test.ts`'s crash-recovery precedent: a real `install-cli.sh` into a temporary `SG_HOME` upgraded
 against a locally-served release, and a process killed between step 4 and step 6, asserting the
 installation still works afterwards.

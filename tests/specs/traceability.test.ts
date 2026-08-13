@@ -99,7 +99,12 @@ describe('the requirements front matter', () => {
     expect(header).not.toBeNull()
 
     // Every amendment marker in the body, which is where a revision is spent.
-    const marked = [...requirements.matchAll(/\(rev (\d+)\)/g)].map((m) => Number(m[1]))
+    // `\brev N\b`, not `\(rev N\)`: a requirement amended twice is marked
+    // `*(rev 21, rev 28)*`, and the parenthesised form saw only the first of
+    // the pair — so revisions 28 through 31 were invisible to this check and
+    // the header agreed with the body only by way of the running paragraph
+    // that used to restate every one of them.
+    const marked = [...requirements.matchAll(/\brev (\d+)\b/g)].map((m) => Number(m[1]))
     expect(marked.length).toBeGreaterThan(0)
     expect(Number(header?.[1])).toBe(Math.max(...marked))
   })
