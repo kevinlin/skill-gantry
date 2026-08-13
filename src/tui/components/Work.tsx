@@ -9,7 +9,7 @@ import { Overview } from './Overview.js'
 import { QueuePanel } from './QueuePanel.js'
 import { ReviewPane } from './ReviewPane.js'
 import { SkillList } from './SkillList.js'
-import { StatusBar } from './StatusBar.js'
+import { StatusBar, footer } from './StatusBar.js'
 
 /**
  * The keys this screen answers, per the layered discoverability rule; the rest
@@ -81,11 +81,7 @@ export function Work({ state }: { state: AppState }): React.ReactElement {
       />
       {/* R11.9's report takes the footer's row rather than adding one, so the
           §14.1 budget is unchanged whether or not a flash is up. */}
-      <StatusBar
-        hints={state.flash ?? HINTS}
-        columns={columns}
-        tone={state.flash === null ? 'info' : state.flashTone}
-      />
+      <StatusBar {...footer(state, HINTS)} columns={columns} />
     </Box>
   )
 }

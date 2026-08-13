@@ -31,6 +31,22 @@ const TONE: Record<Exclude<FlashTone, 'info'>, string> = { good: STATUS.ok, bad:
  * Issues footer's missing `q quit` already was. The keys are what a user cannot
  * work without; the version is what they read once.
  */
+/**
+ * R11.9's flash takes the footer's row rather than adding one, on every screen
+ * that can raise one. Work was the only screen that rendered it, so a refusal
+ * raised anywhere else — `q` with a change set staged, say — was invisible, and
+ * a refusal the user cannot read is worse than the key doing nothing.
+ */
+export function footer(
+  state: { flash: string | null; flashTone: FlashTone },
+  hints: string,
+): { hints: string; tone: FlashTone } {
+  return {
+    hints: state.flash ?? hints,
+    tone: state.flash === null ? 'info' : state.flashTone,
+  }
+}
+
 export function StatusBar({
   hints,
   columns,

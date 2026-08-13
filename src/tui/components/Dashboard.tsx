@@ -4,7 +4,7 @@ import { innerWidth, layoutFor } from '../layout.js'
 import { dashboardRows } from '../rows.js'
 import type { Action, AppState } from '../store.js'
 import { ScreenList } from './ScreenList.js'
-import { StatusBar } from './StatusBar.js'
+import { StatusBar, footer } from './StatusBar.js'
 
 const HINTS = 'j/k scroll · p provenance · s scope · : commands · esc work · q quit'
 
@@ -43,7 +43,7 @@ export function Dashboard({
         offset={state.screenOffset}
         layout={layout}
       />
-      <StatusBar hints={HINTS} columns={columns} />
+      <StatusBar {...footer(state, HINTS)} columns={columns} />
     </Box>
   )
 }

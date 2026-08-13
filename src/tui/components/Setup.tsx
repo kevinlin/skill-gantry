@@ -81,6 +81,13 @@ export interface SetupProps {
    * promised "quit" there described a key that does something else.
    */
   exitLabel?: string
+  /**
+   * What the caller did with the repo the user submitted. `skillgantry setup`
+   * wrote it; §14.2's screen only staged it, and a done line reading
+   * "Registered" there tells the user the job is finished one keystroke before
+   * the change set is applied — which is how a registration is lost on `q`.
+   */
+  commit?: 'written' | 'staged'
 }
 
 /**
@@ -283,6 +290,15 @@ function repoHint(repoCount: number, repoCursor: number): string {
     : 'enter save · ↑/↓ choose · esc back · ctrl-d finish'
 }
 
+/**
+ * The verb is the whole difference, and it stays one line: the done screen is a
+ * single row in §14.1's budget, and a sentence carrying both a path and an
+ * instruction wraps to three rows at any real repo path. The instruction goes
+ * to the footer instead, which truncates and where the keys already live.
+ */
+const repoDone = (commit: 'written' | 'staged', path: string): string =>
+  commit === 'written' ? `Registered ${path}.` : `Staged ${path}.`
+
 export function Setup({
   state,
   cursor,
@@ -292,6 +308,7 @@ export function Setup({
   repos = [],
   repoCursor = 0,
   exitLabel = 'quit',
+  commit = 'written',
 }: SetupProps): React.ReactElement {
   const missing = missingRuntimesFor(state.selected, state.runtimes)
   const step = SETUP_ORDER.indexOf(state.state) + 1
@@ -412,8 +429,8 @@ export function Setup({
             {state.repoPath === null
               ? 'No repo registered — add one from Settings.'
               : // The resolved path, not the shorthand that was typed: it is
-                // what actually went into the config.
-                `Registered ${inspection?.resolved ?? state.repoPath}.`}
+                // what went into the document, written or staged.
+                repoDone(commit, inspection?.resolved ?? state.repoPath)}
           </Text>
         )}
       </Box>
@@ -432,7 +449,12 @@ export function Setup({
         <Text dimColor wrap="truncate">
           {truncate(
             state.state === 'done'
-              ? `q ${exitLabel}`
+              ? // What is left to do, for the caller that has not written
+                // anything yet. `Staged` on its own leaves the user to discover
+                // that a change set exists, and `q` is where it is lost.
+                commit === 'staged' && state.repoPath !== null
+                ? `q ${exitLabel} · c there applies the change set`
+                : `q ${exitLabel}`
               : onRepo
                 ? repoHint(repos.length, repoCursor)
                 : `enter advance · b back · p re-probe · q ${exitLabel}`,

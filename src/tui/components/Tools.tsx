@@ -4,7 +4,7 @@ import { innerWidth, layoutFor } from '../layout.js'
 import { toolsRows } from '../rows.js'
 import type { Action, AppState } from '../store.js'
 import { ScreenList } from './ScreenList.js'
-import { StatusBar } from './StatusBar.js'
+import { StatusBar, footer } from './StatusBar.js'
 
 const HINTS = 'j/k scroll · r refresh · : commands · esc work · q quit'
 
@@ -32,7 +32,7 @@ export function Tools({
         offset={state.screenOffset}
         layout={layout}
       />
-      <StatusBar hints={HINTS} columns={columns} />
+      <StatusBar {...footer(state, HINTS)} columns={columns} />
     </Box>
   )
 }

@@ -6,7 +6,7 @@ import { settingsRows } from '../rows.js'
 import type { Action, AppState } from '../store.js'
 import { STATUS } from '../tokens.js'
 import { ScreenList } from './ScreenList.js'
-import { StatusBar } from './StatusBar.js'
+import { StatusBar, footer } from './StatusBar.js'
 
 const HINTS = 'j/k move · e edit · d remove · c confirm · : commands · esc work · q quit'
 
@@ -53,7 +53,7 @@ export function Settings({
           )}
         </Text>
       )}
-      <StatusBar hints={HINTS} columns={columns} />
+      <StatusBar {...footer(state, HINTS)} columns={columns} />
     </Box>
   )
 }

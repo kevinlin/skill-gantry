@@ -16,11 +16,8 @@ async function type(
   await ui.settle()
 }
 
-/** Mounts the app, drives the palette to Settings, and returns the harness. */
-async function settingsScreen(
-  views = fakeViews({ settings: async () => VIEW }),
-  setup = fakeSetupDriver(),
-) {
+/** Mounts the app on its landing screen, which is Work. */
+function mountApp(views = fakeViews({ settings: async () => VIEW }), setup = fakeSetupDriver()) {
   const queue = fakeQueue()
   const ui = renderInk(
     <App
@@ -33,11 +30,53 @@ async function settingsScreen(
       intervalMs={20}
     />,
   )
-  await ui.settle()
-  await type(ui, ':settings\r')
   // The queue comes back so a test can push a mutation review in front of the
   // confirmation and assert which one wins.
   return Object.assign(ui, { queue })
+}
+
+/** Mounts the app, drives the palette to Settings, and returns the harness. */
+async function settingsScreen(
+  views = fakeViews({ settings: async () => VIEW }),
+  setup = fakeSetupDriver(),
+) {
+  const ui = mountApp(views, setup)
+  await ui.settle()
+  await type(ui, ':settings\r')
+  return ui
+}
+
+/**
+ * The wizard's other entry: `:setup` is a screen, so the palette reaches it
+ * from Work without Settings ever having been on screen. This is the walk that
+ * staged nothing — the screen had no document to stage into and said
+ * `Registered` anyway.
+ */
+async function wizardFromWork(
+  views = fakeViews({ settings: async () => VIEW }),
+  setup = fakeSetupDriver(),
+) {
+  const ui = mountApp(views, setup)
+  await ui.settle()
+  await type(ui, ':setup\r')
+  return ui
+}
+
+/**
+ * One key per settle, for the reason the tests below already document: the
+ * wizard's handler judges a key against the render it was registered in.
+ */
+async function walkToRepoStep(ui: Awaited<ReturnType<typeof settingsScreen>>): Promise<void> {
+  // The config is read when the screen opens, so the first step is behind one
+  // async read on the entry that does not come from Settings.
+  await ui.settle(60)
+  await type(ui, '\r')
+  await type(ui, '1')
+  await type(ui, '\r')
+  // The installs are async, and until they land the wizard is still on a step
+  // where `q` is its own leave binding.
+  await ui.settle(120)
+  await type(ui, '\r')
 }
 
 describe('Settings editing', () => {
@@ -197,6 +236,106 @@ describe('the setup states as a screen', () => {
     expect(ui.lastFrame()).toContain('repos[demos]')
     expect(ui.lastFrame()).toContain('/tmp/demos-moved')
     expect(applied).toEqual([])
+    ui.unmount()
+  })
+})
+
+// The screen stages into `state.staged ?? state.settings?.config`, and only the
+// Settings screen ever loaded `state.settings` — so the wizard the palette
+// opened from Work staged into nothing, silently, and reported success.
+describe('the setup screen opened from outside Settings', () => {
+  it('stages the repo it was given', async () => {
+    const applied: unknown[] = []
+    const ui = await wizardFromWork(
+      fakeViews({
+        settings: async () => VIEW,
+        applyConfig: async (next) => void applied.push(next),
+      }),
+    )
+    await walkToRepoStep(ui)
+    expect(ui.lastFrame()).toContain('Credentials and repo')
+
+    await type(ui, '/tmp/new-skills')
+    await type(ui, '\r')
+    await type(ui, 'q') // the wizard's own leave binding, onto Settings
+    await ui.settle(60)
+
+    // The count is the wizard's whole result — the tool selection it staged on
+    // the way through, plus the repo — so the repo row is what this asserts.
+    expect(ui.lastFrame()).toContain('staged · c confirm')
+    await type(ui, 'c')
+    expect(ui.lastFrame()).toContain('repos[new-skills]')
+    expect(ui.lastFrame()).toContain('/tmp/new-skills')
+    expect(applied).toEqual([])
+    ui.unmount()
+  })
+
+  it('reports the repo as staged rather than registered, having written nothing', async () => {
+    const ui = await wizardFromWork()
+    await walkToRepoStep(ui)
+    await type(ui, '/tmp/new-skills')
+    await type(ui, '\r')
+
+    const frame = ui.lastFrame()
+    expect(frame).toContain('Staged /tmp/new-skills.')
+    // The keystroke that finishes the job, in the footer where the keys live —
+    // the done line stays one row whatever the path's length.
+    expect(frame).toContain('c there applies the change set')
+    expect(frame).not.toContain('Registered')
+    ui.unmount()
+  })
+
+  it('seeds the tool selection the config already holds', async () => {
+    const view = {
+      ...VIEW,
+      config: {
+        ...VIEW.config,
+        stageTools: { validate: ['skill-lint'], evaluate: [], security: [], optimise: [] },
+      },
+      lockedTools: ['skill-lint'],
+    }
+    const ui = await wizardFromWork(fakeViews({ settings: async () => view }))
+    // The seed is a lazy `useReducer` init and runs once: a wizard mounted
+    // before the config arrived would render a configured machine as empty.
+    await ui.settle(60)
+    await type(ui, '\r')
+
+    expect(ui.lastFrame()).toMatch(/\*\s*skill-lint/)
+    ui.unmount()
+  })
+})
+
+describe('quitting with a staged document', () => {
+  it('refuses, and names where the change set is', async () => {
+    const ui = await settingsScreen()
+    await type(ui, 'e4\r')
+    await type(ui, 'q')
+
+    const exited = await Promise.race([
+      ui.waitUntilExit().then(() => true),
+      ui.settle(80).then(() => false),
+    ])
+    expect(exited).toBe(false)
+    expect(ui.lastFrame()).toContain('1 staged')
+    expect(ui.lastFrame()).toContain(':settings')
+    ui.unmount()
+  })
+
+  it('quits once the change set is discarded', async () => {
+    const ui = await settingsScreen()
+    // One key per tick from `c` on: the confirm pane's handler reads the state
+    // of the render it was registered in, so a `d` arriving with the `c` is
+    // judged against a screen that has no pane open yet.
+    await type(ui, 'e4\r')
+    await type(ui, 'c')
+    await type(ui, 'd')
+    await type(ui, 'q')
+
+    const exited = await Promise.race([
+      ui.waitUntilExit().then(() => true),
+      ui.settle(80).then(() => false),
+    ])
+    expect(exited).toBe(true)
     ui.unmount()
   })
 })

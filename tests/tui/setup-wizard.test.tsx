@@ -241,6 +241,20 @@ describe('setup wizard — add repo', () => {
     ink.unmount()
   })
 
+  // The two callers report different things because they did different things:
+  // this one wrote the file, §14.2's screen only staged. Asserted here so the
+  // split cannot regress into one sentence that is false for one of them.
+  it('reports the repo as registered, the CLI having written it', async () => {
+    const { driver } = fakeDriver()
+    const ink = await atRepoStep(driver)
+    await type(ink, '/tmp/written')
+    ink.stdin.send('\r')
+    await ink.settle(60)
+
+    expect(ink.lastFrame()).toContain('Registered /tmp/written.')
+    ink.unmount()
+  })
+
   it('names a path that is not a directory', async () => {
     const { driver } = fakeDriver({
       inspectRepo: async (path) => ({

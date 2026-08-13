@@ -1,9 +1,9 @@
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { createGantryViews } from '../../src/cli/gantry-views.js'
-import { createQueue } from '../../src/core/index.js'
+import { createQueue, inspectRepo } from '../../src/core/index.js'
 import { openLedger } from '../../src/core/ledger/db.js'
 import { App } from '../../src/tui/app.js'
 import { fakeRun } from '../helpers/fake-run.js'
@@ -16,13 +16,13 @@ const BETA = skillFixture('beta', 'spec-lint')
 const P1 = { baseUrlHost: 'api.deepseek.com', models: {}, authTokenHash: null, analysisModes: {} }
 const P2 = { baseUrlHost: 'api.anthropic.com', models: {}, authTokenHash: null, analysisModes: {} }
 
-async function gantry() {
+async function gantry(repos: Array<{ id: string; path: string; name: string; isGit: boolean }> = []) {
   const home = await mkdtemp(join(tmpdir(), 'sg-m6-'))
   await writeFile(
     join(home, 'config.json'),
     JSON.stringify({
       version: 1,
-      repos: [],
+      repos,
       stageTools: {
         validate: ['skill-lint'],
         evaluate: ['skill-up'],
@@ -98,7 +98,10 @@ async function gantry() {
       stages={['security']}
       concurrency={2}
       views={views}
-      setup={fakeSetupDriver()}
+      // The one driver call the repo step depends on is the real one, reading
+      // this home's config and the real filesystem; installing tools is not
+      // what these criteria are about.
+      setup={fakeSetupDriver({ inspectRepo: (path) => inspectRepo(home, path) })}
       intervalMs={20}
     />,
     { columns: 100, rows: 30 },
@@ -208,6 +211,79 @@ describe('M6 exit criteria', () => {
     const after = JSON.parse(await readFile(configPath, 'utf8')) as { concurrency: number }
     expect(after.concurrency).toBe(4)
     expect(ui.lastFrame()).not.toContain('staged')
+    ui.unmount()
+  })
+
+  // R11.8 as amended (rev 31), against the file: the wizard reached from Work
+  // wrote nothing and staged nothing, and said `Registered` while doing it.
+  it('registers a second repo through the wizard opened outside Settings', async () => {
+    const first = await mkdtemp(join(tmpdir(), 'sg-repo-one-'))
+    const second = await mkdtemp(join(tmpdir(), 'sg-repo-two-'))
+    const { home, ui, go } = await gantry([
+      { id: 'one', path: first, name: 'one', isGit: false },
+    ])
+    await ui.settle()
+    const configPath = join(home, 'config.json')
+
+    await go('setup')
+    // Enter the wizard's steps one key per settle: its handler judges a key
+    // against the render it was registered in.
+    const key = async (input: string, ms = 60): Promise<void> => {
+      for (const char of input) ui.stdin.send(char)
+      await ui.settle(ms)
+    }
+    await key('\r')
+    await key('1')
+    await key('\r', 300)
+    await key('\r')
+    // The step names what is already registered, which is the list the screen
+    // could not have had before it loaded the document it stages into.
+    expect(ui.lastFrame()).toContain('Credentials and repo')
+    expect(ui.lastFrame()).toContain(first)
+
+    await key(second)
+    await key('\r')
+    // Verb and path asserted apart: a tmpdir path is long enough that the
+    // sentence wraps, as it has since the line read `Registered <path>.`
+    expect(ui.lastFrame()).toContain('Staged')
+    expect(ui.lastFrame()).toContain(`${second}.`)
+    expect(ui.lastFrame()).not.toContain('Registered')
+    expect(ui.lastFrame()).toContain('c there applies the change set')
+    // Staged, not written: R11.8's own rule, asserted against bytes.
+    const staged = JSON.parse(await readFile(configPath, 'utf8')) as { repos: unknown[] }
+    expect(staged.repos).toHaveLength(1)
+
+    await key('q') // back to Settings, where the change set lives
+    await key('c')
+    await key('a', 300)
+
+    const after = JSON.parse(await readFile(configPath, 'utf8')) as {
+      repos: Array<{ path: string }>
+    }
+    // The canonical path, which on macOS resolves the tmpdir's `/var` symlink —
+    // registration stores what the filesystem calls the directory.
+    expect(after.repos.map((repo) => repo.path)).toEqual([first, await realpath(second)])
+    ui.unmount()
+  })
+
+  it('refuses to quit while a change set is unapplied', async () => {
+    const { home, ui, go } = await gantry()
+    await ui.settle()
+    const configPath = join(home, 'config.json')
+    const before = await readFile(configPath, 'utf8')
+
+    await go('settings')
+    for (const key of 'e4\r') ui.stdin.send(key)
+    await ui.settle(60)
+    ui.stdin.send('q')
+
+    const exited = await Promise.race([
+      ui.waitUntilExit().then(() => true),
+      ui.settle(120).then(() => false),
+    ])
+    expect(exited).toBe(false)
+    expect(ui.lastFrame()).toContain('staged')
+    expect(await readFile(configPath, 'utf8')).toBe(before)
     ui.unmount()
   })
 

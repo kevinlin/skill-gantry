@@ -4,7 +4,7 @@ import { issueRows } from '../rows.js'
 import type { AppState } from '../store.js'
 import { SEVERITY_COLOUR, STATUS, overflowNotice } from '../tokens.js'
 import { Panel } from './Panel.js'
-import { StatusBar } from './StatusBar.js'
+import { StatusBar, footer } from './StatusBar.js'
 
 // `q quit` included because `q` does quit from here: every other screen's
 // footer said so and this one did not, which made the key look screen-specific.
@@ -71,7 +71,7 @@ export function Issues({ state }: { state: AppState }): React.ReactElement {
           </Text>
         )}
       </Panel>
-      <StatusBar hints={HINTS} columns={columns} />
+      <StatusBar {...footer(state, HINTS)} columns={columns} />
     </Box>
   )
 }

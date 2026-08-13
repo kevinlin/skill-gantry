@@ -1,5 +1,5 @@
 import { useEffect, useReducer, useRef } from 'react'
-import { Box, useApp, useInput, useStdout, useWindowSize } from 'ink'
+import { Box, Text, useApp, useInput, useStdout, useWindowSize } from 'ink'
 import {
   DEFAULT_CONFIG,
   GATE_STAGES,
@@ -9,6 +9,7 @@ import {
   isNativeStage,
 } from '../core/index.js'
 import type {
+  GantryConfig,
   IssueAction,
   IssueState,
   QueueHandle,
@@ -87,12 +88,34 @@ function SetupScreen({
   driver: SetupDriver
 }): React.ReactElement {
   const config = state.staged ?? state.settings?.config
+  // The wizard does not start until there is a document to stage into. A
+  // conditional around the hook below is not available — hook order is fixed —
+  // so the session lives in its own component, mounted only once the config has
+  // arrived. That also fixes the seed: `initialSetupState` is a lazy reducer
+  // init and runs once, so a wizard mounted before the read landed renders a
+  // configured machine as having no tools selected, which is the thing §14.2
+  // seeded the wizard to prevent.
+  if (!config) return <Text dimColor>reading the configuration…</Text>
+  return <SetupSession state={state} dispatch={dispatch} driver={driver} config={config} />
+}
+
+function SetupSession({
+  state,
+  dispatch,
+  driver,
+  config,
+}: {
+  state: AppState
+  dispatch: (action: Action) => void
+  driver: SetupDriver
+  config: GantryConfig
+}): React.ReactElement {
   const locked = state.settings?.lockedTools ?? []
   const session = useSetupSession({
     driver,
-    repos: config?.repos ?? [],
+    repos: config.repos,
     seed: {
-      selected: [...new Set([...Object.values(config?.stageTools ?? {}).flat(), ...locked])],
+      selected: [...new Set([...Object.values(config.stageTools).flat(), ...locked])],
       installed: Object.fromEntries(locked.map((id) => [id, 'ok' as const])),
     },
     onSelection: (selected) => dispatch({ type: 'stage-selection', selected }),
@@ -122,9 +145,13 @@ function SetupScreen({
       draftPath={session.path}
       inspection={session.inspection}
       error={session.error}
-      repos={config?.repos ?? []}
+      repos={config.repos}
       repoCursor={session.repoCursor}
       exitLabel="settings"
+      // This caller stages; it has written nothing, and the done line has to
+      // say so or the user reads "Registered" and quits with the change still
+      // in the session.
+      commit="staged"
     />
   )
 }
@@ -364,7 +391,12 @@ export function App({
     if (state.screen === 'tools') {
       void views.tools().then((report) => live && dispatch({ type: 'set-tools', report }), fail)
     }
-    if (state.screen === 'settings') {
+    // The setup screen reads the same document, because it stages into it. The
+    // palette reaches that screen from anywhere (§14.2), and opened from Work
+    // it had no document to stage into: every staging dispatch resolved a base
+    // of `undefined` and returned the state unchanged while the wizard walked
+    // on to `done` reporting success. Nothing was staged and nothing was said.
+    if (state.screen === 'settings' || state.screen === 'setup') {
       void views.settings().then((view) => live && dispatch({ type: 'set-settings', view }), fail)
     }
     return () => {
@@ -462,6 +494,20 @@ export function App({
 
   const shortPath = (path: string): string =>
     truncateMiddle(path, Math.max(20, innerWidth(layout.columns, layout.chrome) - 12))
+
+  /**
+   * Quitting is where a staged document is lost, and the wizard stages from a
+   * screen that is not Settings — so this guards the document, not the screen.
+   * One function for both quit keys, because a refusal spelled at one of the
+   * two sites is a refusal the other never makes.
+   */
+  const quitUnlessStaged = (): void => {
+    if (state.staged === null) {
+      exit()
+      return
+    }
+    flash(`${configChanges(settingsConfig, state.staged).length} staged · :settings, then c applies`)
+  }
 
   const openEvidence = (artefactDir: string): void => {
     const shown = shortPath(artefactDir)
@@ -758,7 +804,7 @@ export function App({
       return
     }
     if (plain && input === 'q') {
-      exit()
+      quitUnlessStaged()
       return
     }
     if (palette.current.open) {
@@ -788,8 +834,10 @@ export function App({
           dispatch({ type: 'palette-close' })
           if (target === undefined) flash('no skill selected')
           else openPrompt(chosen.action.prompt, target)
-        } else if (chosen?.action.kind === 'quit') exit()
-        else close()
+        } else if (chosen?.action.kind === 'quit') {
+          dispatch({ type: 'palette-close' })
+          quitUnlessStaged()
+        } else close()
       } else if (key.downArrow || (key.ctrl && input === 'n')) {
         dispatch({ type: 'palette-move', delta: 1 })
       } else if (key.upArrow || (key.ctrl && input === 'p')) {

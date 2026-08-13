@@ -63,6 +63,12 @@ export interface InkHarness {
   unmount(): void
   /** Lets effects, timers and one render cycle settle. */
   settle(ms?: number): Promise<void>
+  /**
+   * Resolves when the app exits. Race it against `settle` to assert whether a
+   * key quit the session: a frame assertion cannot tell a refused quit from a
+   * quit whose last frame happens to still be on screen.
+   */
+  waitUntilExit(): Promise<void>
 }
 
 /**
@@ -105,5 +111,6 @@ export function renderInk(
     stdin,
     unmount: () => instance.unmount(),
     settle: (ms = 20) => new Promise<void>((r) => setTimeout(r, ms)),
+    waitUntilExit: () => instance.waitUntilExit(),
   }
 }
