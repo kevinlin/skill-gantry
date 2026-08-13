@@ -58,9 +58,13 @@ jobs:
           mkdir -p release
           pnpm pack --pack-destination release
 
+      # The name must be bare: `sha256sum` echoes the path it was given, and
+      # `./*.tgz` wrote `./skillgantry-<v>.tgz`, which every client shipped
+      # before 0.6.5 reads as "no entry for this asset" and refuses to upgrade.
+      # Those clients can only be repaired by a release they can verify.
       - name: Checksums
         working-directory: release
-        run: sha256sum ./*.tgz > SHA256SUMS
+        run: sha256sum -- *.tgz > SHA256SUMS
 
       - name: Release notes
         run: |

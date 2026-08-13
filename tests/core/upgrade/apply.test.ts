@@ -27,6 +27,13 @@ function serve(sums: string, body = TARBALL): typeof fetch {
 const goodSums = (version = '0.6.0'): string =>
   `${digest(TARBALL)}  skillgantry-${version}.tgz\n`
 
+/**
+ * What `sha256sum ./*.tgz` writes — the form every release up to 0.6.4 actually
+ * published, and the one a bare-name matcher read as "no entry for this asset".
+ */
+const dotSlashSums = (version = '0.6.0'): string =>
+  `${digest(TARBALL)}  ./skillgantry-${version}.tgz\n`
+
 // The fake Exec stands in for npm: it creates the tree npm would create, so
 // every assertion below is about apply's ordering rather than about npm.
 function fakeNpm(version: string, reported = version): Exec {
@@ -105,6 +112,21 @@ describe('applyUpgrade', () => {
       'relink',
       'prune',
     ])
+  })
+
+  it('verifies against a checksum file that names the tarball with a ./ prefix', async () => {
+    const { home, link } = await installed()
+
+    await applyUpgrade({
+      release: release(),
+      home,
+      link,
+      fromVersion: '0.5.1',
+      fetchImpl: serve(dotSlashSums()),
+      exec: reportingExec('0.6.0'),
+    })
+
+    expect(await realpath(link)).toContain(join('versions', '0.6.0'))
   })
 
   it('leaves the installation byte-identical when the checksum does not match', async () => {

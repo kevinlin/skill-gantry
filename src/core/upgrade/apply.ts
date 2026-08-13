@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { copyFile, mkdir, readdir, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { compareSemver } from '../release/version.js'
+import { digestFor } from '../tools/checksums.js'
 import { type Exec, defaultExec } from '../tools/exec.js'
 import type { ReleaseInfo } from './types.js'
 
@@ -44,18 +45,10 @@ async function download(url: string, fetchImpl: typeof fetch): Promise<Buffer> {
   return Buffer.from(await res.arrayBuffer())
 }
 
-/**
- * The line-matching shape `gh-release.ts` established: `sha256sum` writes the
- * name bare and `sha256sum -b` writes it with a `*` prefix, and a checksum file
- * that used the other form would otherwise read as "no entry for this asset".
- */
 function expectedDigest(sums: string, assetName: string): string {
-  const line = sums
-    .split('\n')
-    .map((raw) => raw.trim().split(/\s+/))
-    .find((parts) => parts[1] === assetName || parts[1] === `*${assetName}`)
-  if (!line?.[0]) throw new Error(`SHA256SUMS carries no entry for ${assetName}`)
-  return line[0]
+  const digest = digestFor(sums, assetName)
+  if (!digest) throw new Error(`SHA256SUMS carries no entry for ${assetName}`)
+  return digest
 }
 
 /** Prefixes under `versions/`, newest first; anything unparseable is ignored. */

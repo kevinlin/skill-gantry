@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { chmod, mkdir, readdir, rename, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Integrity } from '../adapters/types.js'
+import { digestFor } from './checksums.js'
 import { type Exec, defaultExec } from './exec.js'
 
 export interface GhReleaseInstallSpec {
@@ -68,14 +69,11 @@ async function verifyIntegrity(
     throw new Error(`no checksum asset matching ${spec.integrity.assetPattern} on ${spec.pin}`)
   }
   const sums = (await download(sumsAsset.browser_download_url, fetchImpl)).toString('utf8')
-  const line = sums
-    .split('\n')
-    .map((raw) => raw.trim().split(/\s+/))
-    .find((parts) => parts[1] === assetName || parts[1] === `*${assetName}`)
-  if (!line?.[0]) throw new Error(`${sumsAsset.name} carries no entry for ${assetName}`)
-  if (line[0] !== actual) {
+  const expected = digestFor(sums, assetName)
+  if (!expected) throw new Error(`${sumsAsset.name} carries no entry for ${assetName}`)
+  if (expected !== actual) {
     throw new Error(
-      `integrity mismatch for ${spec.id}@${spec.pin}: expected ${line[0]}, got ${actual}`,
+      `integrity mismatch for ${spec.id}@${spec.pin}: expected ${expected}, got ${actual}`,
     )
   }
   return `sha256:${actual}`

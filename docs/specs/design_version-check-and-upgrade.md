@@ -77,7 +77,11 @@ Setup steps identical to `check.yml`, then:
    missing is one the prompt displays blank.
 3. `pnpm check`.
 4. `pnpm pack --pack-destination release/` → `skillgantry-<version>.tgz`.
-5. `sha256sum` that file into `release/SHA256SUMS`.
+5. `sha256sum` that file into `release/SHA256SUMS`, **naming it bare** — `sha256sum` echoes the
+   path it was handed, and the `./*.tgz` glob the workflow shipped with wrote `./skillgantry-<v>.tgz`,
+   which the client's bare-name matcher read as "no entry for this asset". Every release through
+   0.6.4 was unverifiable for that reason, and a client too old to parse the other form can only be
+   repaired by a release it can already verify.
 6. `gh release create "$GITHUB_REF_NAME" --notes-file <extracted section> release/*` plus
    `CHANGELOG.md`.
 
@@ -205,7 +209,9 @@ crosses a device boundary. Each step emits an `onProgress` event; the caller own
 
 1. **download** — tarball and `SHA256SUMS`
 2. **verify** — parse the tarball's line out of `SHA256SUMS`, compare against the computed digest;
-   mismatch throws
+   mismatch throws. The name is matched through `tools/checksums.ts`, which strips a leading `*`
+   (`sha256sum -b`) or `./` (a glob) — one parser shared with the `gh-release` tool driver, so a
+   producer that changes form cannot break one consumer and leave the other passing
 3. **install** — `npm install --prefix <home>/versions/<version> <tarball>` through the injected
    `Exec`
 4. **verify** — spawn the installed binary's `--version` and require it to **equal** `<version>`.
