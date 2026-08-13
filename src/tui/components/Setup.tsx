@@ -451,9 +451,11 @@ export function Setup({
             state.state === 'done'
               ? // What is left to do, for the caller that has not written
                 // anything yet. `Staged` on its own leaves the user to discover
-                // that a change set exists, and `q` is where it is lost.
+                // that a change set exists, and `q` is where it is lost. The
+                // key acts from here — it is named on the screen that handles
+                // it, which is what the first wording got wrong.
                 commit === 'staged' && state.repoPath !== null
-                ? `q ${exitLabel} · c there applies the change set`
+                ? `c apply the change set · q ${exitLabel}`
                 : `q ${exitLabel}`
               : onRepo
                 ? repoHint(repos.length, repoCursor)

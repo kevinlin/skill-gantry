@@ -280,8 +280,24 @@ describe('the setup screen opened from outside Settings', () => {
     expect(frame).toContain('Staged /tmp/new-skills.')
     // The keystroke that finishes the job, in the footer where the keys live —
     // the done line stays one row whatever the path's length.
-    expect(frame).toContain('c there applies the change set')
+    expect(frame).toContain('c apply the change set')
     expect(frame).not.toContain('Registered')
+    ui.unmount()
+  })
+
+  // The footer names `c`, so `c` acts from the screen the footer is on. Named
+  // and unhandled, it was a user pressing it, seeing nothing, and reporting
+  // that the repo could not be saved.
+  it('opens the change set on c, from the done screen the key is named on', async () => {
+    const ui = await wizardFromWork()
+    await walkToRepoStep(ui)
+    await type(ui, '/tmp/new-skills')
+    await type(ui, '\r')
+    await type(ui, 'c')
+    await ui.settle(60)
+
+    expect(ui.lastFrame()).toContain('repos[new-skills]')
+    expect(ui.lastFrame()).toContain('a apply · d discard')
     ui.unmount()
   })
 

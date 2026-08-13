@@ -44,6 +44,14 @@ export interface SetupSessionOptions {
   onRepo: (path: string, replacing: string | null) => Promise<void> | void
   /** Leaving: the CLI exits the process, the screen returns to Settings. */
   onExit: () => void
+  /**
+   * Where the staged result is applied, for the caller that only staged it.
+   * Undefined for `skillgantry setup`, which has already written — and the done
+   * footer advertises the key only when this is set, because a key named on a
+   * screen that does not handle it is a user pressing it and concluding the
+   * wizard is broken.
+   */
+  onConfirm?: () => void
 }
 
 export interface SetupSession {
@@ -70,6 +78,7 @@ export function useSetupSession({
   onSelection,
   onRepo,
   onExit,
+  onConfirm,
 }: SetupSessionOptions): SetupSession {
   const [state, dispatch] = useReducer(setupReducer, seed, initialSetupState)
   const [cursor, setCursor] = useState(0)
@@ -244,6 +253,12 @@ export function useSetupSession({
       else if (key.downArrow) moveRepoCursor(1)
       else if (key.backspace || key.delete) setPath((p) => p.slice(0, -1))
       else if (input.length > 0 && !key.ctrl && !key.meta) setPath((p) => p + input)
+      return
+    }
+    // Below the text field's branch, above the other commands: `c` is a
+    // character a repo path can contain, and only the done state offers it.
+    if (input === 'c' && state.state === 'done' && onConfirm) {
+      onConfirm()
       return
     }
     if (input === 'q') {

@@ -248,14 +248,19 @@ describe('M6 exit criteria', () => {
     expect(ui.lastFrame()).toContain('Staged')
     expect(ui.lastFrame()).toContain(`${second}.`)
     expect(ui.lastFrame()).not.toContain('Registered')
-    expect(ui.lastFrame()).toContain('c there applies the change set')
+    expect(ui.lastFrame()).toContain('c apply the change set')
     // Staged, not written: R11.8's own rule, asserted against bytes.
     const staged = JSON.parse(await readFile(configPath, 'utf8')) as { repos: unknown[] }
     expect(staged.repos).toHaveLength(1)
 
-    await key('q') // back to Settings, where the change set lives
+    // `c` from the done screen, the key that screen's footer names: it opens
+    // the change set on Settings, which is where the write is authorised.
     await key('c')
+    expect(ui.lastFrame()).toContain('a apply · d discard')
     await key('a', 300)
+    // The skill list was discovered at launch, so the repo this write adds is
+    // not in it — said here, where the user goes looking for the repo.
+    expect(ui.lastFrame()).toContain('after a relaunch')
 
     const after = JSON.parse(await readFile(configPath, 'utf8')) as {
       repos: Array<{ path: string }>

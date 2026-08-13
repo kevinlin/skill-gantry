@@ -137,6 +137,14 @@ function SetupSession({
       dispatch({ type: 'stage-repo', entry })
     },
     onExit: () => dispatch({ type: 'set-screen', screen: 'settings' }),
+    // The done footer names this key, so it does the whole thing the footer
+    // says: the change set is on Settings, and this is the one keystroke that
+    // reaches it. Advertised and unhandled, it read as a wizard that had
+    // staged nothing.
+    onConfirm: () => {
+      dispatch({ type: 'set-screen', screen: 'settings' })
+      dispatch({ type: 'open-confirm' })
+    },
   })
   return (
     <Setup
@@ -719,6 +727,13 @@ export function App({
     if (state.confirm && state.staged !== null) {
       const staged = state.staged
       if (plain && input === 'a') {
+        // Which repos the session is working on was decided by the discovery
+        // `startTui` ran at launch, so a repo this write adds is on Settings
+        // and not in the skill list. The pane said "next launch" before the
+        // write; this says it after, where the user is looking for the repo.
+        const repoChange = configChanges(settingsConfig, staged).some((change) =>
+          change.path.startsWith('repos['),
+        )
         void views
           .applyConfig(staged)
           .then(() => {
@@ -727,6 +742,12 @@ export function App({
             // Re-read rather than patch: the file is the authority for what the
             // write actually produced, origins included.
             dispatch({ type: 'refresh-views' })
+            flash(
+              repoChange
+                ? 'config.json written · its skills are listed after a relaunch'
+                : 'config.json written',
+              'good',
+            )
           })
           // The staging survives a failed write, so the user can retry it.
           .catch((err: unknown) =>
