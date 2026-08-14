@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { open, readFile, rename, rm } from 'node:fs/promises'
 import { dirname, join, relative } from 'node:path'
+import { resolveBaselinePath } from '../adapters/paths.js'
 import type { BaselineSpec } from '../adapters/types.js'
 import { WRITE_TEMP_NAME } from '../discovery/candidate.js'
 import { unifiedDiffFor } from '../isolation/diff.js'
@@ -62,18 +63,6 @@ async function syncDir(path: string): Promise<void> {
 }
 
 /**
- * Resolves against the **live** skill directory, deliberately unlike §7's
- * conditional-argv stat, which resolves against the tool-facing path. A
- * repo-root skill's tool reads a materialised candidate copy (§4.4), so a write
- * resolved the tool's way would land in a temp directory and be discarded with
- * it. Same token, opposite answer, and it reads as a bug without this comment.
- */
-const resolveBaselinePath = (skill: SkillRef, spec: BaselineSpec): string =>
-  spec.path.replace(/\{(skillDir|repoRoot)\}/g, (_m, key: string) =>
-    key === 'skillDir' ? skill.dir : skill.repo.path,
-  )
-
-/**
  * R10.12, first half: nothing the user's repo can see changes here. The staged
  * temp file is both what the diff is computed from and what the rename lands,
  * so the bytes reviewed are the bytes written rather than a second render that
@@ -81,7 +70,7 @@ const resolveBaselinePath = (skill: SkillRef, spec: BaselineSpec): string =>
  */
 export async function planSuppression(input: PlanInput): Promise<SuppressionPlan> {
   const { skill, spec, entries, toolId } = input
-  const path = resolveBaselinePath(skill, spec)
+  const path = resolveBaselinePath(skill, spec.path)
   const label = relative(skill.repo.path, path)
   const current = await readOrNull(path)
   const preimage = current === null ? null : sha256(current)

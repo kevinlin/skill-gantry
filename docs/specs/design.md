@@ -808,7 +808,7 @@ One case remains where unredacted artefacts could be re-read by a later tool: a 
 
 ### 9.4 Fix prompt
 
-*Satisfies R6.10, R6.11.*
+*Satisfies R6.10, R6.11, R6.14.*
 
 A stage that reported findings writes `fix-prompt.md` beside its `stage.json`: a prompt for a coding agent that names where the skill is, where each tool's own report is, and what every finding said. Per stage rather than per tool, because a fan-out security stage with two scanners is one job for the agent.
 
@@ -822,20 +822,30 @@ The prompt instructs the agent to judge each finding into one of three — corre
 
 **It is built from `input.skill`, never `ctx.skill`.** The prompt names where an agent should edit, and `ctx.skill` points into the mutation sandbox or into the materialised candidate's temp directory — neither of which exists after the run. The builder is a pure function in `stages`, which is the only module that adds no §3 edge: it already depends on `adapters` for the manifest lookup, and it already owns no I/O. `workspace` gets a four-line `writeFixPrompt` and no judgement, per §3's own rule that a module owning I/O does not own decisions.
 
-**Six rules, shared by all three prompts.** §9.4a and §9.4b state only where they differ; everything below holds for each of them, and one module composes all three so the rules cannot fork into divergent copies:
+**A confirmed false positive gets a command, per finding, and only where the tool declares a baseline** (R6.14). Judging a finding false was where the prompt stopped: the agent reported, the maintainer re-ran the stage, saw the same finding and accepted it by hand, once per false positive. The prompt now names §7's `baseline.path` with `{skillDir}` resolved and emits the `skillgantry suppress` line §15 already accepts, one per finding, `--reason` left as a placeholder the agent must fill.
+
+Four things about that block are decisions rather than formatting:
+
+- **Per finding, never wholesale.** A scanner's own baseline subcommand writes the file from what it currently reports, which includes the true positives the agent has not fixed yet — so the block says not to run it. That is the failure a bare "create a baseline" instruction invites, and it hides real defects behind a passing gate.
+- **The axis is the detecting tool, not the stage.** R4.16 makes `baseline` an optional manifest declaration, and `runSuppress` exits non-zero having written nothing for a tool that declares none. A finding from such a tool gets named as one the prompt cannot record instead of a command that fails. Nothing in any prompt branches on the stage.
+- **Every rendered finding names its tool**, which is why the findings table carries a Tool column. `RawFinding` has no `toolId` and the builder flattens `toolRuns`, so the merged table of a fan-out security stage used to leave the agent unable to tell which of two scanners it was being told to read the report of. The builder holds the attribution; only the rendering discarded it.
+- **The path handed to `--path` is the repo-relative one the table displays, and `--yes` is emitted.** `previewSuppression` rebases through `skillRelative`, so the displayed value is already correct despite the flag's skill-relative label — and an agent asked to retype a second path form will get it wrong. Without `--yes` the command prints its diff and exits `5`, which an agent reads as a failure; with it the diff still prints immediately before the write, so §12.5's rule is kept and nothing is hidden.
+
+**Seven rules, shared by all three prompts.** §9.4a and §9.4b state only where they differ; everything below holds for each of them. Rule 6 and the rendering it depends on — the finding-to-tool attribution and the table-cell escaper — are composed from one `stages/prompt-parts.ts` so they cannot fork into divergent copies; the rest are honoured per prompt:
 
 1. **Name the tool's report, never restate it** — `RawFinding` is closed at six fields, so a scanner's `remediation`, `explanation` and `code_snippet` reach no surface but its own file. Artefact names and invocations are read from the adapter manifest, so a pin bump moves the prompt with it.
 2. **Omit suppressed findings and name how many** (R6.11) — the one instruction a prompt must never give is to fix what the user has already ruled on, and the count stops the agent wondering why the report lists more than the table.
 3. **Forbid any write under `*-workspace/` or `.skillgantry-workspace/`** — that is the evidence the prompt itself points at.
 4. **Build from `input.skill`, never `ctx.skill`** — a sandbox or materialised-candidate path does not survive to be edited.
 5. **Name a missing dependency before the task** — otherwise the failure surfaces inside the agent's session rather than in the terminal that produced it.
-6. **SkillGantry never applies the result.**
+6. **Name each finding's tool, and the command that records it** (R6.14) — per finding, only where that tool declares a baseline, and never the tool's own wholesale one. §9.4b holds this rule by rendering no findings at all: it composes from the skill's tree, precisely because the state it addresses is one no run can produce evidence for.
+7. **SkillGantry never applies the result.**
 
 ### 9.4a Optimise prompt
 
 *Satisfies R6.12.*
 
-The second prompt composed from run evidence. It lives in `stages` beside `fix-prompt.ts` even though optimise is no longer a stage, and it keeps §9.4's six rules.
+The second prompt composed from run evidence. It lives in `stages` beside `fix-prompt.ts` even though optimise is no longer a stage, and it keeps §9.4's seven rules — including rule 6, whose block it composes from the same `stages/prompt-parts.ts` §9.4 does, numbering its findings per stage since it renders every stage of the run at once.
 
 **Its trigger is a user action, not a run**, so unlike §9.4 there is no file: the body goes to stdout headlessly and through OSC 52 in the terminal, and the pipeline stays the only writer under `runs/` — R11.10's and R12.6's shared constraint. That is also why it returns a string always rather than §9.4's nullable: the trigger is a keystroke rather than a findings count, so a refusal is a flash, not an absent document.
 
@@ -847,7 +857,7 @@ Its install argument is plain fields rather than a type imported from `tools`, s
 
 *Satisfies R6.13.*
 
-The third prompt, and the first composed from the skill's tree rather than from run evidence — because the state it addresses is one where no run can produce evidence. skill-up cannot run without `evals/eval.yaml`, most skills carry none, and the evaluate gate answers that with `errored`/`missing-artefact` and no next step. §9.4's six rules and §9.4a's string-always, write-nothing shape both hold.
+The third prompt, and the first composed from the skill's tree rather than from run evidence — because the state it addresses is one where no run can produce evidence. skill-up cannot run without `evals/eval.yaml`, most skills carry none, and the evaluate gate answers that with `errored`/`missing-artefact` and no next step. §9.4's seven rules and §9.4a's string-always, write-nothing shape both hold — rule 6 vacuously, since this prompt renders no findings.
 
 **A prompt is the only shape available, not the preferred one.** `skill-up init` writes user configuration — OTLP defaults, `runtime_kwargs` — and scaffolds no suite. The documented flow is copying skill-upper's `assets/eval.yaml.tmpl` and `assets/case.yaml.tmpl` into the skill and rewriting them, which is a judgement about what the skill claims to do. There is no CLI path SkillGantry could drive.
 
@@ -1467,6 +1477,8 @@ There is no `--then-run`, unlike §14.7's toggle. The shell composes `suppress &
 | Screen row budget | Every screen rendered at 80×24 and 50×14 | §14.1's first rule, on every full-screen view including help and the inline wizard |
 | Config transforms | `withRepo`, `withoutRepo`, `withStageTools`, `withScalar` and `configChanges` as pure functions; id uniqueness and duplicate rejection asserted against `registerRepo`'s own result | The staged path and the live path cannot disagree about what a valid config is — §14.2 |
 | `buildFixPrompt` | Pure, over a fixture `StageResult` modelled on the motivating run — two `medium` findings from one scanner | Every mandated element present; null for a zero-finding result; non-null for a §8.1 sub-floor `passed` stage; a `\|` in a message does not break the table; no Commit row for a non-git repo — R6.10 |
+| `suppressSection`, through both prompts | Pure, over a fan-out fixture: one tool declaring a baseline, one declaring none | A finding from the declaring tool yields a command carrying its native rule id and the table's own path; a finding from the other yields no command and is named; no tool declaring one yields no section and renumbers the instructions; `{skillDir}` is resolved against the real skill, once with no injected lookup so the manifest wiring itself is proven — R6.14 |
+| The emitted line against `suppress` | The prompt's own line, split as a shell splits it, driven through `buildProgram` over a real repo | The entry lands with the native rule id and the path rebased to the skill-relative form — the coupling neither module's own tests can see, since a change to either side alone leaves an agent running a line that no longer means what the prompt intended — R6.14 |
 | Fix-prompt trigger | Through `pipeline/run.ts` with fake executors | A zero-finding stage writes no file; a one-finding stage writes exactly one beside `stage.json`; the sandbox-open-failure path writes none; a §8.1 row-3b abort whose tools had reported findings still writes one; the prompt names the real skill dir, not the materialised candidate |
 | `skillgantry fix` | `buildProgram` with a collecting writer over a fabricated sidecar, plus one run in a second process | Default picks the greatest run id; `--run` and `--stage` restrict; two prompted stages list rather than concatenate; a clean run exits 1 saying why; `--json` is one document; a missing file with findings regenerates marked `onDisk: false`; **the sidecar is byte-identical afterwards**; the exit-code contract survives the process boundary — R12.6 |
 | `y` and OSC 52 | `renderInk` with a fake queue and a real temp prompt file; `osc52` asserted as pure bytes | The frame carries the base64 of the file's bytes; the StatusBar shows the path; the frame's row count is unchanged by the keypress; each unavailable case names its reason and emits no escape; UTF-8 round-trips and an oversized body returns null — R11.9 |

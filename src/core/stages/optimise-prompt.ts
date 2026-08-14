@@ -1,5 +1,11 @@
 import type { SkillRef, Stage } from '../types.js'
-import { actionableFindings } from './outcome.js'
+import {
+  attributedRows,
+  cell,
+  suppressSection,
+  type ManifestLookup,
+  type SuppressibleFinding,
+} from './prompt-parts.js'
 import type { StageResult } from './types.js'
 
 export interface OptimisePromptInput {
@@ -23,10 +29,9 @@ export interface OptimisePromptInput {
    * edge — the property §9.4 records as the reason `fix-prompt.ts` lives here.
    */
   install: { interpreter: string; skillsDir: string; sha: string; missing: readonly string[] }
+  /** Injectable so a test need not register an adapter. §9.4's seam. */
+  lookup?: ManifestLookup
 }
-
-/** A message goes into a markdown table cell, so its two breaking characters go. */
-const cell = (text: string): string => text.replace(/\|/g, '\\|').replace(/\s*\n\s*/g, ' ').trim()
 
 /**
  * R6.12. Returns a string always, unlike `buildFixPrompt`'s nullable return:
@@ -36,6 +41,7 @@ const cell = (text: string): string => text.replace(/\|/g, '\\|').replace(/\s*\n
 export function buildOptimisePrompt(input: OptimisePromptInput): string {
   const { skill, lastRun, install } = input
   const lines: string[] = [`# Optimise: ${skill.name}`, '']
+  const acceptable: SuppressibleFinding[] = []
 
   lines.push(`- Skill directory: \`${skill.dir}\``)
   lines.push(`- Repo root: \`${skill.repo.path}\``)
@@ -70,22 +76,38 @@ export function buildOptimisePrompt(input: OptimisePromptInput): string {
     let suppressed = 0
     for (const { stage, result } of lastRun.stages) {
       lines.push(`### ${stage} — \`${result.outcome}\``, '')
-      const all = result.toolRuns.flatMap((run) => run.findings)
-      suppressed += all.length - actionableFindings(all).length
+      const { rows, omitted } = attributedRows(result.toolRuns)
+      suppressed += omitted
       for (const run of result.toolRuns) {
         // §9.4's rule: name the report, do not restate it. `RawFinding` is a
         // closed six-field record, so remediation and explanation are only ever
         // in the tool's own artefacts.
         lines.push(`- **${run.toolId}** \`${run.outcome}\` — report: \`${run.artefactDir}\``)
       }
-      const findings = actionableFindings(all)
-      if (findings.length > 0) {
-        lines.push('', '| severity | rule class | location | message |', '|---|---|---|---|')
-        for (const finding of findings) {
-          lines.push(
-            `| ${finding.severity} | ${finding.ruleClass} | ${cell(finding.path)} | ${cell(finding.message)} |`,
-          )
-        }
+      if (rows.length > 0) {
+        lines.push(
+          '',
+          '| # | tool | severity | rule class | location | message |',
+          '|---|---|---|---|---|---|',
+        )
+        lines.push(
+          ...rows.map(
+            ({ toolId, finding }, i) =>
+              `| ${i + 1} | ${toolId} | ${finding.severity} | ${finding.ruleClass} | ${cell(finding.path)} | ${cell(finding.message)} |`,
+          ),
+        )
+        // Mapped over the same array as the table rather than pushed alongside
+        // it, so the `i + 1` the label quotes cannot drift from the `#` column.
+        // Labelled by stage too: this prompt renders every stage of the run at
+        // once and each numbers from 1, so a bare number would collide.
+        acceptable.push(
+          ...rows.map(({ toolId, finding }, i) => ({
+            label: `${stage} finding ${i + 1}`,
+            toolId,
+            nativeRuleId: finding.nativeRuleId,
+            path: finding.path,
+          })),
+        )
       }
       lines.push('')
     }
@@ -100,6 +122,11 @@ export function buildOptimisePrompt(input: OptimisePromptInput): string {
     }
   }
 
+  // R6.14, from the same module §9.4's prompt composes it from, so the rule
+  // cannot fork into two copies that drift.
+  const accept = suppressSection(skill, acceptable, input.lookup)
+  if (accept.length > 0) lines.push(...accept, '')
+
   lines.push('## Task', '')
   lines.push(
     `Use the \`skillhone\` skill to optimise the skill at \`${skill.dir}\`. ` +
@@ -113,6 +140,11 @@ export function buildOptimisePrompt(input: OptimisePromptInput): string {
   lines.push(
     '- Judge each finding before changing anything, and stop and report rather than edit code you judge correct.',
   )
+  if (accept.length > 0) {
+    lines.push(
+      '- A finding you confirmed is a false positive goes in its tool\'s own suppression file, one at a time, through the command above — never through the tool\'s own baseline command.',
+    )
+  }
   lines.push(
     '- SkillHone workflows may use bypass mode and local subprocess execution. Run them only in a workspace you are willing to lose.',
   )

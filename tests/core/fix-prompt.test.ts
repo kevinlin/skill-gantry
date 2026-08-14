@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { buildFixPrompt, type FixPromptInput } from '../../src/core/stages/fix-prompt.js'
 import type { StageResult, ToolRunRecord } from '../../src/core/stages/types.js'
 import type { RawFinding, SkillRef } from '../../src/core/types.js'
+import { baselineForSkillspector } from '../helpers/manifest-lookup.js'
 import { skillRef } from '../helpers/skill-ref.js'
 
 const RUN_DIR = '/repo/declawed-workspace/skillgantry/runs/019fcd9e'
@@ -90,8 +91,12 @@ describe('R6.10 buildFixPrompt', () => {
 
   it('renders one table row per finding, with native id and location', () => {
     const text = buildFixPrompt(input()) as string
-    expect(text).toContain('| 1 | medium | excessive-permission | LP3 | `declawed/SKILL.md:1` |')
-    expect(text).toContain('| 2 | medium | prompt-injection | MP2 | `declawed/scripts/scan.py:34` |')
+    expect(text).toContain(
+      '| 1 | skillspector | medium | excessive-permission | LP3 | `declawed/SKILL.md:1` |',
+    )
+    expect(text).toContain(
+      '| 2 | skillspector | medium | prompt-injection | MP2 | `declawed/scripts/scan.py:34` |',
+    )
   })
 
   it('carries the four judgement instructions and the exact re-verify line', () => {
@@ -141,8 +146,8 @@ describe('R6.10 buildFixPrompt', () => {
       .split('\n')
       .find((l) => l.startsWith('| 1 |')) as string
     expect(row).toContain('matched a \\| b over two lines')
-    // Six cells means seven *unescaped* delimiters; the escaped one is content.
-    expect(row.split(/(?<!\\)\|/)).toHaveLength(8)
+    // Seven cells means eight *unescaped* delimiters; the escaped one is content.
+    expect(row.split(/(?<!\\)\|/)).toHaveLength(9)
   })
 
   it('omits the Commit row entirely for a non-git repo', () => {
@@ -203,7 +208,7 @@ describe('R6.11 suppressed findings', () => {
     const run = toolRun({ findings: [suppress(FINDINGS[0] as RawFinding), FINDINGS[1] as RawFinding] })
     const text = buildFixPrompt(input({ result: result({ toolRuns: [run] }) })) as string
 
-    expect(text).toContain('| 1 | medium | prompt-injection')
+    expect(text).toContain('| 1 | skillspector | medium | prompt-injection')
     expect(text).not.toContain('| 2 |')
     expect(text).not.toContain('LP3')
     expect(text).toContain('MP2')
@@ -212,13 +217,110 @@ describe('R6.11 suppressed findings', () => {
     expect(text).toContain('with 1 finding(s)')
   })
 
-  it('says nothing about suppression when there is none', () => {
-    expect(buildFixPrompt(input()) as string).not.toContain('suppressed')
+  it('says nothing about omitted findings when none was suppressed', () => {
+    // The count sentence itself, not the word: R6.14's accept block names the
+    // tool's suppression file on every prompt, so a bare `toContain` here
+    // would be asserting the absence of a section that is meant to be present.
+    expect(buildFixPrompt(input()) as string).not.toContain('further finding(s)')
   })
 
   it('still writes one for a sub-floor passed stage — suppression is not severity', () => {
     const low = FINDINGS.map((f) => ({ ...f, severity: 'low' as const }))
     const run = toolRun({ findings: low, outcome: 'passed' })
     expect(buildFixPrompt(input({ result: result({ toolRuns: [run], outcome: 'passed' }) }))).not.toBeNull()
+  })
+})
+
+describe('R6.14 accepting a confirmed false positive', () => {
+  const withBaseline = baselineForSkillspector
+  // One document, asserted in slices: the builder is pure, so the tests that
+  // vary nothing beyond the lookup are reading one prompt, not four.
+  const text = buildFixPrompt(input({ lookup: withBaseline })) as string
+
+  it('gives each finding a command carrying its native rule id and the table path', () => {
+    expect(text).toContain('## If a finding is a false positive')
+    expect(text).toContain(
+      "- finding 1 — `skillgantry suppress zapac/declawed --tool skillspector --rule 'LP3' --path 'declawed/SKILL.md' --reason '<why this finding is wrong>' --yes`",
+    )
+    // The path the table shows, without the line number: `previewSuppression`
+    // rebases it, so a second path form would only be one more thing to typo.
+    expect(text).toContain("--path 'declawed/scripts/scan.py'")
+    expect(text).not.toContain("--path 'declawed/scripts/scan.py:34'")
+  })
+
+  it('resolves {skillDir} against the real skill, so the path is one the agent can open', () => {
+    expect(text).toContain('/repo/declawed/.skillspector-baseline.yaml')
+    expect(text).not.toContain('{skillDir}')
+  })
+
+  it('steers away from the wholesale baseline command', () => {
+    expect(text).toContain("Do not run the tool's own baseline command")
+    expect(text).toContain('including the findings you have not fixed yet')
+  })
+
+  it('names a finding whose tool declares no baseline instead of giving it a command', () => {
+    const mixed = result({
+      toolRuns: [
+        toolRun(),
+        toolRun({
+          toolId: 'skill-scanner',
+          findings: [{ ...(FINDINGS[0] as RawFinding), nativeRuleId: 'SS1' }],
+          artefactDir: `${STAGE_DIR}/skill-scanner`,
+        }),
+      ],
+    })
+    const text = buildFixPrompt(input({ result: mixed, lookup: withBaseline })) as string
+    expect(text).toContain('--tool skillspector')
+    expect(text).not.toContain('--tool skill-scanner')
+    expect(text).toContain(
+      'finding 3 came from `skill-scanner`, which declares no suppression file. Fix it or report it',
+    )
+  })
+
+  it('agrees in number when several findings from several tools are unrecordable', () => {
+    const mixed = result({
+      toolRuns: [
+        toolRun(),
+        toolRun({ toolId: 'skill-scanner', artefactDir: `${STAGE_DIR}/skill-scanner` }),
+      ],
+    })
+    const text = buildFixPrompt(input({ result: mixed, lookup: withBaseline })) as string
+    expect(text).toContain(
+      'finding 3, finding 4 came from `skill-scanner`, which declares no suppression file. Fix them or report them',
+    )
+  })
+
+  it('reads the real registry when no lookup is injected, so the manifest wiring is proven', () => {
+    // No `lookup`: this is the path production takes, and the only one that
+    // proves skillspector's own declared baseline path reaches the prompt.
+    const text = buildFixPrompt(input()) as string
+    expect(text).toContain('/repo/declawed/.skillspector-baseline.yaml')
+    expect(text).toContain('--tool skillspector')
+  })
+
+  it('omits the section and renumbers the instructions when no tool declares a baseline', () => {
+    const text = buildFixPrompt(input({ lookup: () => ({ manifest: { artefacts: [] } }) })) as string
+    expect(text).not.toContain('## If a finding is a false positive')
+    expect(text).not.toContain('skillgantry suppress')
+    // Seven items with the accept instruction, six without — and no gap.
+    expect(text).toContain('5. Never write anything under')
+    expect(text).toContain('6. Re-verify with')
+    expect(text).not.toContain('7. ')
+  })
+
+  it('escapes an apostrophe in a path, so the emitted line is not an unterminated quote', () => {
+    const quoted = toolRun({
+      findings: [{ ...(FINDINGS[0] as RawFinding), path: "declawed/it's.md" }],
+    })
+    const body = buildFixPrompt(
+      input({ result: result({ toolRuns: [quoted] }), lookup: withBaseline }),
+    ) as string
+    expect(body).toContain(`--path 'declawed/it'\\''s.md'`)
+  })
+
+  it('numbers the accept instruction into the list when the section is present', () => {
+    expect(text).toContain('5. Where you confirmed a finding is a false positive')
+    expect(text).toContain('6. Never write anything under')
+    expect(text).toContain('7. Re-verify with')
   })
 })

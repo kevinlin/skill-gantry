@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import { getAdapter } from '../adapters/registry.js'
 import { maxSeverity, type Severity, type SkillRef } from '../types.js'
-import { actionableFindings } from './outcome.js'
+import { attributedRows, cell, suppressSection, type ManifestLookup } from './prompt-parts.js'
 import type { StageResult, ToolRunRecord } from './types.js'
 
 export interface FixPromptInput {
@@ -18,11 +18,8 @@ export interface FixPromptInput {
   git: { commit: string | null; dirty: boolean }
   result: StageResult
   /** Injectable so a test need not register an adapter. */
-  lookup?: (id: string) => { manifest: { artefacts: readonly string[] } } | undefined
+  lookup?: ManifestLookup
 }
-
-/** A message goes into a markdown table cell, so its two breaking characters go. */
-const cell = (text: string): string => text.replace(/\|/g, '\\|').replace(/\s*\n\s*/g, ' ').trim()
 
 const location = (path: string, line?: number): string =>
   line === undefined ? path : `${path}:${line}`
@@ -56,12 +53,10 @@ function toolReportLines(run: ToolRunRecord, lookup: FixPromptInput['lookup']): 
  */
 export function buildFixPrompt(input: FixPromptInput): string | null {
   const { skill, result, git } = input
-  const all = result.toolRuns.flatMap((run) => run.findings)
-  const findings = actionableFindings(all)
-  if (findings.length === 0) return null
-  const omitted = all.length - findings.length
+  const { rows, omitted } = attributedRows(result.toolRuns)
+  if (rows.length === 0) return null
 
-  const highest = findings.reduce<Severity>((acc, f) => maxSeverity(acc, f.severity), 'info')
+  const highest = rows.reduce<Severity>((acc, { finding }) => maxSeverity(acc, finding.severity), 'info')
   const stageJson = join(input.stageDir, 'stage.json')
 
   const where: string[] = [
@@ -81,20 +76,53 @@ export function buildFixPrompt(input: FixPromptInput): string | null {
   )
 
   const table = [
-    '| # | Severity | Rule class | Native id | Location | Message |',
-    '| --- | --- | --- | --- | --- | --- |',
-    ...findings.map(
-      (f, i) =>
-        `| ${i + 1} | ${f.severity} | ${f.ruleClass} | ${cell(f.nativeRuleId)} | \`${location(f.path, f.line)}\` | ${cell(f.message)} |`,
+    '| # | Tool | Severity | Rule class | Native id | Location | Message |',
+    '| --- | --- | --- | --- | --- | --- | --- |',
+    ...rows.map(
+      ({ toolId, finding: f }, i) =>
+        `| ${i + 1} | ${toolId} | ${f.severity} | ${f.ruleClass} | ${cell(f.nativeRuleId)} | \`${location(f.path, f.line)}\` | ${cell(f.message)} |`,
     ),
   ]
 
+  const accept = suppressSection(
+    skill,
+    rows.map(({ toolId, finding }, i) => ({
+      label: `finding ${i + 1}`,
+      toolId,
+      nativeRuleId: finding.nativeRuleId,
+      // The path the table shows. `previewSuppression` rebases it through
+      // `skillRelative`, so handing the agent a second path form to retype
+      // would only give it one more thing to get wrong.
+      path: finding.path,
+    })),
+    input.lookup,
+  )
+  /** Named once: an empty section means no detecting tool declares a baseline. */
+  const canAccept = accept.length > 0
+
   const verify = `skillgantry run ${skill.id} --stage ${result.stage}`
+
+  // Numbered at render time: the accept instruction is absent when no
+  // detecting tool declares a baseline, and a gap in the numbering reads as a
+  // prompt that lost a step.
+  const instructions = [
+    "Read the tool report listed above before you read this table. The report carries `properties.explanation`, `properties.remediation`, `properties.confidence` and `properties.code_snippet`; the table below cannot, because SkillGantry normalises every finding to six fields and drops the rest. Judge from the report, not from the table alone.",
+    'Judge each finding into exactly one of three: correct and worth fixing; correct, but the remediation the tool suggests does not apply here; a false positive.',
+    'Fix only what you judged correct and worth fixing, with the smallest change that removes the cause.',
+    'Where the code is right and the finding is wrong, stop and report it. Do not edit correct code to satisfy a scanner — an open finding is better than a quietly broken skill.',
+    ...(canAccept
+      ? [
+          'Where you confirmed a finding is a false positive and its tool keeps a suppression file, record it there with the command below and say why. Record nothing you did not judge false.',
+        ]
+      : []),
+    'Never write anything under `*-workspace/` or `.skillgantry-workspace/`. That is the run evidence this prompt points at.',
+    `Re-verify with \`${verify}\`. A finding you deliberately did not fix will still be reported, and that is expected.`,
+  ]
 
   return `${[
     `# Fix the ${result.stage} findings on ${skill.id}`,
     '',
-    `The ${result.stage} stage ${result.outcome} with ${findings.length} finding(s), the highest of severity \`${highest}\`.`,
+    `The ${result.stage} stage ${result.outcome} with ${rows.length} finding(s), the highest of severity \`${highest}\`.`,
     '',
     '## Where things are',
     '',
@@ -120,15 +148,11 @@ export function buildFixPrompt(input: FixPromptInput): string | null {
     '',
     '## Do this',
     '',
-    "1. Read the tool report listed above before you read this table. The report carries `properties.explanation`, `properties.remediation`, `properties.confidence` and `properties.code_snippet`; the table below cannot, because SkillGantry normalises every finding to six fields and drops the rest. Judge from the report, not from the table alone.",
-    '2. Judge each finding into exactly one of three: correct and worth fixing; correct, but the remediation the tool suggests does not apply here; a false positive.',
-    '3. Fix only what you judged correct and worth fixing, with the smallest change that removes the cause.',
-    '4. Where the code is right and the finding is wrong, stop and report it. Do not edit correct code to satisfy a scanner — an open finding is better than a quietly broken skill.',
-    '5. Never write anything under `*-workspace/` or `.skillgantry-workspace/`. That is the run evidence this prompt points at.',
-    `6. Re-verify with \`${verify}\`. A finding you deliberately did not fix will still be reported, and that is expected.`,
+    ...instructions.map((text, i) => `${i + 1}. ${text}`),
     '',
+    ...(canAccept ? [...accept, ''] : []),
     '## Report back',
     '',
-    'One line per finding: its number, which of the three judgements you reached, and either what you changed or why you changed nothing.',
+    'One line per finding: its number, which of the three judgements you reached, and what you did — changed it, recorded it as a false positive, or nothing and why.',
   ].join('\n')}\n`
 }

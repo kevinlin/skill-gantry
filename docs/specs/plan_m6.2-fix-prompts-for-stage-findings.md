@@ -228,3 +228,27 @@ Then in the TUI: run `security` on `declawed`, press `y` on the rail's Security 
 | The prompt lists tool reports only | A tool that errored with no findings also gets a line saying the picture is partial | A degraded fan-out stage otherwise hands the agent a findings table that silently omits a scanner's whole contribution |
 
 One pre-existing flake seen while verifying, unrelated to this branch: `tests/core/spawn.test.ts > kills the whole process tree on timeout` fails intermittently under a full parallel run when the grandchild has not yet written its pid file, and passes standalone.
+
+## Changelog
+
+- 2026-08-14 — **The prompt now tells the agent how to accept a false positive (R6.14).**
+
+  **The gap.** The prompt asks the agent to sort each finding into one of three classes: correct and worth fixing, correct but the tool's suggested fix does not apply here, or a false positive. It then gives an action for the first class only. The other two get "stop and report". So every false positive cost the maintainer a full manual round trip: read the agent's report, re-run the stage, watch the same finding come back, accept it by hand.
+
+  `skillgantry suppress` has done that accept since M8. It creates the detecting tool's own suppression file when it is missing, prints the diff, and lands the change through one atomic rename. The prompt simply never mentioned it. Nothing about that write path changed here. It belongs to [plan_m8](plan_m8-suppress-finding.md), and honouring the file on the next run belongs to [plan_m6.3](plan_m6.3-respect-skillspector-baseline.md). All that changed is that the prompt now names the command.
+
+  **What the prompt emits.** For each finding whose detecting tool declares a suppression file, one ready-to-run line with the rule id and path already filled in and only the reason left as a placeholder:
+
+  ```
+  - finding 2 — `skillgantry suppress zapac/declawed --tool skillspector --rule 'MP2' --path 'declawed/scripts/scan.py' --reason '<why this finding is wrong>' --yes`
+  ```
+
+  Findings whose tool declares no such file are named separately, as ones the prompt cannot record.
+
+  Three decisions behind that shape are worth keeping.
+
+  1. **It keys on the detecting tool, not on the stage.** R4.16 makes the suppression file an optional manifest declaration, and only skillspector declares one today. Run `skillgantry suppress` against a tool that declares none (skill-scanner, skill-up, skill-lint) and it exits non-zero having written nothing. A single blanket instruction in the prompt would therefore hand the agent a command that fails for most tools, which is why the block is generated per finding from the manifest rather than written as constant text. Nothing in any prompt branches on the stage.
+  2. **One entry per confirmed finding, never a wholesale baseline.** A scanner's own `baseline` subcommand rewrites the file from everything it currently reports, including the true positives the agent has not fixed yet. An instruction that said only "create a baseline" would invite exactly the write that buries real defects behind a passing gate, so the prompt spells out the per-finding command and says not to run the tool's own.
+  3. **The findings table gained a Tool column.** `RawFinding` carries no `toolId`, and the builder flattens every tool's findings into one list. On a fan-out security stage with two scanners, the merged table therefore left the agent unable to tell which tool's report it was being told to read — even though instruction 1 tells it to read that report first. The builder had the attribution all along; only the rendering discarded it. Recovering it is also what lets each emitted command name the right `--tool`.
+
+  **Where the code lives.** The shared block is `src/core/stages/prompt-parts.ts`, composed by both the fix prompt and the optimise prompt, along with the table-cell escaper and the finding-to-tool attribution both of them render from. `stages` is the one home that adds no §3 dependency edge: it already depends on `adapters` for the manifest, whereas reaching into `suppress/` would have added one. `{skillDir}` resolution moved to `adapters/paths.ts` beside the `BaselineSpec` that defines the vocabulary, so the write path and the prompts substitute through one function — a second substituter is how one comes to print a literal `{token}` at the agent it is instructing while the other writes the real file. Rule 6 is composed from that one module; rules 1–5 and 7 are still honoured per prompt rather than shared, so design §9.4's "one module composes all three" describes rule 6 and the rendering it needs, not yet the whole list. §9.4 gains a seventh shared rule. §9.4b satisfies it vacuously, since the eval bootstrap prompt renders no findings at all. The optimise-prompt half is recorded in [plan_m4.1](plan_m4.1-skillhone-optimise.md).

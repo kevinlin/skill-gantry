@@ -37,7 +37,17 @@ export const FAIL_SEVERITY_FLOOR: Severity = 'medium'
  * Every caller that means the whole set keeps saying so.
  */
 export function actionableFindings(findings: readonly RawFinding[]): RawFinding[] {
-  return findings.filter((f) => f.suppressed === undefined)
+  return findings.filter(isActionable)
+}
+
+/**
+ * The same rule for one finding. Exported because a caller that has already
+ * paired a finding with its tool run cannot re-flatten to a set, and asking the
+ * set question of a one-element array — `actionableFindings([f]).length === 1` —
+ * spells the rule a second way for a reader to reconcile.
+ */
+export function isActionable(finding: RawFinding): boolean {
+  return finding.suppressed === undefined
 }
 
 /** `null` for an empty set, so a caller cannot mistake "nothing" for `info`. */

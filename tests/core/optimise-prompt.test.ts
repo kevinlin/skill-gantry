@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildOptimisePrompt } from '../../src/core/stages/optimise-prompt.js'
 import type { SkillRef } from '../../src/core/types.js'
+import { baselineForSkillspector } from '../helpers/manifest-lookup.js'
 
 const SKILL: SkillRef = {
   id: 'zapac/declawed',
@@ -18,6 +19,48 @@ const INSTALL = {
   sha: '7d56583',
   missing: [] as string[],
 }
+
+/** Absent `suppressed` means unsuppressed — it carries the tool's own justification, not a flag. */
+const FINDING = {
+  ruleClass: 'prompt-injection',
+  severity: 'high',
+  path: 'SKILL.md',
+  message: 'interpolates untrusted text',
+  nativeRuleId: 'P2',
+}
+
+/**
+ * One recorded run over one stage. Shared rather than spelled out per suite:
+ * `StageResult` gains fields, and `as never` means the compiler will point at
+ * neither copy when it does.
+ */
+const lastRun = ({
+  toolId = 'skillspector',
+  findings = [FINDING] as unknown[],
+} = {}) =>
+  ({
+    runId: '019fe5c3',
+    runDir: '/repo/declawed-workspace/skillgantry/runs/019fe5c3',
+    skillDigest: 'sha256:7f3a',
+    git: { commit: 'a1b2c3d', dirty: false },
+    stages: [
+      {
+        stage: 'security',
+        result: {
+          stage: 'security',
+          outcome: 'failed',
+          toolRuns: [
+            {
+              toolId,
+              outcome: 'failed',
+              artefactDir: `/runs/019fe5c3/03-security/${toolId}`,
+              findings,
+            },
+          ],
+        },
+      },
+    ],
+  }) as never
 
 describe('buildOptimisePrompt', () => {
   it('names the skill, the interpreter and the workspace prohibition with no recorded run', () => {
@@ -39,47 +82,19 @@ describe('buildOptimisePrompt', () => {
   it('omits suppressed findings and says how many, per R6.11', () => {
     const body = buildOptimisePrompt({
       skill: SKILL,
-      lastRun: {
-        runId: '019fe5c3',
-        runDir: '/repo/declawed-workspace/skillgantry/runs/019fe5c3',
-        skillDigest: 'sha256:7f3a',
-        git: { commit: 'a1b2c3d', dirty: false },
-        stages: [
+      lastRun: lastRun({
+        findings: [
+          FINDING,
           {
-            stage: 'security',
-            result: {
-              stage: 'security',
-              outcome: 'failed',
-              toolRuns: [
-                {
-                  toolId: 'skillspector',
-                  outcome: 'failed',
-                  artefactDir: '/runs/019fe5c3/03-security/skillspector',
-                  findings: [
-                    {
-                      ruleClass: 'prompt-injection',
-                      severity: 'high',
-                      path: 'SKILL.md',
-                      message: 'interpolates untrusted text',
-                      nativeRuleId: 'P2',
-                      // Absent means unsuppressed — `suppressed` carries the
-                      // tool's own justification, not a flag.
-                    },
-                    {
-                      ruleClass: 'unsafe-script',
-                      severity: 'medium',
-                      path: 'scripts/scan.py',
-                      message: 'alignment whitespace',
-                      nativeRuleId: 'MP2',
-                      suppressed: { justification: 'alignment in a re.VERBOSE block' },
-                    },
-                  ],
-                },
-              ],
-            },
+            ruleClass: 'unsafe-script',
+            severity: 'medium',
+            path: 'scripts/scan.py',
+            message: 'alignment whitespace',
+            nativeRuleId: 'MP2',
+            suppressed: { justification: 'alignment in a re.VERBOSE block' },
           },
         ],
-      } as never,
+      }),
       evalAssets: ['declawed/evals/eval.yaml'],
       install: INSTALL,
     })
@@ -101,5 +116,37 @@ describe('buildOptimisePrompt', () => {
     })
 
     expect(body.indexOf('claude CLI')).toBeLessThan(body.indexOf('## Task'))
+  })
+})
+
+describe('R6.14 accepting a confirmed false positive', () => {
+  const build = (toolId: string) =>
+    buildOptimisePrompt({
+      skill: SKILL,
+      lastRun: lastRun({ toolId }),
+      evalAssets: [],
+      install: INSTALL,
+      lookup: baselineForSkillspector,
+    })
+
+  it('names each finding its tool and labels the command by stage', () => {
+    const body = build('skillspector')
+    expect(body).toContain('| 1 | skillspector | high | prompt-injection | SKILL.md |')
+    // Labelled by stage: this prompt renders every stage at once and each
+    // numbers from 1, so a bare number would collide across stages.
+    expect(body).toContain(
+      "- security finding 1 — `skillgantry suppress zapac/declawed --tool skillspector --rule 'P2' --path 'SKILL.md' --reason '<why this finding is wrong>' --yes`",
+    )
+    expect(body).toContain('/repo/declawed/.skillspector-baseline.yaml')
+    expect(body).toContain("never through the tool's own baseline command")
+  })
+
+  it('gives no command and no constraint when the detecting tool declares no baseline', () => {
+    const body = build('skill-scanner')
+    expect(body).not.toContain('## If a finding is a false positive')
+    expect(body).not.toContain('skillgantry suppress')
+    expect(body).not.toContain("never through the tool's own baseline command")
+    // The finding is still rendered, still attributed — only unrecordable.
+    expect(body).toContain('| 1 | skill-scanner | high | prompt-injection |')
   })
 })
