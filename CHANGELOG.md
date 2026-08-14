@@ -11,6 +11,9 @@ rather than replaying its commits. Standalone fixes belonging to no plan are lis
 `parseChangelog` reads only the `- ` lines, and the upgrade prompt gives each one row. So a bullet
 is a headline that fits a terminal, and the paragraph under it carries the detail.
 
+## 0.6.8 — 2026-08-14
+- feat: The prompt now tells the agent how to accept a false positive
+
 ## 0.6.7 — 2026-08-13
 - fix: the done screen named a key it did not handle.
 
