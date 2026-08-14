@@ -1,6 +1,5 @@
 import { execFile } from 'node:child_process'
 import { chmod, mkdir, mkdtemp, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 
@@ -13,14 +12,21 @@ import {
 } from '../../dist/core/config/config.js'
 
 const exec = promisify(execFile)
-const root = await mkdtemp(join(tmpdir(), 'skillgantry-vhs-'))
+const root = await mkdtemp('/tmp/skillgantry-vhs-')
 const userHome = join(root, 'home')
 const home = join(userHome, '.skillgantry')
-const repo = join(root, 'skills')
+// Keep the demo isolated while giving Settings the requested user-facing path.
+const repo = join(userHome, 'dev', 'ai-adlc', 'zapac-agent-skills')
 const binDir = join(root, 'bin')
 const fixtures = join(process.cwd(), 'tests', 'fixtures')
 
 await mkdir(binDir, { recursive: true })
+const skillUpperDir = join(userHome, '.agents', 'skills', 'skill-upper')
+await mkdir(skillUpperDir, { recursive: true })
+await writeFile(
+  join(skillUpperDir, 'SKILL.md'),
+  '---\nname: skill-upper\ndescription: Author and maintain agent skill eval suites.\n---\n',
+)
 
 const skill = (name, description) => `---
 name: ${name}
@@ -73,7 +79,7 @@ const lint = await executable(
 const evaluate = await executable(
   'skill-up',
   `mkdir -p "$6/iteration-1"
-cp "${join(fixtures, 'skill-up', 'declawed-iteration-1.report.json')}" "$6/iteration-1/report.json"
+cp "${join(fixtures, 'skill-up', 'declawed-iteration-3.report.json')}" "$6/iteration-1/report.json"
 exit 1`,
 )
 const security = await executable(

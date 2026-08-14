@@ -19,9 +19,20 @@ Sleep 1s
 Type "node dist/cli/index.js"
 Enter
 Show
-Sleep 2s
+Wait+Screen /SkillGantry 3 skills/
+Sleep 1s
 
-# Select code-review-expert in the Skills browser, then view its SKILL.md.
+# View Settings and verify the configured zapac-agent-skills repository.
+Type ":"
+Type "settings"
+Enter
+Sleep 4s
+
+# Return to Work, browse the Skills list, select code-review-expert, and view it.
+Type ":"
+Type "work"
+Enter
+Sleep 2s
 Type "j"
 Sleep 2s
 Tab
