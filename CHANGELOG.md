@@ -11,6 +11,44 @@ rather than replaying its commits. Standalone fixes belonging to no plan are lis
 `parseChangelog` reads only the `- ` lines, and the upgrade prompt gives each one row. So a bullet
 is a headline that fits a terminal, and the paragraph under it carries the detail.
 
+## 0.7.0 — 2026-09-14
+- feat(tools): SkillSpector 2.11.2, skill-up 0.11.0, vercel skills 1.5.26
+
+  Every catalogued tool that had moved upstream is re-pinned. SkillSpector now reports 148
+  findings against 96 over the 21-skill reference repo. Some of that is new rule families, some is
+  fewer false positives: PE3 no longer fires on ordinary `access token` prose. Its scans are
+  several times slower, so the adapter's ceiling rises from 120s to 300s, above upstream's own
+  600s deadline for one skill rather than under it. skill-up still writes the `v1alpha1` report
+  this release parses, and skill-upper follows it to the same tag.
+
+- feat(adapters): map SkillSpector's new rule families, and rule-map v5
+
+  AR2 is prompt-injection, SC8 and SC9 are unsafe-script, OH3 is excessive-permission. That
+  changes the fingerprint of anything already filed under the old `unmapped:` class, so the map
+  version is now 5. `skillgantry doctor` reports the ledger as needing `--migrate-rule-map` until
+  it is run.
+
+- feat(adapters): AE1 is coverage, not a finding
+
+  SkillSpector 2.10.0 added "Referenced artifact was not completely inspected", which reports on
+  the scan rather than on the skill. It was 18 of those 148 results. Filed as issues they would be
+  findings no maintainer can close by editing their own tree, so they no longer become findings.
+  The count is named in the stage summary instead, because a scan that read less than it
+  referenced is still not a clean one.
+
+- fix(setup): a re-pinned tool is reinstalled instead of reported as present
+
+  The wizard skipped any tool whose lock entry verified, whatever version it was pinned to, so a
+  catalogue bump reached new machines only. Nothing else caught it: doctor compares the installed
+  binary with the lock, and those two agree with each other while both trail the catalogue. Run
+  `skillgantry setup` to pick up the versions above.
+
+- fix(release): the install gate no longer fails a skill marked internal
+
+  vercel `skills` 1.5.23 stopped `--skill '*'` from matching a skill whose frontmatter carries
+  `metadata.internal: true`. The gate's wildcard then found nothing and the tool exited 1, so a
+  candidate that installs fine by name was reported as uninstallable.
+
 ## 0.6.8 — 2026-08-14
 - feat: The prompt now tells the agent how to accept a false positive
 
