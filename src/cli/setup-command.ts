@@ -113,8 +113,19 @@ export function buildSetupDriver(home: string, userHome: string = homedir()): Se
       const lock = await loadToolLock(home)
       // Verified, not merely present: an entry that will not run is exactly what
       // doctor calls `unverifiable`, and reinstalling it is the right answer.
+      //
+      // Installed *at the pin this build ships*, too. The lock records what was
+      // requested when the tool was installed, and the wizard skips whatever
+      // this returns — so an entry pinned to an older version would answer
+      // "already installed" forever and a catalogue bump would reach new
+      // machines only. Nothing else notices: doctor compares the binary with
+      // the lock, and those two agree with each other while both trail the
+      // catalogue.
       return Object.entries(lock.tools)
-        .filter(([, entry]) => entry.verifiedAt !== null)
+        .filter(
+          ([id, entry]) =>
+            entry.verifiedAt !== null && entry.requestedPin === catalogueEntry(id)?.install.pin,
+        )
         .map(([id]) => id)
     },
   }

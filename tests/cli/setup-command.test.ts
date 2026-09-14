@@ -9,7 +9,11 @@ import {
   saveToolLock,
   DEFAULT_CONFIG,
 } from '../../src/core/config/config.js'
-import { RELEASE_TOOL_ID, SKILLHONE_TOOL_ID } from '../../src/core/tools/catalogue.js'
+import {
+  RELEASE_TOOL_ID,
+  SKILLHONE_TOOL_ID,
+  catalogueEntry,
+} from '../../src/core/tools/catalogue.js'
 import { buildProgram, type CliDeps } from '../../src/cli/run-command.js'
 import { buildSetupDriver, needsSetup } from '../../src/cli/setup-command.js'
 import { makeRepo, SKILL_MD } from '../helpers/tmp-repo.js'
@@ -78,6 +82,29 @@ describe('first-run routing', () => {
 })
 
 describe('setup driver', () => {
+  it('counts a tool installed only while its lock entry is at the shipped pin', async () => {
+    // The wizard skips whatever `installedTools` reports, so a stale pin here
+    // is a catalogue bump that never reaches a machine that already ran setup.
+    const h = await home()
+    const shipped = catalogueEntry('skillspector')?.install.pin
+    const entry = {
+      installKind: 'uv-tool' as const,
+      bin: '/tools/bin/x',
+      integrity: 'n/a',
+      installedAt: new Date().toISOString(),
+      verifiedAt: new Date().toISOString(),
+    }
+    await saveToolLock(h, {
+      version: 1,
+      tools: {
+        skillspector: { ...entry, requestedPin: shipped ?? '', resolvedVersion: '2.11.2' },
+        'skill-lint': { ...entry, requestedPin: '0.1.0', resolvedVersion: '0.1.0' },
+      },
+    })
+
+    expect(await buildSetupDriver(h).installedTools()).toEqual(['skillspector'])
+  })
+
   it('writes a selection holding only runnable tools, and registers the repo', async () => {
     const h = await home()
     const root = await makeRepo({ files: { 'a/SKILL.md': SKILL_MD('a') } })
