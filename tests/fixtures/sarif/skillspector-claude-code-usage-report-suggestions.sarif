@@ -1,0 +1,430 @@
+{
+  "version": "2.1.0",
+  "$schema": "https://schemastore.azurewebsites.net/schemas/json/sarif-2.1.0-rtm.4.json",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "skillspector",
+          "version": "2.11.2",
+          "rules": [
+            {
+              "id": "AE1",
+              "shortDescription": {
+                "text": "Referenced artifact was not completely inspected"
+              }
+            },
+            {
+              "id": "RA2",
+              "shortDescription": {
+                "text": "Session Persistence"
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "AE1",
+          "message": {
+            "text": "Referenced artifact was not completely inspected"
+          },
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "SKILL.md"
+                },
+                "region": {
+                  "startLine": 37
+                }
+              }
+            }
+          ],
+          "properties": {
+            "findingId": "finding-540d437e5fe8430592c4741ed5b5a240",
+            "severity": "HIGH",
+            "category": "analysis-evasion",
+            "confidence": 1.0,
+            "finding": "scripts/improve.mjs (partial)",
+            "explanation": "Referenced artifact was not completely inspected",
+            "remediation": "Make the referenced artifact locally available and fully analyzable, or remove the reference.",
+            "code_snippet": "- update the roadmap catalog in `improve.mjs` so the item flips to \"done\"/drops off.",
+            "tags": [
+              "coverage",
+              "reference",
+              "target-disposition:partial"
+            ],
+            "evidence": {}
+          }
+        },
+        {
+          "ruleId": "RA2",
+          "message": {
+            "text": "Session Persistence"
+          },
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "scripts/improve.mjs"
+                },
+                "region": {
+                  "startLine": 120
+                }
+              }
+            }
+          ],
+          "properties": {
+            "findingId": "finding-61b85ca05e474fcc86ae3f6bc026445c",
+            "severity": "MEDIUM",
+            "category": "Rogue Agent",
+            "pattern": "Session Persistence",
+            "confidence": 0.6,
+            "finding": "Create todo lists in ~/.claude",
+            "explanation": "Skill establishes unauthorized persistence across sessions via cron jobs, startup scripts, or state files. Session persistence allows an attacker to maintain access beyond the current interaction.",
+            "remediation": "Remove any persistence mechanisms (cron jobs, startup scripts, state files). Skills should not maintain state across sessions without explicit user consent.",
+            "code_snippet": "  }\n  if (inv.tasks) {\n    add(\"Task completion\", \"available\",\n      `${inv.tasks} TaskCreate todo lists in ~/.claude/tasks \u2014 add a todo ` +\n      \"completion-rate stat (done vs abandoned per session).\");\n  }\n  if (inv.file_history) {",
+            "tags": [
+              "Rogue Agent"
+            ],
+            "evidence": {}
+          }
+        }
+      ],
+      "invocations": [
+        {
+          "executionSuccessful": true,
+          "toolExecutionNotifications": [
+            {
+              "message": {
+                "text": "A local path-like reference could not be resolved unambiguously."
+              },
+              "level": "warning",
+              "locations": [
+                {
+                  "physicalLocation": {
+                    "artifactLocation": {
+                      "uri": "SKILL.md"
+                    },
+                    "region": {
+                      "startLine": 3,
+                      "endLine": 3
+                    }
+                  }
+                }
+              ],
+              "properties": {
+                "outcome": "partial",
+                "phase": "reference_resolution",
+                "reasonCode": "reference_unresolved",
+                "fatal": false
+              }
+            },
+            {
+              "message": {
+                "text": "A local path-like reference could not be resolved unambiguously."
+              },
+              "level": "warning",
+              "locations": [
+                {
+                  "physicalLocation": {
+                    "artifactLocation": {
+                      "uri": "SKILL.md"
+                    },
+                    "region": {
+                      "startLine": 12,
+                      "endLine": 12
+                    }
+                  }
+                }
+              ],
+              "properties": {
+                "outcome": "partial",
+                "phase": "reference_resolution",
+                "reasonCode": "reference_unresolved",
+                "fatal": false
+              }
+            },
+            {
+              "message": {
+                "text": "A local path-like reference could not be resolved unambiguously."
+              },
+              "level": "warning",
+              "locations": [
+                {
+                  "physicalLocation": {
+                    "artifactLocation": {
+                      "uri": "SKILL.md"
+                    },
+                    "region": {
+                      "startLine": 16,
+                      "endLine": 16
+                    }
+                  }
+                }
+              ],
+              "properties": {
+                "outcome": "partial",
+                "phase": "reference_resolution",
+                "reasonCode": "reference_unresolved",
+                "fatal": false
+              }
+            },
+            {
+              "message": {
+                "text": "A local path-like reference could not be resolved unambiguously."
+              },
+              "level": "warning",
+              "locations": [
+                {
+                  "physicalLocation": {
+                    "artifactLocation": {
+                      "uri": "SKILL.md"
+                    },
+                    "region": {
+                      "startLine": 17,
+                      "endLine": 17
+                    }
+                  }
+                }
+              ],
+              "properties": {
+                "outcome": "partial",
+                "phase": "reference_resolution",
+                "reasonCode": "reference_unresolved",
+                "fatal": false
+              }
+            },
+            {
+              "message": {
+                "text": "A local path-like reference could not be resolved unambiguously."
+              },
+              "level": "warning",
+              "locations": [
+                {
+                  "physicalLocation": {
+                    "artifactLocation": {
+                      "uri": "SKILL.md"
+                    },
+                    "region": {
+                      "startLine": 18,
+                      "endLine": 18
+                    }
+                  }
+                }
+              ],
+              "properties": {
+                "outcome": "partial",
+                "phase": "reference_resolution",
+                "reasonCode": "reference_unresolved",
+                "fatal": false
+              }
+            },
+            {
+              "message": {
+                "text": "A local path-like reference could not be resolved unambiguously."
+              },
+              "level": "warning",
+              "locations": [
+                {
+                  "physicalLocation": {
+                    "artifactLocation": {
+                      "uri": "SKILL.md"
+                    },
+                    "region": {
+                      "startLine": 28,
+                      "endLine": 28
+                    }
+                  }
+                }
+              ],
+              "properties": {
+                "outcome": "partial",
+                "phase": "reference_resolution",
+                "reasonCode": "reference_unresolved",
+                "fatal": false
+              }
+            },
+            {
+              "message": {
+                "text": "A local path-like reference could not be resolved unambiguously."
+              },
+              "level": "warning",
+              "locations": [
+                {
+                  "physicalLocation": {
+                    "artifactLocation": {
+                      "uri": "SKILL.md"
+                    },
+                    "region": {
+                      "startLine": 29,
+                      "endLine": 29
+                    }
+                  }
+                }
+              ],
+              "properties": {
+                "outcome": "partial",
+                "phase": "reference_resolution",
+                "reasonCode": "reference_unresolved",
+                "fatal": false
+              }
+            },
+            {
+              "message": {
+                "text": "A local path-like reference could not be resolved unambiguously."
+              },
+              "level": "warning",
+              "locations": [
+                {
+                  "physicalLocation": {
+                    "artifactLocation": {
+                      "uri": "SKILL.md"
+                    },
+                    "region": {
+                      "startLine": 34,
+                      "endLine": 34
+                    }
+                  }
+                }
+              ],
+              "properties": {
+                "outcome": "partial",
+                "phase": "reference_resolution",
+                "reasonCode": "reference_unresolved",
+                "fatal": false
+              }
+            },
+            {
+              "message": {
+                "text": "A local path-like reference could not be resolved unambiguously."
+              },
+              "level": "warning",
+              "locations": [
+                {
+                  "physicalLocation": {
+                    "artifactLocation": {
+                      "uri": "SKILL.md"
+                    },
+                    "region": {
+                      "startLine": 36,
+                      "endLine": 36
+                    }
+                  }
+                }
+              ],
+              "properties": {
+                "outcome": "partial",
+                "phase": "reference_resolution",
+                "reasonCode": "reference_unresolved",
+                "fatal": false
+              }
+            },
+            {
+              "message": {
+                "text": "A local path-like reference could not be resolved unambiguously."
+              },
+              "level": "warning",
+              "locations": [
+                {
+                  "physicalLocation": {
+                    "artifactLocation": {
+                      "uri": "SKILL.md"
+                    },
+                    "region": {
+                      "startLine": 38,
+                      "endLine": 38
+                    }
+                  }
+                }
+              ],
+              "properties": {
+                "outcome": "partial",
+                "phase": "reference_resolution",
+                "reasonCode": "reference_unresolved",
+                "fatal": false
+              }
+            },
+            {
+              "message": {
+                "text": "A local path-like reference could not be resolved unambiguously."
+              },
+              "level": "warning",
+              "locations": [
+                {
+                  "physicalLocation": {
+                    "artifactLocation": {
+                      "uri": "SKILL.md"
+                    },
+                    "region": {
+                      "startLine": 45,
+                      "endLine": 45
+                    }
+                  }
+                }
+              ],
+              "properties": {
+                "outcome": "partial",
+                "phase": "reference_resolution",
+                "reasonCode": "reference_unresolved",
+                "fatal": false
+              }
+            },
+            {
+              "message": {
+                "text": "A security-relevant expression exceeded a bounded static parser's span limit."
+              },
+              "level": "warning",
+              "locations": [
+                {
+                  "physicalLocation": {
+                    "artifactLocation": {
+                      "uri": "scripts/improve.mjs"
+                    }
+                  }
+                }
+              ],
+              "properties": {
+                "outcome": "partial",
+                "phase": "static",
+                "reasonCode": "static_parse_limit",
+                "fatal": false,
+                "analyzers": [
+                  "static_patterns_tool_misuse"
+                ]
+              }
+            },
+            {
+              "message": {
+                "text": "Analyzer static_patterns_tool_misuse status: degraded."
+              },
+              "level": "warning",
+              "properties": {
+                "kind": "inspection_limitation"
+              }
+            }
+          ],
+          "properties": {
+            "analysisCompleteness": {
+              "isComplete": false,
+              "status": "partial",
+              "coveragePercent": 50.0,
+              "totalComponents": 2,
+              "fullyInspectedFiles": 1,
+              "partiallyInspectedFiles": 1,
+              "entirelyUninspectedFiles": 0,
+              "ledgerExceptionCount": 12,
+              "scopeExclusionCount": 0,
+              "limitationCount": 1,
+              "notificationRecordLimit": 10000,
+              "notificationsTruncated": false
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

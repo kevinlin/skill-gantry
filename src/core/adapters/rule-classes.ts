@@ -8,7 +8,7 @@ const KNOWN = new Set<string>(KNOWN_RULE_CLASSES)
  * fingerprint of every issue already recorded under the old unmapped: class.
  * Extending the map without a bump silently orphans a user's triage — R8.14.
  */
-export const RULE_CLASS_MAP_VERSION = 4
+export const RULE_CLASS_MAP_VERSION = 5
 
 /**
  * (toolId, nativeRuleId) -> canonical class. Every entry below was observed in
@@ -19,6 +19,7 @@ export const RULE_CLASS_MAP_VERSION = 4
  */
 export const RULE_CLASS_MAP: Readonly<Record<string, Readonly<Record<string, KnownRuleClass>>>> = {
   skillspector: {
+    AR2: 'prompt-injection',       // Anti-Refusal Statement
     AS1: 'excessive-permission',   // Agent Config Directory Access
     AS3: 'excessive-permission',   // Skill Enumeration
     AST4: 'unsafe-script',         // subprocess module call
@@ -27,12 +28,19 @@ export const RULE_CLASS_MAP: Readonly<Record<string, Readonly<Record<string, Kno
     EA4: 'excessive-permission',   // Unbounded Resource Access
     LP3: 'excessive-permission',   // capabilities detected with no declared permissions
     MP2: 'prompt-injection',       // Context Window Stuffing
+    OH3: 'excessive-permission',   // Unbounded Output
     P2: 'prompt-injection',        // Hidden Instructions
     P6: 'data-exfiltration',       // Direct Prompt Extraction
     PE2: 'excessive-permission',   // Sudo/Root Execution
     PE3: 'credential-access',      // Credential Access
     RA2: 'excessive-permission',   // Session Persistence
     RP1: 'vulnerable-dep',         // MCP server referenced without a pinned version
+    // Both are executable content placed where analysis does not look, which is
+    // the same problem AST4 names, not a supply-chain one: the SC prefix is
+    // upstream's, and grouping by prefix rather than by behaviour is what would
+    // merge them with SC1's unpinned dependencies.
+    SC8: 'unsafe-script',          // Bytecode or __pycache__ shipped past discovery
+    SC9: 'unsafe-script',          // Executable content concealed in a document
     YR4: 'unsafe-script',          // YARA signature match
   },
   // R05 is vulnerable-dep rather than data-exfiltration: it fires on content

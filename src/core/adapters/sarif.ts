@@ -61,6 +61,14 @@ export interface SarifParseOptions {
   toolId: string
   /** Repo-relative path of the scanned skill; '.' for a repo-root skill. */
   skillRelPath: string
+  /**
+   * Native rule ids that describe the scan rather than the skill. They are
+   * counted and named in the summary but never become findings: an issue is
+   * something a maintainer can fix in their own tree, and "I could not read
+   * everything I referenced" is neither fixable there nor stable enough to
+   * carry an identity — see skillspector.ts for the rule that forced this.
+   */
+  coverageRuleIds?: readonly string[]
 }
 
 export function parseSarif(bytes: Buffer, opts: SarifParseOptions): ToolResult {
@@ -75,9 +83,14 @@ export function parseSarif(bytes: Buffer, opts: SarifParseOptions): ToolResult {
   }
 
   const findings: RawFinding[] = []
+  let coverageNotices = 0
   for (const run of doc.runs) {
     for (const res of run.results ?? []) {
       const nativeRuleId = res.ruleId ?? 'unknown'
+      if (opts.coverageRuleIds?.includes(nativeRuleId)) {
+        coverageNotices += 1
+        continue
+      }
       const physical = res.locations?.[0]?.physicalLocation
       const uri = physical?.artifactLocation?.uri ?? ''
       const line = physical?.region?.startLine
@@ -106,15 +119,24 @@ export function parseSarif(bytes: Buffer, opts: SarifParseOptions): ToolResult {
   const suppressedCount = findings.filter((f) => f.suppressed).length
   const plural = findings.length === 1 ? '' : 's'
 
+  const head =
+    findings.length === 0
+      ? 'no findings'
+      : suppressedCount === 0
+        ? `${findings.length} finding${plural}`
+        : `${findings.length} finding${plural}, ${suppressedCount} suppressed`
+  // Named rather than dropped silently: a scan that could not read part of what
+  // the skill references is not the same as a clean one, and the count is the
+  // only thing left saying so once the notices are out of `findings`.
+  const coverage =
+    coverageNotices === 0
+      ? ''
+      : `, ${coverageNotices} artefact${coverageNotices === 1 ? '' : 's'} not fully inspected`
+
   return {
     outcome: findings.length === 0 ? 'passed' : 'failed',
     findings,
     metrics: { findingsTotal: findings.length },
-    summary:
-      findings.length === 0
-        ? 'no findings'
-        : suppressedCount === 0
-          ? `${findings.length} finding${plural}`
-          : `${findings.length} finding${plural}, ${suppressedCount} suppressed`,
+    summary: `${head}${coverage}`,
   }
 }

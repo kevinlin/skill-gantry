@@ -393,7 +393,7 @@ describe('M4 exit criteria', () => {
     // R4.3 over every shipped parser, not just skillspector's. The fixtures are
     // read here, by the test; the parsers receive bytes.
     const fixtures: Record<string, Record<string, string>> = {
-      skillspector: { 'findings.sarif': 'tests/fixtures/sarif/skillspector-declawed.sarif' },
+      skillspector: { 'findings.sarif': 'tests/fixtures/sarif/skillspector-architecture-diagram.sarif' },
       'skill-scanner': {
         'findings.sarif': 'tests/fixtures/sarif/skill-scanner-insight-profile.sarif',
       },

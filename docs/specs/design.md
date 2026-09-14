@@ -230,8 +230,8 @@ For a git repo the run additionally records `gitCommit` (HEAD) and `gitDirty` (w
   "tools": {
     "skillspector": {
       "installKind": "uv-tool",
-      "requestedPin": "v2.5.1",
-      "resolvedVersion": "2.5.1",
+      "requestedPin": "v2.11.2",
+      "resolvedVersion": "2.11.2",
       "bin": "/Users/…/.skillgantry/tools/skillspector/bin/skillspector",
       "integrity": "n/a",
       "installedAt": "2026-08-01T09:12:03Z",
@@ -564,7 +564,7 @@ export const manifest: AdapterManifest = {
             'data-exfiltration', 'excessive-permission'],
   credentials: { kind: 'none' },
   analysisMode: 'static',
-  install: { kind: 'uv-tool', spec: 'git+https://github.com/NVIDIA/skillspector.git', pin: 'v2.5.1',
+  install: { kind: 'uv-tool', spec: 'git+https://github.com/NVIDIA/skillspector.git', pin: 'v2.11.2',
              binName: 'skillspector' },
   invoke: {
     argv: ['scan', '{skillDir}', '--no-llm', '--format', 'sarif',
@@ -584,7 +584,7 @@ export const manifest: AdapterManifest = {
     scaffold: { version: 2, rules: [], fingerprints: [] },
     entry: { id: '{ruleIdGlob}', path: '{pathGlob}', reason: '{reason}' },
   },
-  timeoutMs: 120_000,
+  timeoutMs: 300_000,
 }
 
 export const parse: Parse = (ctx) =>
@@ -596,7 +596,7 @@ export const parse: Parse = (ctx) =>
   })
 ```
 
-**Analysis mode is a declared choice, not a fallback.** SkillSpector 2.5.1's `scan` runs LLM analysis by default and aborts unless one of `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, an AWS credential chain or `NVIDIA_INFERENCE_KEY` is available, so a manifest declaring no credential and omitting `--no-llm` fails at runtime while the engine believes none is needed.
+**Analysis mode is a declared choice, not a fallback.** SkillSpector's `scan` runs LLM analysis by default and aborts unless one of `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, an AWS credential chain or `NVIDIA_INFERENCE_KEY` is available, so a manifest declaring no credential and omitting `--no-llm` fails at runtime while the engine believes none is needed.
 
 v1 pins the static mode: `--no-llm`, `credentials: { kind: 'none' }`, and a `detects` set covering only what static analysis reaches. The reason is comparability. LLM-mode findings are nondeterministic, which makes golden fixtures worthless and the two modes' statistics incommensurable, so silently degrading from one to the other is worse than failing. `analysisMode` is copied into `run.json` provenance, so a later mode change is a visible boundary in the stats exactly as a provider change is.
 
@@ -604,7 +604,7 @@ An LLM-mode variant, when it is wanted, is a separate adapter id declaring `cred
 
 `detects` for either mode is derived by the fixture-capture script from real output at the pinned version rather than hand-listed, so the declaration and the fixtures cannot drift apart. Under §10.4 a too-narrow `detects` is a completeness hazard, not a correctness one.
 
-**Conditional argument groups, and why the stat is in `execute()`.** SkillSpector 2.5.1 reads a suppression baseline only when `--baseline <path>` is passed; `.skillspector-baseline.yaml` is merely where `skillspector baseline` writes one, and nothing auto-discovers it. A manifest declares the condition and the stage executor answers it, because R4.3 forbids an adapter touching the filesystem — and because the adapter could not answer correctly even if allowed to. The test runs in `execute()` against the **substituted** path, never in `plan()`: `plan()` runs before the sandbox re-roots `ctx.skill.dir`, and a repo-root skill's tool is handed a materialised candidate copy, so a stat against the manifest's own vocabulary would answer for a directory the tool never sees.
+**Conditional argument groups, and why the stat is in `execute()`.** SkillSpector applies a suppression baseline only when `--baseline <path>` is passed. Since 2.9.5 `scan` does *notice* a `.skillspector-baseline.yaml` sitting in the scanned directory, but it reports it and scans on unless `--use-shipped-baseline` is given as well — a skill author's own suppressions are not allowed to quieten someone else's scan by being present. Passing the path explicitly keeps that decision here and skips the discovery path entirely. A manifest declares the condition and the stage executor answers it, because R4.3 forbids an adapter touching the filesystem — and because the adapter could not answer correctly even if allowed to. The test runs in `execute()` against the **substituted** path, never in `plan()`: `plan()` runs before the sandbox re-roots `ctx.skill.dir`, and a repo-root skill's tool is handed a materialised candidate copy, so a stat against the manifest's own vocabulary would answer for a directory the tool never sees.
 
 Three rules, each covering a real failure. `isFile()` rather than existence, because `--baseline <dir>` makes skillspector exit 2 with no SARIF written. A non-`ENOENT` stat failure reads as absent, because a baseline the engine cannot stat is one the tool cannot read, and the loud direction — every suppressed finding resurfacing — is the safe one. And the path carries the substitution vocabulary rather than being relative, since `cwd` is `repoRoot` here. The group is appended after `argv`, so a manifest ending in a positional argument cannot use one; every shipped manifest ends in an option value.
 
@@ -630,7 +630,7 @@ Two consequences fall out of the baseline file being an ordinary file inside the
 
 SARIF severity normalisation: `error → high`, `warning → medium`, `note → low`, `none → info`.
 
-Path normalisation: a tool reports paths relative to the directory it was pointed at, which is the candidate root, not the repo root. Verified against SkillSpector 2.5.1, which scanning `declawed` emits `uri: "SKILL.md"` and `uri: "scripts/scan.py"`. The normaliser rebases each path onto `skill.relPath` to produce the repo-relative form R8.3 requires, so a materialised candidate and an in-place one yield identical findings.
+Path normalisation: a tool reports paths relative to the directory it was pointed at, which is the candidate root, not the repo root. Verified against SkillSpector 2.11.2, which scanning `architecture-diagram` emits `uri: "SKILL.md"` and `uri: "scripts/html_to_png.py"`. The normaliser rebases each path onto `skill.relPath` to produce the repo-relative form R8.3 requires, so a materialised candidate and an in-place one yield identical findings.
 
 Findings whose path still resolves inside a workspace directory are dropped. Under §4.4 no tool can see the workspace at all, so this is a backstop against a tool inventing a path, not the guard it was in revision 2.
 
@@ -949,7 +949,7 @@ The ledger stores no raw tool output; `tool_runs.artefact_dir` points at the sid
     "authTokenHash": "sha256:1a2b3c4d",
     "analysisModes": { "skillspector": "static" }
   },
-  "toolLock": { "skillspector": "2.5.1" }
+  "toolLock": { "skillspector": "2.11.2" }
 }
 ```
 

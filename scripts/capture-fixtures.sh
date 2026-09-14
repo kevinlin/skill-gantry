@@ -8,7 +8,7 @@
 set -euo pipefail
 
 REPO="${1:?usage: capture-fixtures.sh <skills-repo>}"
-PIN_SKILLSPECTOR="2.5.1"
+PIN_SKILLSPECTOR="2.11.2"
 BIN="${SKILLSPECTOR_BIN:-skillspector}"
 OUT="$(dirname "$0")/../tests/fixtures/sarif"
 mkdir -p "$OUT"
@@ -19,26 +19,33 @@ if [ "$actual" != "$PIN_SKILLSPECTOR" ]; then
   exit 1
 fi
 
-for skill in declawed architecture-diagram; do
+# architecture-diagram carries the ordinary finding set. The second subject is
+# there for AE1 alone — the coverage notice 2.10.0 added, which the adapter
+# declares as `coverageRuleIds` and must therefore keep a capture of. declawed
+# was the first subject through 2.5.1 and scans clean under this pin, so it
+# would now be a fixture asserting nothing.
+for skill in architecture-diagram claude-code-usage-report-suggestions; do
   "$BIN" scan "$REPO/$skill" --no-llm --format sarif \
     --output "$OUT/skillspector-$skill.sarif"
   echo "captured $OUT/skillspector-$skill.sarif"
 done
 
-# R4.15. A pair: the same skill scanned with and without its own baseline, so a
-# diff test can assert that --baseline annotates rather than drops. Both halves
-# are captured here, back to back, rather than diffing against
-# skillspector-declawed.sarif above — that file is historical evidence for the
-# M1 and M4 suites and the skill has moved since, so a cross-capture diff would
-# report the skill's own edits as upstream schema drift.
-BASELINE="$REPO/declawed/.skillspector-baseline.yaml"
+# R4.15. The other half of a pair: architecture-diagram scanned *with* its own
+# baseline, so a diff test can assert that --baseline annotates rather than
+# drops. Its unbaselined half is the capture the loop above just wrote, one
+# command earlier against the same tree, so the two are comparable byte for byte
+# — the reason the subject is one already captured here rather than a third.
+#
+# The subject also has to be one with no finding located on the baseline file
+# itself: passing `--baseline <file>` drops any finding reported against that
+# file, so a subject like spec-lint yields halves of different lengths and the
+# diff reports upstream drift that is not there.
+PAIR_SKILL="architecture-diagram"
+BASELINE="$REPO/$PAIR_SKILL/.skillspector-baseline.yaml"
 if [ -f "$BASELINE" ]; then
-  "$BIN" scan "$REPO/declawed" --no-llm --format sarif \
-    --output "$OUT/skillspector-declawed-unbaselined.sarif"
-  echo "captured $OUT/skillspector-declawed-unbaselined.sarif"
-  "$BIN" scan "$REPO/declawed" --no-llm --format sarif \
-    --output "$OUT/skillspector-declawed-baselined.sarif" --baseline "$BASELINE"
-  echo "captured $OUT/skillspector-declawed-baselined.sarif"
+  "$BIN" scan "$REPO/$PAIR_SKILL" --no-llm --format sarif \
+    --output "$OUT/skillspector-$PAIR_SKILL-baselined.sarif" --baseline "$BASELINE"
+  echo "captured $OUT/skillspector-$PAIR_SKILL-baselined.sarif"
 else
   echo "skipping the baseline pair: $BASELINE is absent" >&2
 fi

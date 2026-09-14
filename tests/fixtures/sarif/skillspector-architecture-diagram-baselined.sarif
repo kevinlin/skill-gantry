@@ -25,74 +25,6 @@
       },
       "results": [
         {
-          "ruleId": "P2",
-          "message": {
-            "text": "Hidden Instructions"
-          },
-          "level": "error",
-          "locations": [
-            {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "SKILL.md"
-                },
-                "region": {
-                  "startLine": 71
-                }
-              }
-            }
-          ],
-          "properties": {
-            "findingId": "finding-c5f4592192a14a4a8cb6bc828aad914e",
-            "severity": "HIGH",
-            "category": "Prompt Injection",
-            "pattern": "Hidden Instructions",
-            "confidence": 0.7,
-            "finding": "<!-- positioned boxes here -->\n  <svg style=\"position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible;\">\n    <defs><marker id=\"arrowhead\" markerWidth=\"8\"",
-            "explanation": "Hidden instructions were detected in comments or invisible text. These could contain malicious directives. Manual review is recommended.",
-            "remediation": "Audit all comments and invisible characters. Remove any instructions that direct the agent to perform unauthorized actions. Use plain, reviewable content.",
-            "code_snippet": "    .arch-conn-dashed { stroke: #94a3b8; stroke-width: 1.5; fill: none; stroke-dasharray: 6 4; }\n    .arch-conn-label { font-size: 9px; fill: #64748b; font-family: sans-serif; }\n  </style>\n  <!-- positioned boxes here -->\n  <svg style=\"position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible;\">\n    <defs><marker id=\"arrowhead\" markerWidth=\"8\" markerHeight=\"6\" refX=\"8\" refY=\"3\" orient=\"auto\"><path d=\"M0,0 L8,3 L0,6\" fill=\"none\" stroke=\"#94a3b8\" stroke-width=\"1\"/></marker></defs>\n    <path d=\"M 200,72 L 200,90 L 400,90 L 400,108\" class=\"arch-conn\" marker-end=\"url(#arrowhead)\"/>",
-            "tags": [
-              "Prompt Injection"
-            ],
-            "evidence": {}
-          }
-        },
-        {
-          "ruleId": "P2",
-          "message": {
-            "text": "Hidden Instructions"
-          },
-          "level": "error",
-          "locations": [
-            {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "layouts/connectors.md"
-                },
-                "region": {
-                  "startLine": 66
-                }
-              }
-            }
-          ],
-          "properties": {
-            "findingId": "finding-f33ba28a49294d749dd62b918bce9c09",
-            "severity": "HIGH",
-            "category": "Prompt Injection",
-            "pattern": "Hidden Instructions",
-            "confidence": 0.7,
-            "finding": "<!-- SVG Connector Overlay -->\n    <svg style=\"position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible;\">\n      <defs>\n        <marker id=\"arrowhead\" ma",
-            "explanation": "Hidden instructions were detected in comments or invisible text. These could contain malicious directives. Manual review is recommended.",
-            "remediation": "Audit all comments and invisible characters. Remove any instructions that direct the agent to perform unauthorized actions. Use plain, reviewable content.",
-            "code_snippet": "        <div class=\"arch-box\" id=\"s3\">Storage<br><small>S3</small></div>\n      </div>\n    </div>\n    <!-- SVG Connector Overlay -->\n    <svg style=\"position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible;\">\n      <defs>\n        <marker id=\"arrowhead\" markerWidth=\"8\" markerHeight=\"6\" refX=\"8\" refY=\"3\" orient=\"auto\">",
-            "tags": [
-              "Prompt Injection"
-            ],
-            "evidence": {}
-          }
-        },
-        {
           "ruleId": "AST4",
           "message": {
             "text": "subprocess module call"
@@ -111,8 +43,14 @@
               }
             }
           ],
+          "suppressions": [
+            {
+              "kind": "external",
+              "justification": "Accepted 2026-08-12 via SkillGantry"
+            }
+          ],
           "properties": {
-            "findingId": "finding-8d579358a16049cd83be8ff8e903cc92",
+            "findingId": "finding-836241e397864f65955b6e2b6d8c2736",
             "severity": "MEDIUM",
             "category": "Dangerous Code Execution",
             "pattern": "subprocess module call",
@@ -146,8 +84,14 @@
               }
             }
           ],
+          "suppressions": [
+            {
+              "kind": "external",
+              "justification": "Accepted 2026-08-12 via SkillGantry"
+            }
+          ],
           "properties": {
-            "findingId": "finding-6738e3a5034c48e59ead2058c776d2f0",
+            "findingId": "finding-8f77b4b69b004e32bf10a6c2ff8caa75",
             "severity": "MEDIUM",
             "category": "Dangerous Code Execution",
             "pattern": "subprocess module call",
@@ -158,6 +102,86 @@
             "code_snippet": "            \"--virtual-time-budget=1500\",\n            f\"--screenshot={out}\", pathlib.Path(tmp).as_uri(),\n        ]\n        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=90)\n        if not out.exists():\n            sys.stderr.write(proc.stderr)\n            raise RuntimeError(\"browser did not produce a screenshot\")",
             "tags": [
               "Dangerous Code Execution"
+            ],
+            "evidence": {}
+          }
+        },
+        {
+          "ruleId": "P2",
+          "message": {
+            "text": "Hidden Instructions"
+          },
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "SKILL.md"
+                },
+                "region": {
+                  "startLine": 71
+                }
+              }
+            }
+          ],
+          "suppressions": [
+            {
+              "kind": "external",
+              "justification": "Accepted 2026-08-12 via SkillGantry"
+            }
+          ],
+          "properties": {
+            "findingId": "finding-a5609299c8b54d3fbb2f72e90f1e8bee",
+            "severity": "HIGH",
+            "category": "Prompt Injection",
+            "pattern": "Hidden Instructions",
+            "confidence": 0.7,
+            "finding": "<!-- positioned boxes here -->\n  <svg style=\"position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible;\">\n    <defs><marker id=\"arrowhead\" markerWidth=\"8\"",
+            "explanation": "Hidden instructions were detected in comments or invisible text. These could contain malicious directives. Manual review is recommended.",
+            "remediation": "Audit all comments and invisible characters. Remove any instructions that direct the agent to perform unauthorized actions. Use plain, reviewable content.",
+            "code_snippet": "    .arch-conn-dashed { stroke: #94a3b8; stroke-width: 1.5; fill: none; stroke-dasharray: 6 4; }\n    .arch-conn-label { font-size: 9px; fill: #64748b; font-family: sans-serif; }\n  </style>\n  <!-- positioned boxes here -->\n  <svg style=\"position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible;\">\n    <defs><marker id=\"arrowhead\" markerWidth=\"8\" markerHeight=\"6\" refX=\"8\" refY=\"3\" orient=\"auto\"><path d=\"M0,0 L8,3 L0,6\" fill=\"none\" stroke=\"#94a3b8\" stroke-width=\"1\"/></marker></defs>\n    <path d=\"M 200,72 L 200,90 L 400,90 L 400,108\" class=\"arch-conn\" marker-end=\"url(#arrowhead)\"/>",
+            "tags": [
+              "Prompt Injection"
+            ],
+            "evidence": {}
+          }
+        },
+        {
+          "ruleId": "P2",
+          "message": {
+            "text": "Hidden Instructions"
+          },
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "layouts/connectors.md"
+                },
+                "region": {
+                  "startLine": 66
+                }
+              }
+            }
+          ],
+          "suppressions": [
+            {
+              "kind": "external",
+              "justification": "Accepted 2026-08-12 via SkillGantry"
+            }
+          ],
+          "properties": {
+            "findingId": "finding-ed560cc31f914f26b7535702b3c945d5",
+            "severity": "HIGH",
+            "category": "Prompt Injection",
+            "pattern": "Hidden Instructions",
+            "confidence": 0.7,
+            "finding": "<!-- SVG Connector Overlay -->\n    <svg style=\"position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible;\">\n      <defs>\n        <marker id=\"arrowhead\" ma",
+            "explanation": "Hidden instructions were detected in comments or invisible text. These could contain malicious directives. Manual review is recommended.",
+            "remediation": "Audit all comments and invisible characters. Remove any instructions that direct the agent to perform unauthorized actions. Use plain, reviewable content.",
+            "code_snippet": "        <div class=\"arch-box\" id=\"s3\">Storage<br><small>S3</small></div>\n      </div>\n    </div>\n    <!-- SVG Connector Overlay -->\n    <svg style=\"position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible;\">\n      <defs>\n        <marker id=\"arrowhead\" markerWidth=\"8\" markerHeight=\"6\" refX=\"8\" refY=\"3\" orient=\"auto\">",
+            "tags": [
+              "Prompt Injection"
             ],
             "evidence": {}
           }
@@ -203,6 +227,27 @@
                   "static_patterns_system_prompt_leakage",
                   "static_patterns_tool_misuse"
                 ]
+              }
+            },
+            {
+              "message": {
+                "text": "The explicitly selected suppression baseline is excluded from content analysis."
+              },
+              "level": "note",
+              "locations": [
+                {
+                  "physicalLocation": {
+                    "artifactLocation": {
+                      "uri": ".skillspector-baseline.yaml"
+                    }
+                  }
+                }
+              ],
+              "properties": {
+                "outcome": "out_of_scope",
+                "phase": "discovery",
+                "reasonCode": "baseline_file",
+                "fatal": false
               }
             },
             {
@@ -761,12 +806,12 @@
               "isComplete": false,
               "status": "partial",
               "coveragePercent": 100.0,
-              "totalComponents": 40,
-              "fullyInspectedFiles": 40,
+              "totalComponents": 39,
+              "fullyInspectedFiles": 39,
               "partiallyInspectedFiles": 0,
               "entirelyUninspectedFiles": 0,
               "ledgerExceptionCount": 22,
-              "scopeExclusionCount": 1,
+              "scopeExclusionCount": 2,
               "limitationCount": 0,
               "notificationRecordLimit": 10000,
               "notificationsTruncated": false

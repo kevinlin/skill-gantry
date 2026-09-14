@@ -5,13 +5,13 @@ import { manifest, parse } from '../../src/core/adapters/skillspector.js'
 import type { SkillRef } from '../../src/core/types.js'
 
 const skill = {
-  id: 'zapac/declawed',
-  relPath: 'declawed',
-  dir: '/repo/declawed',
+  id: 'zapac/architecture-diagram',
+  relPath: 'architecture-diagram',
+  dir: '/repo/architecture-diagram',
 } as unknown as SkillRef
 
 const fixture = async (): Promise<Buffer> =>
-  readFile(join(process.cwd(), 'tests/fixtures/sarif/skillspector-declawed.sarif'))
+  readFile(join(process.cwd(), 'tests/fixtures/sarif/skillspector-architecture-diagram.sarif'))
 
 const ctx = async (): Promise<Parameters<typeof parse>[0]> => ({
   skill,
@@ -29,7 +29,7 @@ describe('skillspector manifest', () => {
   })
 
   it('is pinned to the version the fixture was captured from', () => {
-    expect(manifest.install.pin).toBe('v2.5.1')
+    expect(manifest.install.pin).toBe('v2.11.2')
   })
 
   it('fans out and is read-only', () => {
@@ -60,17 +60,22 @@ describe('skillspector manifest', () => {
 })
 
 describe('skillspector parse', () => {
-  it('fails the gate with the two real findings', async () => {
+  it('fails the gate with the four real findings', async () => {
     const out = parse(await ctx())
     expect(out.outcome).toBe('failed')
-    expect(out.findings).toHaveLength(2)
+    expect(out.findings).toHaveLength(4)
   })
 
-  it('rebases both real paths onto the skill directory', async () => {
+  it('rebases every real path onto the skill directory', async () => {
     const paths = parse(await ctx())
       .findings.map((f) => f.path)
       .sort()
-    expect(paths).toEqual(['declawed/SKILL.md', 'declawed/scripts/scan.py'])
+    expect(paths).toEqual([
+      'architecture-diagram/SKILL.md',
+      'architecture-diagram/layouts/connectors.md',
+      'architecture-diagram/scripts/html_to_png.py',
+      'architecture-diagram/scripts/html_to_png.py',
+    ])
   })
 
   it('does not use the exit code to decide the verdict', async () => {
@@ -83,5 +88,23 @@ describe('skillspector parse', () => {
     const out = parse({ ...(await ctx()), artefacts: new Map() })
     expect(out.outcome).toBe('errored')
     expect(out.summary).toMatch(/findings\.sarif/)
+  })
+
+  it('keeps AE1 out of the findings and names it in the summary instead', async () => {
+    // The capture holds one AE1 ("Referenced artifact was not completely
+    // inspected") beside one real finding. AE1 reports on the scan, not on the
+    // skill, so it must not become an issue a maintainer is asked to close —
+    // but a scan that read less than it referenced is not a clean one either,
+    // which is why the count survives in the summary.
+    const bytes = await readFile(
+      join(
+        process.cwd(),
+        'tests/fixtures/sarif/skillspector-claude-code-usage-report-suggestions.sarif',
+      ),
+    )
+    const out = parse({ ...(await ctx()), artefacts: new Map([['findings.sarif', bytes]]) })
+    expect(out.findings.map((f) => f.nativeRuleId)).toEqual(['RA2'])
+    expect(out.metrics.findingsTotal).toBe(1)
+    expect(out.summary).toBe('1 finding, 1 artefact not fully inspected')
   })
 })

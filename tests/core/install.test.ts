@@ -24,7 +24,7 @@ const SPEC = {
   id: 'skillspector',
   kind: 'uv-tool' as const,
   spec: 'git+https://github.com/NVIDIA/skillspector.git',
-  pin: 'v2.5.1',
+  pin: 'v2.11.2',
   binName: 'skillspector',
 }
 
@@ -40,8 +40,8 @@ describe('installAndLock', () => {
   it('records the resolved version, integrity and both timestamps', async () => {
     const h = await home()
     const entry = await installAndLock(h, SPEC, ['--version'])
-    expect(entry.resolvedVersion).toBe('2.5.1')
-    expect(entry.requestedPin).toBe('v2.5.1')
+    expect(entry.resolvedVersion).toBe('2.11.2')
+    expect(entry.requestedPin).toBe('v2.11.2')
     expect(entry.integrity).toBe('n/a')
     expect(entry.verifiedAt).not.toBeNull()
   }, 300_000)

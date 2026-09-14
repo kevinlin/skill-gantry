@@ -168,35 +168,50 @@ describe('parseSarif — result.suppressions (R4.15)', () => {
 })
 
 describe('parseSarif — the captured baseline pair', () => {
-  const opts = { toolId: 'skillspector', skillRelPath: 'declawed' }
+  const opts = { toolId: 'skillspector', skillRelPath: 'architecture-diagram' }
   const load = async (name: string): Promise<Buffer> =>
     readFile(join(process.cwd(), 'tests/fixtures/sarif', name))
 
-  it('differs from its unbaselined twin only in suppressions and findingId', async () => {
+  const BASELINED = 'skillspector-architecture-diagram-baselined.sarif'
+  const UNBASELINED = 'skillspector-architecture-diagram.sarif'
+
+  it('holds the same result set as its unbaselined twin, bar suppressions', async () => {
     // Captured back to back by scripts/capture-fixtures.sh at the pinned
-    // version (R13.3), so anything else moving is upstream schema drift.
-    const strip = (doc: Buffer): string =>
-      JSON.stringify(
-        JSON.parse(doc.toString('utf8')) as unknown,
-        (key, value) => (key === 'suppressions' || key === 'findingId' ? undefined : value),
-      )
-    expect(strip(await load('skillspector-declawed-baselined.sarif'))).toBe(
-      strip(await load('skillspector-declawed-unbaselined.sarif')),
-    )
+    // version (R13.3), so a result moving here is upstream schema drift.
+    //
+    // The comparison is over `results` rather than the whole document because
+    // two things outside it legitimately differ. Passing `--baseline <file>`
+    // excludes that file from content analysis, which 2.11.2 records as an
+    // out-of-scope note and a lower component count; and applying a baseline
+    // reorders the results, which is presentation, not a different finding set.
+    // Whole-document equality would fail on both and call it drift. R4.15's
+    // claim is about the findings: suppressed ones are annotated, never
+    // dropped.
+    const results = (doc: Buffer): string => {
+      const parsed = JSON.parse(
+        JSON.stringify(JSON.parse(doc.toString('utf8')) as unknown, (key, value) =>
+          key === 'suppressions' || key === 'findingId' ? undefined : value,
+        ),
+      ) as { runs?: Array<{ results?: unknown[] }> }
+      const all = (parsed.runs ?? []).flatMap((run) => run.results ?? [])
+      return JSON.stringify(all.map((r) => JSON.stringify(r)).sort())
+    }
+    expect(results(await load(BASELINED))).toBe(results(await load(UNBASELINED)))
   })
 
-  it('parses the real baselined capture as one suppressed finding', async () => {
-    const out = parseSarif(await load('skillspector-declawed-baselined.sarif'), opts)
-    expect(out.findings).toHaveLength(1)
-    expect(out.findings[0]?.nativeRuleId).toBe('MP2')
-    expect(out.findings[0]?.suppressed?.justification).toMatch(/re\.VERBOSE/)
-    expect(out.summary).toBe('1 finding, 1 suppressed')
+  it('parses the real baselined capture as findings that are all suppressed', async () => {
+    const out = parseSarif(await load(BASELINED), opts)
+    expect(out.findings).toHaveLength(4)
+    expect(out.findings.map((f) => f.nativeRuleId).sort()).toEqual(['AST4', 'AST4', 'P2', 'P2'])
+    expect(out.findings.every((f) => f.suppressed !== undefined)).toBe(true)
+    expect(out.findings[0]?.suppressed?.justification).toMatch(/SkillGantry/)
+    expect(out.summary).toBe('4 findings, 4 suppressed')
   })
 
-  it('parses its unbaselined twin as the same finding, unsuppressed', async () => {
-    const out = parseSarif(await load('skillspector-declawed-unbaselined.sarif'), opts)
-    expect(out.findings).toHaveLength(1)
-    expect(out.findings[0]?.suppressed).toBeUndefined()
+  it('parses its unbaselined twin as the same findings, unsuppressed', async () => {
+    const out = parseSarif(await load(UNBASELINED), opts)
+    expect(out.findings).toHaveLength(4)
+    expect(out.findings.every((f) => f.suppressed === undefined)).toBe(true)
     expect(out.outcome).toBe('failed')
   })
 })

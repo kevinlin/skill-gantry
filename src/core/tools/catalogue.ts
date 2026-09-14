@@ -123,7 +123,7 @@ export const CATALOGUE: readonly ToolSpec[] = [
     install: {
       kind: 'uv-tool',
       spec: 'git+https://github.com/NVIDIA/skillspector.git',
-      pin: 'v2.5.1',
+      pin: 'v2.11.2',
       binName: 'skillspector',
     },
     versionArgv: ['--version'],
