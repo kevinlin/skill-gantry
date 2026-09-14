@@ -134,7 +134,7 @@ export const CATALOGUE: readonly ToolSpec[] = [
     stage: null,
     serves: 'release',
     runtime: 'npm',
-    install: { kind: 'npm-prefix', spec: 'skills', pin: '1.5.21', binName: 'skills' },
+    install: { kind: 'npm-prefix', spec: 'skills', pin: '1.5.26', binName: 'skills' },
     versionArgv: ['--version'],
   },
   {

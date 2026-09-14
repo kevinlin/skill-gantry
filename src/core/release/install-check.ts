@@ -59,6 +59,13 @@ export async function verifyInstallable(input: InstallCheckInput): Promise<Insta
     if (value !== undefined) env[key] = value
   }
   env.DO_NOT_TRACK = '1'
+  // vercel `skills` 1.5.23 stopped `--skill '*'` from matching a skill whose
+  // frontmatter carries `metadata.internal: true`, so the wildcard below finds
+  // nothing and the tool exits 1 with "No skills found" — a gate failure that
+  // says the candidate is uninstallable when it installs fine by name. The gate
+  // asks whether *this* archive installs, not whether a consumer browsing the
+  // repo would be offered it, so the env var restores the 1.5.21 answer.
+  env.INSTALL_INTERNAL_SKILLS = '1'
 
   try {
     const { stdout, stderr } = await exec(
