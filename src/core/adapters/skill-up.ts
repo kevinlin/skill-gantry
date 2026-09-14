@@ -34,10 +34,10 @@ export const manifest: AdapterManifest = {
   install: {
     kind: 'gh-release',
     repo: 'alibaba/skill-up',
-    pin: 'v0.7.0',
-    assetPattern: 'skill-up_0\\.7\\.0_{os}_{arch}\\.tar\\.gz',
+    pin: 'v0.11.0',
+    assetPattern: 'skill-up_0\\.11\\.0_{os}_{arch}\\.tar\\.gz',
     binName: 'skill-up',
-    integrity: { kind: 'sha256-asset', assetPattern: 'skill-up_0\\.7\\.0_checksums\\.txt' },
+    integrity: { kind: 'sha256-asset', assetPattern: 'skill-up_0\\.11\\.0_checksums\\.txt' },
   },
   invoke: {
     argv: [

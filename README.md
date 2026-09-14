@@ -31,7 +31,7 @@ Only `release` and `retire` write to your repo, and only after showing you the d
 | Stage | Tools | Policy | What you get |
 |---|---|---|---|
 | 1 · validate | `skill-lint` (npm, pinned 0.2.0) | fan out, findings merged | structure and frontmatter problems |
-| 2 · evaluate | `skill-up` (GitHub release, pinned v0.7.0) | pick one | the skill's own eval cases, run and scored |
+| 2 · evaluate | `skill-up` (GitHub release, pinned v0.11.0) | pick one | the skill's own eval cases, run and scored |
 | 3 · security | `skill-scanner` (uv, 0.3.3) · `SkillSpector` (uv, v2.5.1) | fan out, findings merged | SARIF and policy checks from one, taint and dependency analysis from the other |
 | 4 · optimise | `SkillHone` — **being built now** | pick one, never concurrent | a coding-agent prompt built from the skill's recorded evidence. SkillGantry composes it; it never applies the result |
 | 5 · release | native, gated by `skills` (vercel, pinned 1.5.26) | — | dual version bump, changelog, `<skill>_<version>.zip`, evidence bundle, and a real install of that archive |
@@ -45,7 +45,7 @@ Every tool SkillGantry installs, where it comes from, and how it gets there. Ver
 | Tool | Repo | Stage | Installed by | What it does |
 |---|---|---|---|---|
 | skill-lint | [himself65/skill-lint](https://github.com/himself65/skill-lint) | validate | private npm prefix, `0.2.0` | Lints a skill's structure and `SKILL.md` frontmatter |
-| skill-up | [alibaba/skill-up](https://github.com/alibaba/skill-up) | evaluate | GitHub release binary, `v0.7.0`, checksum-verified | Runs the eval cases a skill carries in `evals/` and scores them per assertion |
+| skill-up | [alibaba/skill-up](https://github.com/alibaba/skill-up) | evaluate | GitHub release binary, `v0.11.0`, checksum-verified | Runs the eval cases a skill carries in `evals/` and scores them per assertion |
 | skill-scanner | [cisco-ai-defense/skill-scanner](https://github.com/cisco-ai-defense/skill-scanner) | security | `uv tool install`, `0.3.3` | Cisco's scanner: SARIF output, policy checks, data-flow |
 | SkillSpector | [NVIDIA/SkillSpector](https://github.com/NVIDIA/SkillSpector) | security | `uv tool install` from git, `v2.5.1` | NVIDIA's scanner: taint tracking, dependency checks, signatures. LLM analysis by default; `--no-llm` needs no credential. The only tool with a baseline file, so the only one `s` can suppress into |
 | skills | [vercel-labs/skills](https://github.com/vercel-labs/skills) | none — release invokes it | private npm prefix, `1.5.26` | The consumer-side installer. Release extracts its own archive and installs it with this, which is what turns release into a gate |

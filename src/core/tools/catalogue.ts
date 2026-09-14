@@ -98,10 +98,10 @@ export const CATALOGUE: readonly ToolSpec[] = [
     install: {
       kind: 'gh-release',
       repo: 'alibaba/skill-up',
-      pin: 'v0.7.0',
-      assetPattern: 'skill-up_0\\.7\\.0_{os}_{arch}\\.tar\\.gz',
+      pin: 'v0.11.0',
+      assetPattern: 'skill-up_0\\.11\\.0_{os}_{arch}\\.tar\\.gz',
       binName: 'skill-up',
-      integrity: { kind: 'sha256-asset', assetPattern: 'skill-up_0\\.7\\.0_checksums\\.txt' },
+      integrity: { kind: 'sha256-asset', assetPattern: 'skill-up_0\\.11\\.0_checksums\\.txt' },
     },
     versionArgv: ['--version'],
   },
@@ -181,7 +181,7 @@ export const CATALOGUE: readonly ToolSpec[] = [
       // halves of one upstream project cannot drift against itself, and
       // guidance documenting flags the locked binary does not have is worse
       // than guidance that lags a skill fix by a release. Probed at this tag.
-      pin: 'v0.7.0',
+      pin: 'v0.11.0',
       skills: [SKILL_UPPER_TOOL_ID],
     },
     versionArgv: [],
