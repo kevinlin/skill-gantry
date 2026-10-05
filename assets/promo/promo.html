@@ -1,0 +1,201 @@
+<!doctype html>
+<!-- 30 s promo, 1920x1080. Open in a browser to preview; render.mjs turns it into an mp4.
+     Every animation is a paused CSS animation on one absolute timeline (--in / --out),
+     so a frame is just "set currentTime on all of them". -->
+<meta charset="utf-8">
+<title>SkillGantry promo</title>
+<style>
+  :root {
+    --ink: #0f172a; --soft: #475569; --mute: #94a3b8; --line: #e2e8f0; --bg: #fafaf9;
+    --accent: #0891b2;
+    --sans: "SF Pro Display", system-ui, -apple-system, "Helvetica Neue", sans-serif;
+    --mono: "SF Mono", Menlo, ui-monospace, monospace;
+    --ease: cubic-bezier(.2, .8, .2, 1);
+  }
+  * { box-sizing: border-box; margin: 0; animation-play-state: paused !important; }
+  body {
+    width: 1920px; height: 1080px; overflow: hidden; position: relative; transform-origin: 0 0;
+    font-family: var(--sans); color: var(--ink);
+    background: var(--bg) linear-gradient(#0f172a09 1px, transparent 1px) 0 0 / 64px 64px;
+  }
+  body::before {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(90deg, #0f172a09 1px, transparent 1px) 0 0 / 64px 64px;
+  }
+
+  /* --in / --out are absolute times on the 30 s timeline */
+  @keyframes in  { from { opacity: 0; translate: 0 28px; } }
+  @keyframes pop { from { opacity: 0; scale: .86; } }
+  @keyframes out { to { opacity: 0; } }
+  @keyframes grow { from { scale: 0 1; } }
+  .a   { animation: in .7s var(--ease) var(--in) backwards; }
+  .pop { animation: pop .8s var(--ease) var(--in) backwards; }
+  .scene { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+           animation: in .6s var(--ease) var(--in) backwards, out .4s ease-in var(--out) forwards; }
+  .a.o { animation: in .7s var(--ease) var(--in) backwards, out .35s ease-in var(--out) forwards; }
+
+  h1 { font-size: 104px; font-weight: 700; letter-spacing: -.03em; line-height: 1.04; }
+  h2 { font-size: 68px; font-weight: 700; letter-spacing: -.025em; line-height: 1.1; }
+  .sub { font-size: 44px; color: var(--soft); line-height: 1.35; }
+  .mono { font-family: var(--mono); }
+  b.hl { color: var(--accent); font-weight: inherit; }
+
+  /* 1 — the problem */
+  #s1 { align-items: flex-start; padding: 0 150px; }
+  .chips { position: relative; width: 100%; height: 330px; margin: 56px 0 40px; }
+  .chip { position: absolute; padding: 22px 30px; border-radius: 16px; background: #fff; border: 2px solid var(--line);
+          box-shadow: 0 10px 30px #0f172a12; font-family: var(--mono); }
+  .chip strong { display: block; font-size: 34px; }
+  .chip span { font-size: 24px; color: var(--soft); }
+
+  /* 2 + 6 — logo */
+  .logo { width: 400px; height: 400px; border-radius: 88px; mix-blend-mode: multiply; }
+  .word { font-size: 128px; font-weight: 700; letter-spacing: -.035em; margin-top: 8px; }
+
+  /* persistent mark */
+  .mark { position: absolute; left: 64px; top: 48px; display: flex; align-items: center; gap: 14px;
+          font-size: 30px; font-weight: 650; letter-spacing: -.01em; }
+  .mark img { width: 64px; height: 64px; mix-blend-mode: multiply; }
+
+  /* 3 — the rail */
+  .rail { display: grid; grid-template-columns: repeat(5, 300px); gap: 44px; margin-top: 110px; position: relative; }
+  .stage { border-radius: 18px; border: 3px solid var(--c); background: var(--t); padding: 26px 0 24px; text-align: center; position: relative; }
+  .stage .n { font-family: var(--mono); font-size: 36px; font-weight: 700; color: var(--c); }
+  .stage .p { font-family: var(--mono); font-size: 21px; color: var(--soft); margin-top: 8px; }
+  .stage:not(.last)::after { content: "→"; position: absolute; right: -38px; top: 50%; translate: 0 -54%; font-size: 34px; color: var(--mute); }
+  .tool { margin-top: 30px; border-radius: 14px; border: 2px solid var(--c); background: #fff; padding: 18px 8px; text-align: center; font-family: var(--mono); }
+  .tool strong { display: block; font-size: 27px; color: var(--c); }
+  .tool span { font-size: 20px; color: var(--soft); }
+  .tool.wip { border-style: dashed; }
+  .brace { position: absolute; top: -66px; height: 44px; border: 3px dashed var(--bc); border-bottom: 0; border-radius: 16px 16px 0 0;
+           font-family: var(--mono); font-size: 23px; font-weight: 600; color: var(--bc); text-align: center; line-height: 0; }
+  .brace i { font-style: normal; background: var(--bg); padding: 0 16px; position: relative; top: -2px; }
+  .bar { position: absolute; left: 0; bottom: -34px; height: 8px; border-radius: 4px; width: 988px; background: linear-gradient(90deg, #1d4ed8, #15803d, #b91c1c);
+         transform-origin: 0 50%; animation: grow 2.4s linear var(--in) backwards; }
+
+  /* 4 — the terminal */
+  .win { width: 1680px; border-radius: 18px; overflow: hidden; background: #171717; box-shadow: 0 40px 90px #0f172a40, 0 0 0 1px #0f172a30; }
+  .win header { position: relative; z-index: 1; height: 46px; background: #262626; display: flex; align-items: center; gap: 10px; padding: 0 20px; }
+  .win header u { width: 14px; height: 14px; border-radius: 50%; background: #525252; }
+  .win header span { flex: 1; text-align: center; margin-right: 62px; color: #a3a3a3; font: 20px var(--mono); }
+  .win img { display: block; width: 1680px; height: 840px; scale: 1.15; transform-origin: 0 0; translate: -12px -40px; }
+  .caps { position: relative; height: 70px; width: 100%; margin-top: 34px; }
+  .caps p { position: absolute; inset: 0; text-align: center; font-size: 46px; font-weight: 600; letter-spacing: -.015em; }
+
+  /* 5 — what you keep */
+  .cards { display: grid; grid-template-columns: repeat(3, 520px); gap: 40px; margin-top: 70px; }
+  .card { background: #fff; border: 2px solid var(--line); border-top: 8px solid var(--c); border-radius: 20px; padding: 44px 40px 48px; box-shadow: 0 14px 40px #0f172a10; }
+  .card h3 { font-size: 44px; letter-spacing: -.02em; margin-bottom: 18px; }
+  .card p { font-size: 30px; line-height: 1.4; color: var(--soft); }
+
+  /* 6 — end card */
+  .url { margin-top: 34px; padding: 20px 40px; border-radius: 999px; background: var(--ink); color: #fff; font: 600 42px var(--mono); }
+  .foot { margin-top: 30px; font: 26px var(--mono); color: var(--soft); }
+</style>
+
+<!-- 1 · 0–5 s -->
+<section class="scene" id="s1" style="--in:0s; --out:4.8s">
+  <h1 class="a" style="--in:.15s">Shipping an agent skill?</h1>
+  <div class="chips">
+    <div class="chip pop" style="--in:.9s;  left:0;      top:30px;  rotate:-4deg"><strong>skill-lint</strong><span>structure, frontmatter</span></div>
+    <div class="chip pop" style="--in:1.15s; left:330px;  top:150px; rotate:3deg"><strong>skill-up</strong><span>eval cases, scored</span></div>
+    <div class="chip pop" style="--in:1.4s;  left:640px;  top:10px;  rotate:-2deg"><strong>skill-scanner</strong><span>SARIF, policy checks</span></div>
+    <div class="chip pop" style="--in:1.65s; left:980px;  top:160px; rotate:5deg"><strong>SkillSpector</strong><span>taint, dependencies</span></div>
+    <div class="chip pop" style="--in:1.9s;  left:1310px; top:40px;  rotate:-5deg"><strong>skills</strong><span>does it install?</span></div>
+  </div>
+  <p class="sub a" style="--in:2.5s">Five CLIs. Five output formats.<br>And a note somewhere about which ones you ran.</p>
+</section>
+
+<!-- 2 · 5–8.5 s -->
+<section class="scene" style="--in:5s; --out:8.3s">
+  <img class="logo pop" style="--in:5.1s" src="../app-icon-light.png" alt="">
+  <div class="word a" style="--in:5.5s">SkillGantry</div>
+  <p class="sub a" style="--in:6s">Runs them for you, over one skill or twenty, and keeps the answer.</p>
+</section>
+
+<div class="mark a o" style="--in:8.6s; --out:14.8s"><img src="../app-icon-light.png" alt="">SkillGantry</div>
+<div class="mark a o" style="--in:22.7s; --out:26.2s"><img src="../app-icon-light.png" alt="">SkillGantry</div>
+
+<!-- 3 · 8.5–15 s -->
+<section class="scene" style="--in:8.5s; --out:14.8s">
+  <h2 class="a" style="--in:8.6s">The skill lifecycle, as <b class="hl">one pipeline</b></h2>
+  <div class="rail">
+    <div class="brace a" style="--in:11.4s; --bc:#1d4ed8; left:-14px; width:1016px"><i>read-only gates · stop at the first one that does not pass</i></div>
+    <div class="brace a" style="--in:13s; --bc:#b45309; left:1362px; width:328px"><i>diff, then asks</i></div>
+    <div class="a" style="--in:9.2s; --c:#1d4ed8; --t:#eff6ff">
+      <div class="stage"><div class="n">validate</div><div class="p">fan out · merged</div></div>
+      <div class="tool"><strong>skill-lint</strong><span>pinned · npm</span></div>
+    </div>
+    <div class="a" style="--in:9.6s; --c:#15803d; --t:#f0fdf4">
+      <div class="stage"><div class="n">evaluate</div><div class="p">pick one harness</div></div>
+      <div class="tool"><strong>skill-up</strong><span>pinned · checksum</span></div>
+    </div>
+    <div class="a" style="--in:10s; --c:#b91c1c; --t:#fef2f2">
+      <div class="stage"><div class="n">security</div><div class="p">fan out · merged</div></div>
+      <div class="tool"><strong>skill-scanner</strong><span>+ SkillSpector</span></div>
+    </div>
+    <div class="a" style="--in:10.4s; --c:#b45309; --t:#fffbeb">
+      <div class="stage"><div class="n">optimise</div><div class="p">a fix prompt</div></div>
+      <div class="tool wip"><strong>SkillHone</strong><span>in progress</span></div>
+    </div>
+    <div class="a" style="--in:10.8s; --c:#4338ca; --t:#eef2ff">
+      <div class="stage last"><div class="n">release</div><div class="p">bump · zip · gate</div></div>
+      <div class="tool"><strong>skills (vercel)</strong><span>installs the archive</span></div>
+    </div>
+    <div class="bar" style="--in:11.6s"></div>
+  </div>
+</section>
+
+<!-- 4 · 15–22.6 s -->
+<section class="scene" style="--in:15s; --out:22.4s">
+  <div class="win">
+    <header><u></u><u></u><u></u><span>skillgantry</span></header>
+    <img id="tui" alt="">
+  </div>
+  <div class="caps">
+    <p class="a o" style="--in:15.4s; --out:18.6s">Mark a skill, mark the stages, press <b class="hl mono">r</b>.</p>
+    <p class="a" style="--in:19s">Every tool’s findings in <b class="hl">one shape</b>, tracked until they are gone.</p>
+  </div>
+</section>
+
+<!-- 5 · 22.6–26.5 s -->
+<section class="scene" style="--in:22.6s; --out:26.3s">
+  <h2 class="a" style="--in:22.7s">And it keeps the answer</h2>
+  <div class="cards">
+    <div class="card a" style="--in:23.1s; --c:#1d4ed8"><h3>Installs the tools</h3><p>Pinned versions, in a directory it owns. Nothing lands in your global environment.</p></div>
+    <div class="card a" style="--in:23.4s; --c:#15803d"><h3>Keeps the evidence</h3><p>Logs, reports and fix prompts beside the skill. Runs and issues in a local ledger.</p></div>
+    <div class="card a" style="--in:23.7s; --c:#4338ca"><h3>Guards the release</h3><p>Installs the real archive before a single byte of your repo changes.</p></div>
+  </div>
+</section>
+
+<!-- 6 · 26.5–30 s -->
+<section class="scene" style="--in:26.5s; --out:99s">
+  <img class="logo pop" style="--in:26.6s; width:300px; height:300px" src="../app-icon-light.png" alt="">
+  <div class="word a" style="--in:26.9s; font-size:112px">SkillGantry</div>
+  <p class="sub a" style="--in:27.2s">A terminal orchestrator for people who maintain agent skills.</p>
+  <div class="url a" style="--in:27.6s">github.com/kevinlin/skill-gantry</div>
+  <div class="foot a" style="--in:28s">runs locally · no telemetry · no server</div>
+</section>
+
+<script>
+  const q = new URLSearchParams(location.search);
+  const tui = document.getElementById('tui');
+  const TUI_START = 15300, FPS = 30;
+  const frames = q.get('frames'), count = +q.get('count');
+
+  // render.mjs calls this once per frame
+  window.seek = async (ms) => {
+    for (const a of document.getAnimations()) a.currentTime = ms;
+    if (!frames) return;
+    const i = Math.min(count, Math.max(1, Math.floor((ms - TUI_START) / 1000 * FPS) + 1));
+    const src = `${frames}/${String(i).padStart(4, '0')}.jpg`;
+    if (!tui.src.endsWith(src)) { tui.src = src; await tui.decode(); }
+  };
+
+  if (!frames) { // preview: loop in real time, scaled to the window, terminal shown as the raw gif
+    tui.src = '../tui-screenshot/skillgantry-user-journey.gif';
+    document.body.style.scale = innerWidth / 1920;
+    const t0 = performance.now();
+    (function tick() { seek((performance.now() - t0) % 30000); requestAnimationFrame(tick); })();
+  }
+</script>

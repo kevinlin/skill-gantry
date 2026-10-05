@@ -7,8 +7,10 @@
 <p align="center">A terminal orchestrator for people who maintain agent skills.</p>
 
 <p align="center">
-  <img src="assets/tui-screenshot/skillgantry-user-journey.gif" alt="SkillGantry terminal app: marking a skill, running the validate → evaluate → security gates, and reading the findings" width="900">
+  <a href="assets/skillgantry-promo.mp4"><img src="assets/skillgantry-promo.gif" alt="SkillGantry in 30 seconds: five separate skill tools become one pipeline of validate, evaluate, security, optimise and release, shown running in the terminal app" width="900"></a>
 </p>
+
+<p align="center"><sub>SkillGantry in 30 seconds. Click for the full-resolution video.</sub></p>
 
 ---
 
@@ -119,6 +121,10 @@ All three include vercel `skills`, because a toolchain without it cannot gate a 
 ```bash
 skillgantry
 ```
+
+<p align="center">
+  <img src="assets/tui-screenshot/skillgantry-user-journey.gif" alt="SkillGantry terminal app: marking a skill, running the validate → evaluate → security gates, and reading the findings" width="900">
+</p>
 
 The Work screen shows your skills on the left, the five-stage rail for the selected skill top right, and a tabbed output pane below it. `Tab` cycles the three focus zones; `j`/`k` move within the focused one; `space` marks a skill or a stage; `r` runs what you marked; `x` cancels a queued or running job; `?` lists every key; `:` opens the command palette, which is also how you reach the Dashboard, Issues, Tools and Settings screens.
 
