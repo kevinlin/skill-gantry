@@ -49,13 +49,13 @@
   .chip span { font-size: 24px; color: var(--soft); }
 
   /* 2 + 6 — logo */
-  .logo { width: 400px; height: 400px; border-radius: 88px; mix-blend-mode: multiply; }
+  .logo { width: 400px; height: 400px; clip-path: inset(7.5% round 12%); }
   .word { font-size: 128px; font-weight: 700; letter-spacing: -.035em; margin-top: 8px; }
 
   /* persistent mark */
   .mark { position: absolute; left: 64px; top: 48px; display: flex; align-items: center; gap: 14px;
           font-size: 30px; font-weight: 650; letter-spacing: -.01em; }
-  .mark img { width: 64px; height: 64px; mix-blend-mode: multiply; }
+  .mark img { width: 64px; height: 64px; clip-path: inset(7.5% round 12%); }
 
   /* 3 — the rail */
   .rail { display: grid; grid-template-columns: repeat(5, 300px); gap: 44px; margin-top: 110px; position: relative; }
@@ -108,13 +108,13 @@
 
 <!-- 2 · 5–8.5 s -->
 <section class="scene" style="--in:5s; --out:8.3s">
-  <img class="logo pop" style="--in:5.1s" src="../app-icon-light.png" alt="">
+  <img class="logo pop" style="--in:5.1s" src="../app-icon.png" alt="">
   <div class="word a" style="--in:5.5s">SkillGantry</div>
   <p class="sub a" style="--in:6s">Runs them for you, over one skill or twenty, and keeps the answer.</p>
 </section>
 
-<div class="mark a o" style="--in:8.6s; --out:14.8s"><img src="../app-icon-light.png" alt="">SkillGantry</div>
-<div class="mark a o" style="--in:22.7s; --out:26.2s"><img src="../app-icon-light.png" alt="">SkillGantry</div>
+<div class="mark a o" style="--in:8.6s; --out:14.8s"><img src="../app-icon.png" alt="">SkillGantry</div>
+<div class="mark a o" style="--in:22.7s; --out:26.2s"><img src="../app-icon.png" alt="">SkillGantry</div>
 
 <!-- 3 · 8.5–15 s -->
 <section class="scene" style="--in:8.5s; --out:14.8s">
@@ -170,7 +170,7 @@
 
 <!-- 6 · 26.5–30 s -->
 <section class="scene" style="--in:26.5s; --out:99s">
-  <img class="logo pop" style="--in:26.6s; width:300px; height:300px" src="../app-icon-light.png" alt="">
+  <img class="logo pop" style="--in:26.6s; width:300px; height:300px" src="../app-icon.png" alt="">
   <div class="word a" style="--in:26.9s; font-size:112px">SkillGantry</div>
   <p class="sub a" style="--in:27.2s">A terminal orchestrator for people who maintain agent skills.</p>
   <div class="url a" style="--in:27.6s">github.com/kevinlin/skill-gantry</div>
