@@ -13,3 +13,6 @@ coverage/
 AGENTS.md
 # Child-process test scratch
 tests/tmp/
+
+# Agent Handoff
+.handoff/
