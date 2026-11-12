@@ -13,6 +13,7 @@ import {
   type StageResult,
 } from '../core/index.js'
 import type { SkillRef, Stage } from '../core/types.js'
+import { refuse } from './errors.js'
 import { selectSkill, type CliDeps } from './run-command.js'
 import { evalAssetsOf } from './skill-evals.js'
 
@@ -123,8 +124,7 @@ export async function runOptimise(
   try {
     plan = await planOptimiseFor(deps.home, skill)
   } catch (err) {
-    deps.write(`${(err as Error).message}\n`)
-    return 2
+    return refuse(deps, (err as Error).message, opts.json === true)
   }
   deps.write(opts.json === true ? `${JSON.stringify(plan, null, 2)}\n` : plan.prompt)
   return 0

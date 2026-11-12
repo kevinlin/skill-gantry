@@ -10,6 +10,7 @@ import {
   loadToolLock,
 } from '../core/index.js'
 import type { SkillRef } from '../core/types.js'
+import { refuse } from './errors.js'
 import { selectSkill, type CliDeps } from './run-command.js'
 import { evalAssetsOf, hasEvalSuite } from './skill-evals.js'
 
@@ -99,11 +100,10 @@ export async function runEvals(
   try {
     plan = await planEvalsFor(deps.home, skill, userHome)
   } catch (err) {
-    deps.write(`${(err as Error).message}\n`)
     // `fix`'s and `optimise`'s divergence from R12.2: the exit code answers
     // "is there a prompt on stdout", so a clean skill and a missing tool stay
     // distinguishable.
-    return 2
+    return refuse(deps, (err as Error).message, opts.json === true)
   }
   deps.write(opts.json === true ? `${JSON.stringify(plan, null, 2)}\n` : plan.prompt)
   return 0

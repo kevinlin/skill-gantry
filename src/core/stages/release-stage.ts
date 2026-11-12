@@ -1,14 +1,13 @@
-import { copyFile, mkdir, stat } from 'node:fs/promises'
+import { copyFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { candidateManifest } from '../discovery/candidate.js'
-import { skillDigest } from '../discovery/digest.js'
 import type { Ledger } from '../ledger/db.js'
-import { latestGateOutcomes } from '../ledger/gates.js'
+import type { GateOutcome } from '../ledger/gates.js'
 import { packageCandidate } from '../release/archive.js'
 import { writeEvidenceBundle } from '../release/evidence.js'
 import { verifyInstallable } from '../release/install-check.js'
 import { readVersionsManifest } from '../release/manifest.js'
-import { checkPreconditions } from '../release/preconditions.js'
+import { gatherReleasePreconditions } from '../release/gather.js'
 import { type ManifestMode, manifestKeyFor, releaseScope, stageCandidateEdits } from '../release/release.js'
 import { resolveTargetVersion } from '../release/version.js'
 import { RELEASE_TOOL_ID } from '../tools/catalogue.js'
@@ -46,7 +45,7 @@ interface Staged {
   archiveSha256: string
   archiveName: string
   manifestMode: ManifestMode
-  gates: ReturnType<typeof latestGateOutcomes>
+  gates: GateOutcome[]
   skillDigest: string
   manifestEntries: Awaited<ReturnType<typeof candidateManifest>>['entries']
 }
@@ -79,16 +78,6 @@ function record(
 function single(stage: 'release', toolRun: ToolRunRecord): StageResult {
   const { outcome, verdict } = reduceStageOutcome([toolRun.outcome])
   return { stage, outcome, verdict, toolRuns: [toolRun] }
-}
-
-/** True when a file exists at `path`, false for absent, permission-denied, or any other stat failure. */
-async function pathExists(path: string): Promise<boolean> {
-  try {
-    await stat(path)
-    return true
-  } catch {
-    return false
-  }
 }
 
 /**
@@ -210,47 +199,21 @@ export class ReleaseStageExecutor implements StageExecutor {
       )
     }
 
-    // A versions.json that exists but does not parse to the expected shape is
-    // closer to R9.2's "already disagree" than to "no manifest": silently
-    // falling through to the SKILL.md-only path would release a version the
-    // repo's own manifest — unreadably — might already contradict. Refuse
-    // instead of guessing, and say so, rather than reporting a misleadingly
-    // generic precondition failure.
-    const manifestPath = join(ctx.skill.repo.path, 'versions.json')
-    const repoManifest = await readVersionsManifest(ctx.skill.repo.path)
-    if (repoManifest === null && (await pathExists(manifestPath))) {
-      return single(
-        this.stage,
-        record(
-          'failed',
-          null,
-          'versions.json exists but could not be read as the expected {"skills": {...}} shape: ' +
-            'fix or remove it before releasing (R9.2)',
-          locked.resolvedVersion,
-        ),
-      )
-    }
-
-    // validate-preconditions
-    const liveManifest = await candidateManifest(ctx.skill)
-    const currentDigest = await skillDigest(liveManifest)
-    const gates = latestGateOutcomes(this.options.ledger.db, ctx.skill.id)
-    const refusals = checkPreconditions({
-      gates,
-      currentDigest,
-      // R1.6: the candidate's frontmatter, never the ledger.
-      deprecated: ctx.skill.deprecated,
-      frontmatterVersion: ctx.skill.version,
-      manifestVersion: repoManifest?.versions[manifestKeyFor(ctx.skill)] ?? null,
-      hasManifest: repoManifest !== null,
+    // validate-preconditions. An unreadable versions.json comes back alone
+    // from the gatherer, as it always did here, so the summary is its message.
+    const { refusals, evidence } = await gatherReleasePreconditions({
+      skill: ctx.skill,
+      db: this.options.ledger.db,
+      lock: ctx.lock,
       interrupted: this.options.interrupted === true,
     })
-    if (refusals.length > 0) {
+    if (refusals.length > 0 || evidence === null) {
       return single(
         this.stage,
         record('failed', null, refusals.map((r) => r.message).join('; '), locked.resolvedVersion),
       )
     }
+    const { manifest: repoManifest, candidate: liveManifest, currentDigest, gates } = evidence
 
     const stagingDir = join(ctx.runDir, 'staging')
     try {

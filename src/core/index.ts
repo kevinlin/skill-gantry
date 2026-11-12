@@ -142,6 +142,14 @@ export {
 } from './isolation/recover.js'
 export { retireSkill, type RetireInput, type RetireResult } from './release/retire.js'
 export { releaseDirtyPaths } from './release/preflight.js'
+export {
+  gatherReleasePreconditions,
+  type GatherInput,
+  type GatheredPreconditions,
+  type GatheredRefusal,
+  type GatheredRefusalCode,
+  type ReleaseEvidence,
+} from './release/gather.js'
 export { compareSemver, isBumpLevel, resolveTargetVersion } from './release/version.js'
 export type {
   ChangeEntry,
