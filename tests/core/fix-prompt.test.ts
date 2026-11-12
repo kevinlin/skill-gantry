@@ -103,9 +103,27 @@ describe('R6.10 buildFixPrompt', () => {
     const text = buildFixPrompt(input()) as string
     expect(text).toContain('properties.remediation')
     expect(text).toContain('false positive')
-    expect(text).toContain('stop and report')
     expect(text).toContain('.skillgantry-workspace/')
     expect(text).toContain('`skillgantry run zapac/declawed --stage security`')
+  })
+
+  it('tells the agent to carry on after a finding it judged wrong, not to stop', () => {
+    // It said "stop and report" one line above the instruction to record a false
+    // positive, and an agent that stopped never reached the second.
+    const text = buildFixPrompt(input()) as string
+    expect(text).toContain(
+      '4. Where the code is right and the finding is wrong, leave the code as it is, say so in your report, and carry on with the other findings. Do not edit correct code to satisfy a scanner — an open finding is better than a quietly broken skill.',
+    )
+    expect(text).not.toContain('stop and report')
+  })
+
+  it('ends the instructions on what a re-verify will still show', () => {
+    const text = buildFixPrompt(input({ lookup: () => ({ manifest: { artefacts: [] } }) })) as string
+    expect(text).toContain(
+      '6. A finding you deliberately did not fix will still be reported when you re-verify, and that is expected.',
+    )
+    // The command moved to the shared Verify section: said twice it would drift.
+    expect(text.match(/skillgantry run /g)).toHaveLength(1)
   })
 
   it('is null when no tool run reported a finding', () => {
@@ -304,7 +322,7 @@ describe('R6.14 accepting a confirmed false positive', () => {
     expect(text).not.toContain('skillgantry suppress')
     // Seven items with the accept instruction, six without — and no gap.
     expect(text).toContain('5. Never write anything under')
-    expect(text).toContain('6. Re-verify with')
+    expect(text).toContain('6. A finding you deliberately did not fix')
     expect(text).not.toContain('7. ')
   })
 
@@ -321,6 +339,89 @@ describe('R6.14 accepting a confirmed false positive', () => {
   it('numbers the accept instruction into the list when the section is present', () => {
     expect(text).toContain('5. Where you confirmed a finding is a false positive')
     expect(text).toContain('6. Never write anything under')
-    expect(text).toContain('7. Re-verify with')
+    expect(text).toContain('7. A finding you deliberately did not fix')
+  })
+})
+
+describe('R6.15 the fix prompt for an agent that drives the CLI', () => {
+  const OPENING =
+    'You are working for the maintainer of this skill. SkillGantry ran its security gate over the skill and it reported the findings below. Your job is to decide what each finding is worth and act on it.'
+
+  it('opens directly under the title with whose work this is', () => {
+    const lines = (buildFixPrompt(input()) as string).split('\n')
+    expect(lines[0]).toBe('# Fix the security findings on zapac/declawed')
+    expect(lines[1]).toBe('')
+    expect(lines[2]?.startsWith(OPENING)).toBe(true)
+    // Replacing nothing: the summary line the prompt always opened with follows.
+    expect(lines[4]).toBe('The security stage failed with 2 finding(s), the highest of severity `medium`.')
+  })
+
+  it('says the skill cannot be released while the gate has not passed', () => {
+    for (const outcome of ['failed', 'degraded', 'errored'] as const) {
+      const text = buildFixPrompt(input({ result: result({ outcome }) })) as string
+      expect(text).toContain(`${OPENING} The skill cannot be released until this gate passes.\n`)
+      expect(text).not.toContain('The gate passed;')
+    }
+  })
+
+  it('says the findings are still open when the gate passed', () => {
+    const low = FINDINGS.map((f) => ({ ...f, severity: 'low' as const }))
+    const subFloor = result({
+      outcome: 'passed',
+      verdict: 'passed',
+      toolRuns: [toolRun({ outcome: 'passed', exitCode: 0, findings: low })],
+    })
+    const text = buildFixPrompt(input({ result: subFloor })) as string
+    expect(text).toContain(`${OPENING} The gate passed; these findings are still on record as open issues.\n`)
+    expect(text).not.toContain('cannot be released')
+  })
+
+  it('names the stage it ran in the opening', () => {
+    const text = buildFixPrompt(
+      input({ stageDir: `${RUN_DIR}/01-validate`, result: result({ stage: 'validate' }) }),
+    ) as string
+    expect(text).toContain('SkillGantry ran its validate gate over the skill')
+  })
+
+  it('closes with the shared Verify section, naming the one stage', () => {
+    const text = buildFixPrompt(input()) as string
+    expect(text).toContain(
+      [
+        '## Verify',
+        '',
+        '- Re-verify with `skillgantry run zapac/declawed --stage security`. It exits 1 while any stage is not `passed`; that is a result, not an error.',
+        '- `skillgantry status zapac/declawed` lists what still stands between this skill and a release.',
+      ].join('\n'),
+    )
+  })
+
+  it('puts Verify after the false-positive section and before Done when and Report back', () => {
+    const text = buildFixPrompt(input({ lookup: baselineForSkillspector })) as string
+    const at = (heading: string): number => text.indexOf(heading)
+    expect(at('## If a finding is a false positive')).toBeGreaterThan(-1)
+    expect(at('## If a finding is a false positive')).toBeLessThan(at('## Verify'))
+    expect(at('## Verify')).toBeLessThan(at('## Done when'))
+    expect(at('## Done when')).toBeLessThan(at('## Report back'))
+  })
+
+  it('says when the agent is done, and that a passing gate is not required', () => {
+    const text = buildFixPrompt(input()) as string
+    expect(text).toContain(
+      [
+        '## Done when',
+        '',
+        'Every finding above has one of the three judgements and an action, and you have re-verified once after your last change. The gate does not have to pass: a finding you were right to leave open keeps it failing, and that is the maintainer\'s call.',
+      ].join('\n'),
+    )
+  })
+
+  it('cites no requirement or decision id in the body', () => {
+    // Ids resolve in this repository and nowhere an agent reads the prompt.
+    for (const lookup of [baselineForSkillspector, () => undefined]) {
+      const text = buildFixPrompt(input({ lookup })) as string
+      expect(text).not.toMatch(/\bR\d+\.\d+\b/)
+      expect(text).not.toMatch(/\bD\d+\b/)
+      expect(text).not.toContain('§')
+    }
   })
 })

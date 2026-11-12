@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 import { getAdapter } from '../adapters/registry.js'
 import type { SkillRef } from '../types.js'
+import { verifySection } from './prompt-parts.js'
 
 export interface EvalPromptInput {
   /**
@@ -76,8 +77,17 @@ export function buildEvalPrompt(input: EvalPromptInput): string {
   const manifest = lookup(RUNNER_ID)?.manifest
   const suitePath = join(skill.dir, 'evals', 'eval.yaml')
 
+  // Two states, two reasons the maintainer wants this: with no suite the gate
+  // cannot pass, with one it can while claimed behaviour goes unmeasured. "Not
+  // fixing the skill" is said up front because an agent that finds a defect
+  // while reading the skill otherwise goes and fixes it.
+  const why = input.hasSuite
+    ? "this skill has one, which may leave behaviours it claims untested."
+    : 'this skill has none, so that gate cannot pass.'
   const lines: string[] = [
     `# ${input.hasSuite ? 'Extend' : 'Author'} the eval suite for ${skill.name}`,
+    '',
+    `You are working for the maintainer of this skill. SkillGantry's evaluate gate runs a skill's own eval suite, and ${why} Your job is to ${input.hasSuite ? 'extend' : 'write'} that suite. You are not fixing the skill.`,
     '',
   ]
 
@@ -126,7 +136,7 @@ export function buildEvalPrompt(input: EvalPromptInput): string {
   lines.push(`4. Validate with \`${RUNNER_ID} validate ${suitePath}\` and fix what it reports.`)
   lines.push(
     '5. Stop and report what you wrote and what you deliberately left uncovered. Do not run the ' +
-      'suite — SkillGantry runs it as the evaluate gate.',
+      'suite with `skill-up run` yourself: a run outside SkillGantry records nothing.',
   )
   lines.push('')
 
@@ -165,9 +175,14 @@ export function buildEvalPrompt(input: EvalPromptInput): string {
       `or, against a gateway, the pair ${GATEWAY_KEYS.map((key) => `\`${key}\``).join(' and ')}. ` +
       'Ask the user; never write a key into a YAML file.',
   )
+  lines.push('- SkillGantry has authored none of this. Everything here is yours to write.')
+  lines.push('')
+
+  // The digest line is the one fact here an agent cannot read off the skill's
+  // tree: adding `evals/` moves the digest the other gates were recorded against.
+  lines.push(...verifySection(skill.id, ['evaluate']))
   lines.push(
-    '- SkillGantry has authored none of this and will run none of it (R6.13). Everything here is ' +
-      'yours to write.',
+    "- Adding files under `evals/` changes the skill's digest, so `status` will report the other gates as stale until they are re-run.",
   )
 
   return `${lines.join('\n')}\n`

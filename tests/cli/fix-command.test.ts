@@ -171,6 +171,35 @@ describe('R12.6 skillgantry fix', () => {
     expect(out.join('\n')).toContain('stored prompt for security')
   })
 
+  it('prints a stored prompt with the old wording byte for byte, never rebuilding it', async () => {
+    // A fix-prompt.md is evidence of what that run's agent was told. The new
+    // wording reaches new runs and in-memory rebuilds, never a recorded file.
+    const old = [
+      '# Fix the security findings on x/sk',
+      '',
+      'The security stage failed with 1 finding(s), the highest of severity `medium`.',
+      '',
+      '## Do this',
+      '',
+      '4. Where the code is right and the finding is wrong, stop and report it. Do not edit correct code to satisfy a scanner — an open finding is better than a quietly broken skill.',
+      '5. Re-verify with `skillgantry run x/sk --stage security`. A finding you deliberately did not fix will still be reported, and that is expected.',
+      '',
+      '  trailing whitespace and no final newline kept   ',
+    ].join('\n')
+    const { out, runsRoot, run } = await harness([
+      { id: 'run-1', stages: { security: [FINDING] }, withPrompt: ['security'] },
+    ])
+    await writeFile(join(runsRoot, 'run-1', '03-security', 'fix-prompt.md'), old)
+
+    await run(['fix', 'sk', '--stage', 'security'])
+    expect(out).toEqual([old])
+
+    out.length = 0
+    await run(['fix', 'sk', '--stage', 'security', '--json'])
+    const doc = JSON.parse(out[0] as string) as { prompts: Array<{ onDisk: boolean; body: string }> }
+    expect(doc.prompts[0]).toMatchObject({ onDisk: true, body: old })
+  })
+
   it('lists rather than concatenating when two stages carry prompts', async () => {
     const { out, program, run } = await harness([
       {
@@ -214,6 +243,9 @@ describe('R12.6 skillgantry fix', () => {
     const body = out.join('\n')
     expect(body).toContain('# Fix the security findings on')
     expect(body).toContain('LP3')
+    // The in-memory rebuild is where the new wording reaches an old run.
+    expect(body).toContain('You are working for the maintainer of this skill.')
+    expect(body).toContain('## Verify')
     expect(program.exitCode).toBe(0)
   })
 

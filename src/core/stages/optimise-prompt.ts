@@ -2,7 +2,9 @@ import type { SkillRef, Stage } from '../types.js'
 import {
   attributedRows,
   cell,
+  location,
   suppressSection,
+  verifySection,
   type ManifestLookup,
   type SuppressibleFinding,
 } from './prompt-parts.js'
@@ -15,13 +17,21 @@ export interface OptimisePromptInput {
    * should edit, and a sandbox path does not survive to be edited.
    */
   skill: SkillRef
-  lastRun: {
+  /**
+   * One entry per stage, each from the run that stage's result is taken from —
+   * not necessarily the same run for every stage, because a run executes only
+   * the stages it was asked for (R6.12). Empty means no recorded run.
+   */
+  evidence: ReadonlyArray<{
+    stage: Stage
+    result: StageResult
     runId: string
     runDir: string
     skillDigest: string
     git: { commit: string | null; dirty: boolean }
-    stages: Array<{ stage: Stage; result: StageResult }>
-  } | null
+    /** Recorded against the digest the skill has now. */
+    current: boolean
+  }>
   /** Repo-relative paths that exist under `<skill>/evals/`. */
   evalAssets: readonly string[]
   /**
@@ -39,8 +49,13 @@ export interface OptimisePromptInput {
  * refusal is a flash rather than an absent document.
  */
 export function buildOptimisePrompt(input: OptimisePromptInput): string {
-  const { skill, lastRun, install } = input
-  const lines: string[] = [`# Optimise: ${skill.name}`, '']
+  const { skill, evidence, install } = input
+  const lines: string[] = [
+    `# Optimise: ${skill.name}`,
+    '',
+    'You are working for the maintainer of this skill. They want it to do its job better — sharper triggering, better eval results, fewer findings — without changing what it is for. Below is where the skill is, what SkillGantry has recorded about it, and the optimiser to use.',
+    '',
+  ]
   const acceptable: SuppressibleFinding[] = []
 
   lines.push(`- Skill directory: \`${skill.dir}\``)
@@ -63,19 +78,33 @@ export function buildOptimisePrompt(input: OptimisePromptInput): string {
   }
 
   lines.push('## Recorded evidence', '')
-  if (lastRun === null) {
+  if (evidence.length === 0) {
     // Stated rather than omitted: a section that vanishes reads as a builder
     // that failed rather than as a skill that has not run.
     lines.push('There is no recorded run for this skill yet.', '')
   } else {
-    lines.push(
-      `Run \`${lastRun.runId}\` · digest \`${lastRun.skillDigest}\` · ` +
-        `commit \`${lastRun.git.commit ?? 'none'}\`${lastRun.git.dirty ? ' (dirty)' : ''}`,
-      '',
-    )
+    // R6.12 names the commit, the dirty flag and the digest. They are one line
+    // per run rather than per stage: the stages no longer share a run, and two
+    // that did would otherwise repeat the same line.
+    const runs = [...new Map(evidence.map((entry) => [entry.runId, entry])).values()]
+    for (const { runId, skillDigest, git } of runs) {
+      lines.push(
+        `Run \`${runId}\` · digest \`${skillDigest}\` · ` +
+          `commit \`${git.commit ?? 'none'}\`${git.dirty ? ' (dirty)' : ''}`,
+      )
+    }
+    lines.push('')
     let suppressed = 0
-    for (const { stage, result } of lastRun.stages) {
+    for (const { stage, result, runId, current } of evidence) {
       lines.push(`### ${stage} — \`${result.outcome}\``, '')
+      // Evidence from other bytes is still evidence, but it must not read as a
+      // description of the skill as it is today.
+      lines.push(
+        current
+          ? `Recorded by run \`${runId}\` against the skill's current files.`
+          : `Recorded by run \`${runId}\` against an earlier version of the skill. Treat it as history, and re-run the stage before relying on it.`,
+        '',
+      )
       const { rows, omitted } = attributedRows(result.toolRuns)
       suppressed += omitted
       for (const run of result.toolRuns) {
@@ -93,13 +122,14 @@ export function buildOptimisePrompt(input: OptimisePromptInput): string {
         lines.push(
           ...rows.map(
             ({ toolId, finding }, i) =>
-              `| ${i + 1} | ${toolId} | ${finding.severity} | ${finding.ruleClass} | ${cell(finding.path)} | ${cell(finding.message)} |`,
+              `| ${i + 1} | ${toolId} | ${finding.severity} | ${finding.ruleClass} | ${cell(location(finding.path, finding.line))} | ${cell(finding.message)} |`,
           ),
         )
         // Mapped over the same array as the table rather than pushed alongside
         // it, so the `i + 1` the label quotes cannot drift from the `#` column.
-        // Labelled by stage too: this prompt renders every stage of the run at
-        // once and each numbers from 1, so a bare number would collide.
+        // Labelled by stage too: this prompt renders every stage at once and
+        // each numbers from 1, so a bare number would collide. The path is the
+        // bare one, not the table's `path:line`: `suppress` takes a file.
         acceptable.push(
           ...rows.map(({ toolId, finding }, i) => ({
             label: `${stage} finding ${i + 1}`,
@@ -133,12 +163,19 @@ export function buildOptimisePrompt(input: OptimisePromptInput): string {
       'It dispatches to its own sub-skills; read its SKILL.md before choosing one.',
     '',
   )
+  lines.push('## Done when', '')
+  lines.push(
+    'The eval suite passes at least as well as the recorded evaluate result, no gate that passed now fails, and you can say what you changed and why. With no eval suite there is nothing to measure against: say so, propose one, and stop. An optimisation nobody can measure is a rewrite.',
+    '',
+  )
   lines.push('## Constraints', '')
   lines.push(
     "- Never write under `*-workspace/` or `.skillgantry-workspace/` — that is SkillGantry's evidence, including the reports named above.",
   )
   lines.push(
-    '- Judge each finding before changing anything, and stop and report rather than edit code you judge correct.',
+    // §9.4's reworded fourth instruction, for its reason: "stop and report" ended
+    // the session at the first finding the agent judged wrong.
+    '- Judge each finding before changing anything. Leave code you judge correct as it is, and say so in your report.',
   )
   if (accept.length > 0) {
     lines.push(
@@ -148,7 +185,14 @@ export function buildOptimisePrompt(input: OptimisePromptInput): string {
   lines.push(
     '- SkillHone workflows may use bypass mode and local subprocess execution. Run them only in a workspace you are willing to lose.',
   )
-  lines.push('- Nothing here has been applied. SkillGantry does not run the optimiser (R6.12).')
+  lines.push('- Nothing here has been applied. SkillGantry does not run the optimiser; you do.', '')
+
+  lines.push(...verifySection(skill.id, ['validate', 'evaluate', 'security']), '')
+
+  lines.push('## Report back', '')
+  lines.push(
+    'What you changed and why, the evaluate result before and after, and one line per finding with the judgement you reached.',
+  )
 
   return `${lines.join('\n')}\n`
 }

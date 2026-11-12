@@ -12,7 +12,8 @@ import {
   type OptimisePromptInput,
   type StageResult,
 } from '../core/index.js'
-import type { SkillRef, Stage } from '../core/types.js'
+import { digestSkill } from '../core/discovery/digest.js'
+import type { SkillRef } from '../core/types.js'
 import { refuse } from './errors.js'
 import { selectSkill, type CliDeps } from './run-command.js'
 import { evalAssetsOf } from './skill-evals.js'
@@ -32,17 +33,80 @@ const readJson = async <T>(path: string): Promise<T | null> => {
 }
 
 /**
- * The greatest run id in the index, never the `latest` symlink, which is absent
- * mid-write — §14.5's resolution rule, and `fix-command.ts`'s. The entry, not
- * the id: the run's directory is named for its start time, so the index is what
- * maps one to the other.
+ * §8.2's two outcomes that mean no tool in the stage reached a verdict. The set
+ * `ledger/gates.ts` steps over, restated here because that module keeps it
+ * private and answers from the ledger, which holds an outcome — and this prompt
+ * needs the whole `StageResult`.
  */
-const newestRun = async (skill: SkillRef): Promise<IndexEntry | null> => {
+const NO_VERDICT: ReadonlySet<string> = new Set(['errored', 'skipped'])
+
+type StageEvidence = OptimisePromptInput['evidence'][number]
+
+/**
+ * Each stage's evidence across the skill's runs (R6.12, R9.8's rule). A run is
+ * whatever stages it was asked for, so the newest run alone lost the eval
+ * result recorded one run earlier the moment security was re-run.
+ *
+ * Walks the index by greatest run id, never by position in the file and never
+ * through the `latest` symlink, which is absent mid-write (§14.5). Per stage it
+ * takes the first run in which that stage reached a verdict, and when none did
+ * the newest run that recorded it at all: a stage that errored every time is
+ * still something the agent should be told. A stage no run recorded is absent.
+ *
+ * A run whose `run.json` is unreadable is skipped, not named: without it there
+ * is no digest to say whether the result describes today's files.
+ */
+async function evidenceFor(skill: SkillRef): Promise<StageEvidence[]> {
   const entries = await readIndex(skill.workspacePath).catch(() => [])
-  return entries.reduce<IndexEntry | null>(
-    (max, entry) => (max === null || entry.runId > max.runId ? entry : max),
-    null,
+  const newestFirst = [...entries].sort((a, b) =>
+    a.runId < b.runId ? 1 : a.runId > b.runId ? -1 : 0,
   )
+
+  // Read lazily and once: only a run that recorded the stage needs its
+  // `run.json`, and the same run answers for several stages.
+  const metas = new Map<string, RunMetaOnDisk | null>()
+  const metaOf = async (entry: IndexEntry, runDir: string): Promise<RunMetaOnDisk | null> => {
+    if (!metas.has(entry.runId)) {
+      metas.set(entry.runId, await readJson<RunMetaOnDisk>(join(runDir, 'run.json')))
+    }
+    return metas.get(entry.runId) ?? null
+  }
+
+  const found: Array<Omit<StageEvidence, 'current'>> = []
+  for (const [index, stage] of STAGE_ORDER.entries()) {
+    let verdict: (typeof found)[number] | null = null
+    let newestRecord: (typeof found)[number] | null = null
+    for (const entry of newestFirst) {
+      const runDir = runDirFor(skill.workspacePath, entry)
+      const result = await readJson<StageResult>(
+        join(stageDirFor(runDir, index + 1, stage), 'stage.json'),
+      )
+      if (result === null) continue
+      const meta = await metaOf(entry, runDir)
+      if (meta === null) continue
+      const record = {
+        stage,
+        result,
+        runId: entry.runId,
+        runDir,
+        skillDigest: meta.skillDigest,
+        git: meta.git,
+      }
+      if (!NO_VERDICT.has(result.outcome)) {
+        verdict = record
+        break
+      }
+      newestRecord ??= record
+    }
+    const chosen = verdict ?? newestRecord
+    if (chosen !== null) found.push(chosen)
+  }
+  if (found.length === 0) return []
+
+  // Once, after the walk: it reads every file the skill ships, and an install
+  // with no recorded run has nothing to compare it against.
+  const digest = await digestSkill(skill)
+  return found.map((record) => ({ ...record, current: record.skillDigest === digest }))
 }
 
 export interface OptimisePlan {
@@ -69,33 +133,15 @@ export async function planOptimiseFor(home: string, skill: SkillRef): Promise<Op
     missing.push('the managed interpreter')
   }
 
-  // Read the sidecar the way `fix-command.ts` does rather than through
-  // `loadLastRun`: that one is shaped for the rail — LastRunStage carries an
-  // outcome and flattened FindingRows — and carries neither the digest nor the
-  // git state R6.12 requires the prompt to name.
-  const newest = await newestRun(skill)
-  let lastRun: OptimisePromptInput['lastRun'] = null
-  if (newest !== null) {
-    const runId = newest.runId
-    const runDir = runDirFor(skill.workspacePath, newest)
-    const meta = await readJson<RunMetaOnDisk>(join(runDir, 'run.json'))
-    if (meta !== null) {
-      const stages: Array<{ stage: Stage; result: StageResult }> = []
-      for (const [index, stage] of STAGE_ORDER.entries()) {
-        const result = await readJson<StageResult>(
-          join(stageDirFor(runDir, index + 1, stage), 'stage.json'),
-        )
-        // A run executes the stages it was asked for, so an absent summary is
-        // the ordinary case for the others rather than a failed read.
-        if (result !== null) stages.push({ stage, result })
-      }
-      lastRun = { runId, runDir, skillDigest: meta.skillDigest, git: meta.git, stages }
-    }
-  }
+  // Read from the sidecar the way `fix-command.ts` does rather than through
+  // `loadLastRun`: that one is shaped for the rail — an outcome and flattened
+  // FindingRows — and carries neither the whole StageResult nor the digest and
+  // git state the prompt names.
+  const evidence = await evidenceFor(skill)
 
   const input: OptimisePromptInput = {
     skill,
-    lastRun,
+    evidence,
     evalAssets: await evalAssetsOf(skill),
     install: {
       interpreter: entry.bin,
