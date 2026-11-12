@@ -32,9 +32,11 @@ export function UpgradeApp({
   installPath,
   onAnswer,
 }: UpgradeAppProps): React.ReactElement {
-  const { stdout } = useStdout()
-  const columns = Math.max(MIN_WIDTH, stdout?.columns ?? 80)
-  const rows = stdout?.rows ?? 24
+  // Ink 8 types the stream as a bare `WritableStream`; it is still the TTY
+  // `render` was given, which is where `columns` and `rows` live.
+  const stdout = useStdout().stdout as NodeJS.WritableStream & { columns?: number; rows?: number }
+  const columns = Math.max(MIN_WIDTH, stdout.columns ?? 80)
+  const rows = stdout.rows ?? 24
   const width = Math.min(columns, 78)
   const inner = width - 4
 

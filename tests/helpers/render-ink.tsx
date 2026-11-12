@@ -10,8 +10,14 @@ class FakeStdout extends EventEmitter {
   ) {
     super()
   }
-  write(data: string): boolean {
+  /**
+   * Ink 8 resolves `waitUntilExit()` from the callback of an empty barrier
+   * write, so a fake that drops the callback never reports an exit. That made
+   * every `exited === false` assertion pass whether or not the app quit.
+   */
+  write(data: string, callback?: () => void): boolean {
     this.frames.push(data)
+    if (callback) process.nextTick(callback)
     return true
   }
 }
