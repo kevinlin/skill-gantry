@@ -150,6 +150,8 @@ export {
 } from './isolation/recover.js'
 export { retireSkill, type RetireInput, type RetireResult } from './release/retire.js'
 export { releaseDirtyPaths } from './release/preflight.js'
+export { archiveNameFor } from './release/release.js'
+export { commitHint, gitChangedPaths, type CommitHintInput } from './release/commit-hint.js'
 export {
   gatherReleasePreconditions,
   type GatherInput,

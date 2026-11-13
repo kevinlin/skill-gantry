@@ -5,7 +5,7 @@ import { candidateManifest } from '../../src/core/discovery/candidate.js'
 import { skillDigest } from '../../src/core/discovery/digest.js'
 import { writeSandboxRecord } from '../../src/core/isolation/record.js'
 import { openLedger } from '../../src/core/ledger/db.js'
-import type { GatheredRefusalCode } from '../../src/core/index.js'
+import type { StatusBlockerCode } from '../../src/cli/status-command.js'
 import type { SkillRef } from '../../src/core/types.js'
 import { type Headless, makeHeadless } from '../helpers/headless.js'
 import { type GateOutcomes, seedGates } from '../helpers/release-fixture.js'
@@ -39,12 +39,15 @@ interface Case {
   /** Files the repo starts with, on top of an eval suite so `evals` is never the entry that answers. */
   files?: Record<string, string>
   releaseTool?: boolean
+  /** Extra `status` arguments, for a blocker only a request can cause. */
+  args?: string[]
   /** Brings the skill to a state where this code is the only blocker. */
   arrange: (h: Headless, skill: SkillRef) => Promise<void>
 }
 
 /**
- * One row per code the gatherer can emit. `satisfies` makes a new code a type
+ * One row per code `status` can emit: the gatherer's, and `target-invalid`,
+ * which only a `--version` request causes. `satisfies` makes a new code a type
  * error here until it has a row, and the assertion below proves each row
  * produces its code *alone* — because a second blocker's entry would otherwise
  * hide a code that has none.
@@ -78,6 +81,12 @@ const CASES = {
     releaseTool: true,
     arrange: (h, skill) => seed(h, skill),
   },
+  'target-invalid': {
+    releaseTool: true,
+    // Equal to the current version, which resolves to nothing greater.
+    args: ['--version', '1.0.0'],
+    arrange: (h, skill) => seed(h, skill),
+  },
   'interrupted-mutation': {
     releaseTool: true,
     arrange: async (h, skill) => {
@@ -101,10 +110,10 @@ const CASES = {
       })
     },
   },
-} satisfies Record<GatheredRefusalCode, Case>
+} satisfies Record<StatusBlockerCode, Case>
 
 describe('status — a blocked release always has a next step', () => {
-  it.each(Object.entries(CASES) as Array<[GatheredRefusalCode, Case]>)(
+  it.each(Object.entries(CASES) as Array<[StatusBlockerCode, Case]>)(
     'names something to do about %s, with nothing else blocking to hide it',
     async (code, spec) => {
       const h = await makeHeadless({
@@ -115,7 +124,7 @@ describe('status — a blocked release always has a next step', () => {
       await spec.arrange(h, skill!)
 
       h.out.length = 0
-      expect(await h.run(['status', 'sk', '--json'])).toBe(0)
+      expect(await h.run(['status', 'sk', '--json', ...(spec.args ?? [])])).toBe(0)
       const doc = h.json<StatusDoc>()
 
       expect(new Set(doc.release.blockers.map((blocker) => blocker.code))).toEqual(new Set([code]))

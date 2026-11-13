@@ -10,9 +10,11 @@ import { syncLifecycle } from '../core/ledger/lifecycle.js'
 import { runPipeline } from '../core/pipeline/run.js'
 import { VERSION } from '../core/version.js'
 import type { GantryConfig } from '../core/config/schema.js'
+import type { Exec } from '../core/tools/exec.js'
 import type { SkillRef, Stage } from '../core/types.js'
 import { runDoctor } from './doctor-command.js'
 import { runList } from './list-command.js'
+import { runIssue, type IssueOptions } from './issue-command.js'
 import { runFix, type FixOptions } from './fix-command.js'
 import { runOptimise, type OptimiseOptions } from './optimise-command.js'
 import { runEvals, type EvalsOptions } from './evals-command.js'
@@ -22,12 +24,20 @@ import { runRelease, type ReleaseOptions } from './release-command.js'
 import { runRepoAdd } from './repo-command.js'
 import { runRetire, type RetireOptions } from './retire-command.js'
 import { runSkillInstall, runSkillPath, type SkillInstallOptions } from './skill-command.js'
-import { runStatus } from './status-command.js'
+import { runStatus, type StatusOptions } from './status-command.js'
 import { needsSetup, startSetup, type SetupOptions } from './setup-command.js'
 import { maybeUpgrade, runUpgrade, type UpgradeOptions } from './upgrade-command.js'
 import { startTui, type TuiOptions } from './tui-command.js'
 
 const STAGES: readonly Stage[] = ['validate', 'evaluate', 'security', 'optimise', 'release']
+
+/**
+ * Design §15.1's four groups: twenty rows in registration order read as a list,
+ * and the loop is three verbs. commander lists the groups in the order its
+ * members were *registered*, not the order named here, so `buildProgram`
+ * registers them look, act, ship, set up — moving a command moves its group.
+ */
+const HELP_GROUP = { look: 'Look:', act: 'Act:', ship: 'Ship:', setUp: 'Set up:' } as const
 
 export interface CliDeps {
   home: string
@@ -59,6 +69,14 @@ export interface CliDeps {
    * skills directory. Unset means `os.homedir()`.
    */
   userHome?: string
+  /**
+   * The git call behind the commit hint a release prints (R9.7), under the
+   * seam `Exec` is everywhere else: without it every test of a release in a git
+   * repo asks the host's git a question whose answer it does not control.
+   * Unset means the real one. The pipeline's own git calls are not routed
+   * through it.
+   */
+  exec?: Exec
 }
 
 /**
@@ -215,6 +233,7 @@ export function buildProgram(deps: CliDeps): GantryProgram {
 
   program
     .command('list')
+    .helpGroup(HELP_GROUP.look)
     .description('list every skill in every registered repo with its last gate verdicts')
     .option('--json', 'emit one JSON document')
     .action(async (opts: { json?: boolean }) => {
@@ -225,46 +244,35 @@ export function buildProgram(deps: CliDeps): GantryProgram {
 
   program
     .command('status')
+    .helpGroup(HELP_GROUP.look)
     .description('report what stands between a skill and its release, and the commands that clear it')
     .argument('<skill>', 'skill id or bare name')
+    .option(
+      '--version <target>',
+      'also decide the release checks that need a target: a semver, or major / minor / patch',
+    )
     .option('--json', 'emit one JSON document')
-    .action(async (selector: string, opts: { json?: boolean }) => {
+    .action(async (selector: string, opts: StatusOptions) => {
       // R12.12: the code says a document was produced, never whether the skill
-      // is ready — `ready` is in the document, where a caller reads it.
+      // is ready — `ready` is in the document, where a caller reads it. R12.19's
+      // `--version` changes what the document decides, not what the code means.
       await runStatus(deps, selector, opts)
     })
 
   program
-    .command('repo')
-    .description('manage the repos whose skills SkillGantry discovers')
-    .command('add')
-    .description('register a skill repo, under the rules the setup wizard applies')
-    .argument('<path>', 'a directory holding skills')
-    .option('--json', 'emit one JSON document')
-    .action(async (path: string, opts: { json?: boolean }) => {
-      await runRepoAdd(deps, path, opts)
-    })
-
-  const skill = program
-    .command('skill')
-    .description("install or locate SkillGantry's own agent skill")
-  skill
-    .command('install')
-    .description("copy the bundled agent skill into an agent's skills directory")
-    .option('--dir <path>', 'an existing skills directory to install into (default: ~/.claude/skills)')
-    .option('--json', 'emit one JSON document')
-    .action(async (opts: SkillInstallOptions) => {
-      await runSkillInstall(deps, opts)
-    })
-  skill
-    .command('path')
-    .description("print the absolute path of the bundled agent skill's directory")
-    .action(async () => {
-      await runSkillPath(deps)
+    .command('doctor')
+    .helpGroup(HELP_GROUP.look)
+    .description('re-verify every locked tool and report drift')
+    .option('--json', 'emit one JSON report')
+    .option('--migrate-rule-map', 'apply a pending rule-class map migration')
+    .action(async (opts: { json?: boolean; migrateRuleMap?: boolean }) => {
+      const report = await runDoctor(deps, opts)
+      program.exitCode = report.failed ? 1 : 0
     })
 
   program
     .command('run')
+    .helpGroup(HELP_GROUP.act)
     .description('run lifecycle stages against a skill and record the evidence')
     .argument('<skill>', 'skill id or bare name')
     .option('--stage <list>', 'comma-separated lifecycle stages (default: validate, evaluate and security)')
@@ -329,25 +337,82 @@ export function buildProgram(deps: CliDeps): GantryProgram {
     })
 
   program
-    .command('doctor')
-    .description('re-verify every locked tool and report drift')
-    .option('--json', 'emit one JSON report')
-    .option('--migrate-rule-map', 'apply a pending rule-class map migration')
-    .action(async (opts: { json?: boolean; migrateRuleMap?: boolean }) => {
-      const report = await runDoctor(deps, opts)
-      program.exitCode = report.failed ? 1 : 0
+    .command('fix')
+    .helpGroup(HELP_GROUP.act)
+    .description('print the coding-agent fix prompt for a recorded run')
+    .argument('<skill>', 'skill id or bare name')
+    .option('--stage <stage>', 'restrict to one lifecycle stage')
+    .option('--run <id-or-dir>', 'a recorded run id or its directory name; defaults to the most recent')
+    .option('--json', 'emit one JSON document')
+    .action(async (selector: string, opts: FixOptions) => {
+      // R12.6: the code answers "is there a prompt on stdout", not "did the
+      // skill pass" — reusing R12.2's meaning would make a clean skill and a
+      // failed lookup indistinguishable.
+      program.exitCode = await runFix(deps, selector, opts)
     })
 
   program
-    .command('setup')
-    .description('probe runtimes, install tools, write credentials and register a repo')
-    .action(async () => {
-      requireTerminal(deps, 'the setup wizard')
-      await (deps.startSetup ?? startSetup)({ home: deps.home })
+    .command('evals')
+    .helpGroup(HELP_GROUP.act)
+    .description("print the coding-agent prompt for authoring a skill's eval suite")
+    .argument('<skill>', 'skill id or bare name')
+    .option('--json', 'emit one JSON document')
+    .action(async (selector: string, opts: EvalsOptions) => {
+      // R12.9, sharing R12.6's and R12.8's meaning: the code answers "is there
+      // a prompt on stdout", so a skill with a passing suite and one whose
+      // runner is not installed stay distinguishable.
+      program.exitCode = await runEvals(deps, selector, opts)
+    })
+
+  program
+    .command('optimise')
+    .helpGroup(HELP_GROUP.act)
+    .description('print the coding-agent optimisation prompt for a skill')
+    .argument('<skill>', 'skill id or bare name')
+    .option('--json', 'emit one JSON document')
+    .action(async (selector: string, opts: OptimiseOptions) => {
+      // R12.8, sharing R12.6's meaning: the code answers "is there a prompt on
+      // stdout", not "did the skill pass". Reusing R12.2's meaning would make a
+      // clean skill and an uninstalled optimiser indistinguishable.
+      program.exitCode = await runOptimise(deps, selector, opts)
+    })
+
+  program
+    .command('suppress')
+    .helpGroup(HELP_GROUP.act)
+    .description("record a finding in its tool's own suppression file")
+    .argument('<skill>', 'skill id or unambiguous name')
+    .option('--tool <id>', 'the detecting tool')
+    .option('--rule <nativeRuleId>', "the tool's own rule id")
+    .option('--path <skillRelPath>', 'skill-relative path the finding is in')
+    .option('--fingerprint <fp>', 'an issue fingerprint, resolved from the ledger')
+    .option('--reason <text>', 'why the finding is accepted; required and non-empty')
+    .option('--yes', 'prior authorisation for the write')
+    .option('--json', 'emit one JSON document')
+    .action(async (selector: string, opts: SuppressOptions) => {
+      // R12.7: the code reports whether a suppression was written, never
+      // whether the skill passes — `fix`'s precedent, for the same reason.
+      program.exitCode = await runSuppress(deps, selector, opts)
+    })
+
+  program
+    .command('issue')
+    .helpGroup(HELP_GROUP.act)
+    .description('move an issue through the user transitions: acknowledge, wontfix or reopen')
+    .argument('<fingerprint>', 'the issue fingerprint `status` prints')
+    .argument('<action>', 'acknowledge, wontfix or reopen')
+    .option('--json', 'emit one JSON document')
+    .action(async (fingerprint: string, action: string, opts: IssueOptions) => {
+      // R12.17: `0` it moved, `1` the transition is not a legal one from the
+      // issue's state, and an unknown fingerprint or action is a rejection that
+      // `main()` turns into `2`. No skill is named: a fingerprint is the
+      // ledger's key.
+      program.exitCode = await runIssue(deps, fingerprint, action, opts)
     })
 
   program
     .command('release')
+    .helpGroup(HELP_GROUP.ship)
     .description("bump a skill's version, package it and verify it installs, once its gates have passed")
     // R9.10: `--version` is required rather than defaulted, and missing it
     // has to surface as a rejected promise here (not a bare process.exit),
@@ -367,6 +432,7 @@ export function buildProgram(deps: CliDeps): GantryProgram {
 
   program
     .command('retire')
+    .helpGroup(HELP_GROUP.ship)
     .description('deprecate a skill in its own frontmatter, or clear the deprecation with --undo')
     .argument('<skill>', 'skill id or bare name')
     .option('--undo', 'clear the deprecation instead of setting it')
@@ -381,6 +447,7 @@ export function buildProgram(deps: CliDeps): GantryProgram {
 
   program
     .command('recover')
+    .helpGroup(HELP_GROUP.ship)
     .description('report or resolve a mutation interrupted by a crash')
     .option('--restore <runId>', 'restore the working tree from the recorded pre-state')
     .option('--forget <runId>', 'keep the tree as it stands and stop reporting the record')
@@ -390,45 +457,48 @@ export function buildProgram(deps: CliDeps): GantryProgram {
     })
 
   program
-    .command('fix')
-    .description('print the coding-agent fix prompt for a recorded run')
-    .argument('<skill>', 'skill id or bare name')
-    .option('--stage <stage>', 'restrict to one lifecycle stage')
-    .option('--run <id-or-dir>', 'a recorded run id or its directory name; defaults to the most recent')
-    .option('--json', 'emit one JSON document')
-    .action(async (selector: string, opts: FixOptions) => {
-      // R12.6: the code answers "is there a prompt on stdout", not "did the
-      // skill pass" — reusing R12.2's meaning would make a clean skill and a
-      // failed lookup indistinguishable.
-      program.exitCode = await runFix(deps, selector, opts)
+    .command('setup')
+    .helpGroup(HELP_GROUP.setUp)
+    .description('probe runtimes, install tools, write credentials and register a repo')
+    .action(async () => {
+      requireTerminal(deps, 'the setup wizard')
+      await (deps.startSetup ?? startSetup)({ home: deps.home })
     })
 
   program
-    .command('optimise')
-    .description('print the coding-agent optimisation prompt for a skill')
-    .argument('<skill>', 'skill id or bare name')
+    .command('repo')
+    .helpGroup(HELP_GROUP.setUp)
+    .description('manage the repos whose skills SkillGantry discovers')
+    .command('add')
+    .description('register a skill repo, under the rules the setup wizard applies')
+    .argument('<path>', 'a directory holding skills')
     .option('--json', 'emit one JSON document')
-    .action(async (selector: string, opts: OptimiseOptions) => {
-      // R12.8, sharing R12.6's meaning: the code answers "is there a prompt on
-      // stdout", not "did the skill pass". Reusing R12.2's meaning would make a
-      // clean skill and an uninstalled optimiser indistinguishable.
-      program.exitCode = await runOptimise(deps, selector, opts)
+    .action(async (path: string, opts: { json?: boolean }) => {
+      await runRepoAdd(deps, path, opts)
     })
 
-  program
-    .command('evals')
-    .description("print the coding-agent prompt for authoring a skill's eval suite")
-    .argument('<skill>', 'skill id or bare name')
+  const skill = program
+    .command('skill')
+    .helpGroup(HELP_GROUP.setUp)
+    .description("install or locate SkillGantry's own agent skill")
+  skill
+    .command('install')
+    .description("copy the bundled agent skill into an agent's skills directory")
+    .option('--dir <path>', 'an existing skills directory to install into (default: ~/.claude/skills)')
     .option('--json', 'emit one JSON document')
-    .action(async (selector: string, opts: EvalsOptions) => {
-      // R12.9, sharing R12.6's and R12.8's meaning: the code answers "is there
-      // a prompt on stdout", so a skill with a passing suite and one whose
-      // runner is not installed stay distinguishable.
-      program.exitCode = await runEvals(deps, selector, opts)
+    .action(async (opts: SkillInstallOptions) => {
+      await runSkillInstall(deps, opts)
+    })
+  skill
+    .command('path')
+    .description("print the absolute path of the bundled agent skill's directory")
+    .action(async () => {
+      await runSkillPath(deps)
     })
 
   program
     .command('upgrade')
+    .helpGroup(HELP_GROUP.setUp)
     .description('check for a newer published release and install it')
     .option('--yes', 'prior authorisation for the install')
     .option('--json', 'emit one JSON document')
@@ -437,23 +507,6 @@ export function buildProgram(deps: CliDeps): GantryProgram {
       // R12.10: the code answers "what happened to the upgrade", not R12.2's
       // stage question — `fix`'s and `suppress`'s established divergence.
       program.exitCode = await runUpgrade(deps, opts)
-    })
-
-  program
-    .command('suppress')
-    .description("record a finding in its tool's own suppression file")
-    .argument('<skill>', 'skill id or unambiguous name')
-    .option('--tool <id>', 'the detecting tool')
-    .option('--rule <nativeRuleId>', "the tool's own rule id")
-    .option('--path <skillRelPath>', 'skill-relative path the finding is in')
-    .option('--fingerprint <fp>', 'an issue fingerprint, resolved from the ledger')
-    .option('--reason <text>', 'why the finding is accepted; required and non-empty')
-    .option('--yes', 'prior authorisation for the write')
-    .option('--json', 'emit one JSON document')
-    .action(async (selector: string, opts: SuppressOptions) => {
-      // R12.7: the code reports whether a suppression was written, never
-      // whether the skill passes — `fix`'s precedent, for the same reason.
-      program.exitCode = await runSuppress(deps, selector, opts)
     })
 
   program

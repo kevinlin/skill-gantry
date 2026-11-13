@@ -8,7 +8,13 @@ import { writeEvidenceBundle } from '../release/evidence.js'
 import { verifyInstallable } from '../release/install-check.js'
 import { readVersionsManifest } from '../release/manifest.js'
 import { gatherReleasePreconditions } from '../release/gather.js'
-import { type ManifestMode, manifestKeyFor, releaseScope, stageCandidateEdits } from '../release/release.js'
+import {
+  type ManifestMode,
+  archiveNameFor,
+  manifestKeyFor,
+  releaseScope,
+  stageCandidateEdits,
+} from '../release/release.js'
 import { resolveTargetVersion } from '../release/version.js'
 import { RELEASE_TOOL_ID } from '../tools/catalogue.js'
 import { type Exec, defaultExec } from '../tools/exec.js'
@@ -129,7 +135,7 @@ export class ReleaseStageExecutor implements StageExecutor {
       return { toolIds: [], policy: 'native', mutationScope: { paths: [] } }
     }
     const manifest = await readVersionsManifest(ctx.skill.repo.path)
-    const archiveName = `${manifestKeyFor(ctx.skill)}_${version}.zip`
+    const archiveName = archiveNameFor(ctx.skill, version)
     return {
       // Empty per design §6: release selects no tool from `stageTools`. The one
       // tool it does invoke is reported as a tool run by `execute`.
@@ -272,7 +278,7 @@ export class ReleaseStageExecutor implements StageExecutor {
       // The archive joins the change set by being placed in the sandbox at its
       // eventual repo-relative path, so it is previewed, journalled and removed
       // by a rollback exactly like every other scoped file (R9.4).
-      const archiveName = `${manifestKeyFor(ctx.skill)}_${version}.zip`
+      const archiveName = archiveNameFor(ctx.skill, version)
       const inSandbox = ctx.sandbox.resolve(archiveName)
       await mkdir(join(inSandbox, '..'), { recursive: true })
       await copyFile(packaged.archivePath, inSandbox)

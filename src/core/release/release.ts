@@ -14,6 +14,15 @@ export const manifestKeyFor = (skill: SkillRef): string =>
   skill.rootSkill ? (skill.name ?? basename(skill.repo.path)) : basename(skill.relPath)
 
 /**
+ * The file a release of `version` writes at the repo root. One spelling for the
+ * callers that look for it before a release exists: a `status --version` that
+ * spelled it differently would report a stray archive clean and let the
+ * sandbox be the first to find it, or report one the stage would never write.
+ */
+export const archiveNameFor = (skill: SkillRef, version: string): string =>
+  `${manifestKeyFor(skill)}_${version}.zip`
+
+/**
  * R10.1: the scope may reach outside the skill directory, which is exactly why
  * revision 1's skill-scoped sandbox could not express a release. The archive is
  * in scope because R9.4 makes it an output that must be previewed, journalled

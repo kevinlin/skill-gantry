@@ -32,6 +32,37 @@ describe('skillgantry --help', () => {
     for (const line of commandLines) expect(line.trim().split(/\s{2,}/).length).toBeGreaterThan(1)
   })
 
+  it('groups the commands as look, act, ship and set up, in that order', async () => {
+    const h = await makeHeadless()
+    expect(await h.run(['--help'])).toBe(0)
+
+    // A heading is the one unindented line ending in a colon; the commands
+    // beneath it are the indented lines up to the next blank one.
+    const groups: Array<[string, string[]]> = []
+    for (const line of h.out.join('\n').split('\n')) {
+      const heading = /^([A-Z][A-Za-z ]*):$/.exec(line)
+      if (heading) groups.push([heading[1] as string, []])
+      const command = /^ {2}([a-z]\S*)/.exec(line)
+      if (command) groups.at(-1)?.[1].push(command[1] as string)
+    }
+
+    // A stray `Commands:` heading would be a command registered with no group.
+    expect(groups.filter(([heading]) => heading !== 'Options')).toEqual([
+      ['Look', ['list', 'status', 'doctor']],
+      ['Act', ['run', 'fix', 'evals', 'optimise', 'suppress', 'issue']],
+      ['Ship', ['release', 'retire', 'recover']],
+      ['Set up', ['setup', 'repo', 'skill', 'upgrade']],
+    ])
+  })
+
+  it('leaves no command of ours outside a group', async () => {
+    const h = await makeHeadless()
+    const ungrouped = buildProgram(h.deps)
+      .commands.filter((command) => command.helpGroup() === '')
+      .map((command) => command.name())
+    expect(ungrouped).toEqual([])
+  })
+
   it('says what run does without --stage', async () => {
     const h = await makeHeadless()
     expect(await h.run(['run', '--help'])).toBe(0)
