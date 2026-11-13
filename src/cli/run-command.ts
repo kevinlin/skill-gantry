@@ -21,6 +21,7 @@ import { detectInterrupted, formatInterrupted, runRecover } from './recover-comm
 import { runRelease, type ReleaseOptions } from './release-command.js'
 import { runRepoAdd } from './repo-command.js'
 import { runRetire, type RetireOptions } from './retire-command.js'
+import { runSkillInstall, runSkillPath, type SkillInstallOptions } from './skill-command.js'
 import { runStatus } from './status-command.js'
 import { needsSetup, startSetup, type SetupOptions } from './setup-command.js'
 import { maybeUpgrade, runUpgrade, type UpgradeOptions } from './upgrade-command.js'
@@ -51,6 +52,13 @@ export interface CliDeps {
   maybeUpgrade?: (deps: CliDeps) => Promise<'continue' | 'relaunched'>
   /** The same seam for the same reason, on doctor's §5.3 condition. */
   upgradeCheck?: (home: string) => Promise<{ current: string; latest: string } | null>
+  /**
+   * Where `~/.claude` lives, for `skill install`'s default destination and
+   * doctor's `agent-skill-outdated`. `InstallToolOptions.userHome`'s seam, for
+   * its reason: without it no test of either can avoid the developer's own
+   * skills directory. Unset means `os.homedir()`.
+   */
+  userHome?: string
 }
 
 /**
@@ -235,6 +243,24 @@ export function buildProgram(deps: CliDeps): GantryProgram {
     .option('--json', 'emit one JSON document')
     .action(async (path: string, opts: { json?: boolean }) => {
       await runRepoAdd(deps, path, opts)
+    })
+
+  const skill = program
+    .command('skill')
+    .description("install or locate SkillGantry's own agent skill")
+  skill
+    .command('install')
+    .description("copy the bundled agent skill into an agent's skills directory")
+    .option('--dir <path>', 'an existing skills directory to install into (default: ~/.claude/skills)')
+    .option('--json', 'emit one JSON document')
+    .action(async (opts: SkillInstallOptions) => {
+      await runSkillInstall(deps, opts)
+    })
+  skill
+    .command('path')
+    .description("print the absolute path of the bundled agent skill's directory")
+    .action(async () => {
+      await runSkillPath(deps)
     })
 
   program

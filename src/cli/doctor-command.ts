@@ -118,6 +118,9 @@ export async function runDoctor(
     ledgerLifecycle: lifecycleCache(deps.dbPath),
     ruleMap: ruleMapVersions(deps.dbPath),
     upgradeAvailable: await (deps.upgradeCheck ?? upgradeAvailable)(deps.home),
+    // Unset stays unset: `doctor` defaults to `os.homedir()`, and a spread
+    // keeps `exactOptionalPropertyTypes` from reading `undefined` as a value.
+    ...(deps.userHome === undefined ? {} : { userHome: deps.userHome }),
   })
   if (opts.json) deps.write(JSON.stringify(report))
   else for (const line of formatDoctor(report)) deps.write(line)

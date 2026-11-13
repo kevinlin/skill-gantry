@@ -53,22 +53,49 @@ if ! printf '%s' "$section" | grep -q '^- '; then
   section="$(printf '## %s — %s\n- No user-facing change.\n' "$next" "$(date +%F)")"
 fi
 
+# The version appears twice in the tarball — `package.json` and the bundled
+# agent skill's `metadata.version` (design §5.5) — and two numbers for one
+# artefact is a drift nobody benefits from, so they move in one edit.
+#
+# Replace only the version line, so the file's formatting survives — JSON
+# round-tripping through node reorders nothing but reindents everything. Every
+# line is found before any file is written, so a missing one leaves both files
+# as they were rather than a package.json bumped past a skill that was not. The
+# skill's line tolerates a quoted value, because the pin test reads it through a
+# YAML parser and would pass a file this script then refused to bump.
+bump_versions() {
+  node -e '
+    const fs = require("node:fs")
+    const [current, next, mode] = process.argv.slice(1)
+    const dot = current.replace(/\./g, "\\.")
+    const edits = [
+      ["package.json", new RegExp(`"version": "${dot}"`), () => `"version": "${next}"`],
+      [
+        "skills/skillgantry/SKILL.md",
+        new RegExp(`^([ \\t]+version: )(["\\x27]?)${dot}\\2$`, "m"),
+        (_line, lead, quote) => `${lead}${quote}${next}${quote}`,
+      ],
+    ]
+    const planned = edits.map(([path, line, replacement]) => {
+      const before = fs.readFileSync(path, "utf8")
+      const after = before.replace(line, replacement)
+      if (after === before) { console.error(`no version line to replace in ${path}`); process.exit(1) }
+      return [path, after]
+    })
+    if (mode === "write") for (const [path, after] of planned) fs.writeFileSync(path, after)
+  ' "$current" "$next" "$1"
+}
+
+changed="package.json, skills/skillgantry/SKILL.md and CHANGELOG.md"
+
 if [ -n "$dry_run" ]; then
-  printf '%s -> %s\n\n%s\n' "$current" "$next" "$section"
+  # Checked here too: a dry run that cannot find the line is the one to say so.
+  bump_versions check
+  printf '%s -> %s\nwould change %s\n\n%s\n' "$current" "$next" "$changed" "$section"
   exit 0
 fi
 
-# Replace only the version line, so the file's formatting survives — JSON
-# round-tripping through node reorders nothing but reindents everything.
-node -e '
-  const fs = require("node:fs")
-  const [current, next] = process.argv.slice(1)
-  const path = "package.json"
-  const before = fs.readFileSync(path, "utf8")
-  const after = before.replace(`"version": "${current}"`, `"version": "${next}"`)
-  if (after === before) { console.error(`no version line to replace in ${path}`); process.exit(1) }
-  fs.writeFileSync(path, after)
-' "$current" "$next"
+bump_versions write
 
 # Insert above the newest section, i.e. after the preamble, keeping newest-first.
 node -e '
@@ -82,7 +109,7 @@ node -e '
   fs.writeFileSync(path, `${head}${section.trimEnd()}\n\n${text.slice(at + 1)}`)
 ' "$section"
 
-printf '%s -> %s\n\n%s\n' "$current" "$next" "$section"
+printf '%s -> %s\nchanged %s\n\n%s\n' "$current" "$next" "$changed" "$section"
 cat <<EOF
 Edit the section in CHANGELOG.md — bullets are headlines, detail goes in a
 paragraph under one — then:

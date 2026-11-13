@@ -35,15 +35,18 @@ async function publish(version: string): Promise<Release> {
   const staging = await mkdtemp(join(tmpdir(), 'sg-m9-release-'))
   const source = await mkdtemp(join(tmpdir(), 'sg-m9-src-'))
 
-  // `package.json` declares `files: ["dist"]`, so a packable copy is the
-  // manifest plus that one directory — and `VERSION` reads the manifest, so
-  // bumping it is what makes the packed build answer `--version` with the new
-  // number. The checkout itself is never touched: it is the build under test.
+  // `package.json` declares `files: ["dist", "skills"]`, so a packable copy is
+  // the manifest plus those two directories — and `VERSION` reads the manifest,
+  // so bumping it is what makes the packed build answer `--version` with the
+  // new number. `skills` rides along because an upgrade installs this tarball
+  // and R3.13's `skill install` reads the bundled copy out of it. The checkout
+  // itself is never touched: it is the build under test.
   // Under the same lock as every other read of `dist/`: the packaging and
   // local-install suites recompile into this checkout, and a copy racing one of
   // their builds would ship a truncated module as the release.
   const manifest = await withDistributionLock(async () => {
     await cp(join(process.cwd(), 'dist'), join(source, 'dist'), { recursive: true })
+    await cp(join(process.cwd(), 'skills'), join(source, 'skills'), { recursive: true })
     return JSON.parse(await readFile(join(process.cwd(), 'package.json'), 'utf8')) as Record<
       string,
       unknown

@@ -111,6 +111,14 @@ export {
   type RuntimeStatus,
 } from './tools/runtimes.js'
 export {
+  BUNDLED_MARKER,
+  defaultSkillsDir,
+  installAgentSkill,
+  locateBundledSkill,
+  type InstallAgentSkillOptions,
+  type InstalledAgentSkill,
+} from './tools/agent-skill.js'
+export {
   doctor,
   type DoctorInput,
   type DoctorReport,

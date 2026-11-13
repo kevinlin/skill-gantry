@@ -1,0 +1,8 @@
+version: 2
+rules:
+  - id: RA2
+    path: SKILL.md
+    reason: "The flagged section is a list of prohibitions: it tells the agent never
+      to write under the evidence directories and never to read the credential
+      file. The skill creates no cron job, startup script or state file."
+fingerprints: []
