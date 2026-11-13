@@ -1,7 +1,7 @@
 # SkillGantry — Design
 
 **Date:** 2026-08-01
-**Status:** revision 3, incorporating [design-review-r2.md](design-review-r2.md); amended in place through M9
+**Status:** revision 3, incorporating [design-review-r2.md](design-review-r2.md); amended in place through M10
 **Layer:** design (layer 2 of 3: [requirements](requirements.md) → design → plan)
 **Traces to:** [requirements.md](requirements.md), [decision-log.md](decision-log.md)
 
@@ -378,6 +378,22 @@ Doctor reads the skills it checks and the ledger's lifecycle column as data supp
 **The lock records the digest, never the document.** That is what lets uninstall tell an untouched file from an edited one and delete only the first — R3.1's rule for a write outside the tool root, which `links` already carries, with a preimage recheck on top because here the recheck guards a delete rather than a write. A hash of a credential is not a credential, which is what keeps the lock a file the user can read.
 
 **Nothing renders it.** The wizard's install row names the path, `doctor` names the path, and neither reads a value out of the document. This is not the redaction §9.3 applies to streams; it is a narrower rule, that the one surface which knows where the credential lives never quotes it — and the inline wizard is precisely where that matters, since its frames stay in the user's scrollback by design.
+
+### 5.5 Bundled agent skill
+
+*Satisfies R3.13.*
+
+The package ships `skills/skillgantry/` — a `SKILL.md` and one reference file — and `skillgantry skill install` copies it into an agent's skills directory: `~/.claude/skills/skillgantry` by default, `<dir>/skillgantry` under `--dir`. `skillgantry skill path` prints where the bundled copy is, for an agent that reads a file rather than loading a skill. The source is located from `import.meta.url`, the way `version.ts` finds `package.json`, so it resolves from an installed prefix and from a working tree alike.
+
+**A copy, not a link, and not through §5.2.** A `git-skill` link points into `tools/<id>/repo`, which no upgrade moves. This skill lives in `versions/<v>/node_modules/skillgantry`, and §20 retains two prefixes: a link there serves the previous version's text after one upgrade and dangles after the second. The stable alternative is a `current` directory link re-pointed beside the bin link, which is one more step inside the relink §20 calls its whole safety argument — too much to pay for a document. So it is not a catalogue entry and has no lock entry either: `checkLockedTool` would run a clone's verification against it and `gitSkillUninstall` would remove the package root.
+
+**Ownership is a marker whose contents are checked.** The copy carries `.skillgantry-bundled.json` — `{ "managedBy": "skillgantry", "version": "<v>" }` — written by the install and absent from the shipped source. A destination is replaced only when it is a real directory holding a marker that parses to that shape. A symlink is refused without being followed, a directory with no marker or a foreign one is refused, and each refusal names the path and writes nothing. Presence alone is not ownership: a file of that name proves only that something wrote one.
+
+**Replacement is two renames with the old copy kept until the second lands.** The new tree is built at `skillgantry.sg-new` beside the destination, the current one moves to `skillgantry.sg-old`, the new one takes its place, and only then is the old one removed. `rename` will not replace a non-empty directory, which is why there are two. A failure of the second rename moves the old copy back. An interruption between them leaves no destination and one or both siblings; the next install removes a sibling that carries a valid marker and proceeds, and refuses one that does not, since it can no more prove it wrote that than it can the destination. Nothing here is user data — every byte is reproducible from the package — so the old copy is kept for the duration of the swap and no longer.
+
+**Staleness is doctor's to report.** `agent-skill-outdated` names an installed copy whose marker version differs from the running version and the command that refreshes it. It is outside `FAILING`: an old copy of a document breaks no gate. It is a `ToolDriftKind` computed inside `doctor`, unlike §5.3's `skillgantry-outdated`, which the caller supplies: that one needs the network, and this one is a read of a file under the user's home, which `skill-link-unmanaged` already does. It judges ownership with the function the install uses, so doctor cannot call stale something the install would refuse to touch. Doctor looks only where the default install writes; a `--dir` copy is the caller's to track.
+
+The skill's own `metadata.version` is the package version, pinned by a test and bumped by `release-version.sh` in the same edit, because two version numbers for one tarball is a drift with no reader who benefits.
 
 ## 6. Stage execution contract
 
@@ -808,7 +824,7 @@ One case remains where unredacted artefacts could be re-read by a later tool: a 
 
 ### 9.4 Fix prompt
 
-*Satisfies R6.10, R6.11, R6.14.*
+*Satisfies R6.10, R6.11, R6.14, R6.15.*
 
 A stage that reported findings writes `fix-prompt.md` beside its `stage.json`: a prompt for a coding agent that names where the skill is, where each tool's own report is, and what every finding said. Per stage rather than per tool, because a fan-out security stage with two scanners is one job for the agent.
 
@@ -841,6 +857,10 @@ Four things about that block are decisions rather than formatting:
 6. **Name each finding's tool, and the command that records it** (R6.14) — per finding, only where that tool declares a baseline, and never the tool's own wholesale one. §9.4b holds this rule by rendering no findings at all: it composes from the skill's tree, precisely because the state it addresses is one no run can produce evidence for.
 7. **SkillGantry never applies the result.**
 
+**Three more, added when the reader became an agent driving the CLI** (R6.15). Each prompt opens with one sentence saying whose work this is and what the result is for, because an instruction with no purpose is followed to the letter. No body cites a requirement or decision id: those resolve in this repository and nowhere an agent reads the prompt. And each ends by naming `skillgantry run <id> --stage <stage>` to re-verify and `skillgantry status <id>` for what is left, composed once in `prompt-parts.ts`. The fix prompt's fourth instruction changed with them — it said to stop and report a finding judged wrong, one line above the instruction to record a false positive, and an agent that stopped never reached the second. It now says to leave that code untouched, report it, and carry on with the rest.
+
+A `fix-prompt.md` already on disk is evidence and is printed as it was written; `fix` rebuilds only when the file is absent (§15). The new wording therefore reaches new runs and in-memory rebuilds, never a recorded run's file.
+
 ### 9.4a Optimise prompt
 
 *Satisfies R6.12.*
@@ -851,11 +871,13 @@ The second prompt composed from run evidence. It lives in `stages` beside `fix-p
 
 The body names the skill directory, the repo root, the declared version, the commit and dirty flag and the skill digest; the newest recorded run's per-stage outcomes and the absolute path of each tool's report; the eval assets under `<skill>/evals/`; the managed interpreter, the SkillHone location and its sha; the handoff to the top-level `skillhone` skill, which dispatches to its own sub-skills; and upstream's own notice that some of its workflows use bypass mode and local subprocess execution. Absent evidence is stated rather than omitted — a section that vanishes reads as a builder that failed.
 
+**Evidence is per stage, across runs** (R6.12, rev 33). It read the newest run alone, and a run is whatever stages were asked for: re-running security after a fix produced a prompt with one stage in it, and the eval results recorded a run earlier — the evidence an optimiser most needs — were gone. `planOptimiseFor` now walks the index newest-first and takes, for each stage, the first run in which that stage reached a verdict, falling back to the newest record of it when none did; R9.8's stepping-over rule, for R9.8's reason. Each stage names its own run and says whether that run's digest is the skill's current one, since evidence from other bytes is still evidence but must not read as a description of today's. It is read from the sidecar and not from `latestGateOutcomes` because the prompt needs the whole `StageResult` and the ledger keeps an outcome. The body also gained what the other two had: a line per finding with its line number, what done looks like, and a report-back section.
+
 Its install argument is plain fields rather than a type imported from `tools`, so the builder adds no §3 edge — the property §9.4 records as the reason `fix-prompt.ts` lives in `stages` at all. `src/cli/gantry-views.ts` reads the lock and flattens it, which is where the ledger and the process table are already reachable.
 
 ### 9.4b Eval bootstrap prompt
 
-*Satisfies R6.13.*
+*Satisfies R6.13.* R6.15 is §9.4's.
 
 The third prompt, and the first composed from the skill's tree rather than from run evidence — because the state it addresses is one where no run can produce evidence. skill-up cannot run without `evals/eval.yaml`, most skills carry none, and the evaluate gate answers that with `errored`/`missing-artefact` and no next step. §9.4's seven rules and §9.4a's string-always, write-nothing shape both hold — rule 6 vacuously, since this prompt renders no findings.
 
@@ -865,7 +887,7 @@ The third prompt, and the first composed from the skill's tree rather than from 
 
 **Credentials are named as keys, never as values** (R7.3). skill-upper's own step 5 reads `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `QODER_PERSONAL_ACCESS_TOKEN`, or `~/.skill-up/credentials.yaml`, and stops to ask rather than writing a secret into YAML — the correct behaviour, so the prompt names which key is wanted and leaves the asking where it is. It names the gateway pair `ANTHROPIC_AUTH_TOKEN` + `ANTHROPIC_BASE_URL` beside those three: an Anthropic credential reaches a spawned tool in that shape as often as in the other, §4.1 derives one form from it, and the setup wizard reports the token by that name — so naming only the API key described a machine SkillGantry does not require. The engine is the skill's own declaration (`engine: { name: claude_code }` in every reference suite) authenticated by that CLI, which is why §5.3's `claude-cli-missing` probe is a fact this prompt can name.
 
-**No "after" section.** Adding `evals/` moves the skill digest, so R9.9 refuses a release against gates recorded before it. That is a fact about SkillGantry and belongs on a SkillGantry surface, not in a document handed to an agent working in the user's repo.
+**It names the gate, and still forbids running the suite** (R6.15). The first position here was that there is no "after" section: adding `evals/` moves the skill digest, R9.9 then refuses a release against the gates recorded before it, and that is a fact about SkillGantry which belongs on a SkillGantry surface. That held while the only such surface was a terminal a person was looking at. §15's `status` makes the agent's own shell one, so the prompt now ends on the command that runs the suite as the evaluate gate and the command that reports what the new digest made stale. Running `skill-up` directly stays forbidden, because a run outside the pipeline records nothing.
 
 ## 10. Ledger
 
@@ -1397,12 +1419,17 @@ Specified in [design_tui.md](design_tui.md), which holds §14 through §14.14 un
 
 ## 15. Headless interface
 
-*Satisfies R12.1–R12.4, R12.5a, R12.5b, R12.6, R12.7, R12.8, R12.9, R12.10.*
+*Satisfies R12.1–R12.4, R12.5a, R12.5b, R12.6, R12.7, R12.8, R12.9, R12.10, R12.11–R12.15.*
 
 ```
-skillgantry run <skill> --stage validate,evaluate,security [--json] [--yes]
+skillgantry list [--json]
+skillgantry status <skill> [--json]
+skillgantry run <skill> [--stage validate,evaluate,security] [--json] [--yes]
 skillgantry doctor [--json] [--migrate-rule-map]
 skillgantry setup
+skillgantry repo add <path> [--json]
+skillgantry skill install [--dir <path>] [--json]
+skillgantry skill path
 skillgantry release <skill> --version <semver|major|minor|patch>
                             [--yes] [--json] [--allow-dirty] [--notes <text>]
 skillgantry retire <skill> [--undo] [--superseded-by <id>]
@@ -1428,7 +1455,7 @@ Every launch, headless or not, first scans for an unresolved mutation record and
 
 `fix` prints the §9.4 prompt for a recorded run. Its default output is the body alone, so `skillgantry fix declawed --stage security | pbcopy` works; `--json` prints one document rather than `run`'s ndjson, since there is no event stream to follow. With no `--stage` and exactly one stage carrying a prompt it prints that one, and with more than one it lists `<stage>  <path>` and refuses — the same shape the skill selector uses for an ambiguous name.
 
-**Its exit code answers "is there a prompt on stdout", not "did the skill pass"** — `0` when one was produced, `1` when the run resolved and nothing in scope carried a finding. This is a deliberate divergence from R12.2's meaning for `run`: reusing that meaning would make a clean skill and a failed lookup indistinguishable. An unknown skill, run id or stage rejects and reaches the top-level handler like every other command's errors.
+**Its exit code answers "is there a prompt on stdout", not "did the skill pass"** — `0` when one was produced, `1` when the run resolved and nothing in scope carried a finding. This is a deliberate divergence from R12.2's meaning for `run`: reusing that meaning would make a clean skill and a failed lookup indistinguishable. An unknown skill, run id or stage rejects and reaches the top-level handler like every other command's errors — which, until §15.1, was a sentence about a handler the bin entry did not have.
 
 **Suppression reaches the headless surface additively.** `run --json` carries `ToolRunRecord` on `tool:done`, so each suppressed finding gains one optional key: no new event, no version bump. `RunDelta` is deliberately not extended — a `suppressed` counter would keep six files in step for a number the stage summary already puts on the rail and the Issues screen answers afterwards. `fix` gains one exit case: a run whose findings are all suppressed exits `1` saying so rather than `0` with an empty table, and `--json` reports `findings` (actionable) and `suppressed` as siblings.
 
@@ -1441,6 +1468,55 @@ Every launch, headless or not, first scans for an unresolved mutation record and
 There is no `--then-run`, unlike §14.7's toggle. The shell composes `suppress && run`, and duplicating stage selection into a second command is how the two come to disagree.
 
 **It resolves the run from the sidecar, not the ledger.** The default is the greatest run id in `index.ndjson` — not the `latest` symlink, which is absent mid-write, and not `runs.sidecar_path`, because R8.2 makes the sidecar the evidence, the command already names its skill so no cross-skill query is needed, and a run whose ledger row failed still has complete evidence on disk. `--run` accepts either the run id or the directory name, matching the id first: the directory is the handle a maintainer can see in `ls`, the id is the one `run.json` and the ledger record, and matching the id first means a directory named like an id cannot make the argument ambiguous. When the prompt file is absent but that stage's `stage.json` carries findings, `fix` rebuilds it in memory and marks it `onDisk: false`; it never writes, so the pipeline stays the only writer and runs recorded before §9.4 existed are answerable without rewriting their evidence.
+
+### 15.1 The surface an agent drives
+
+*R12.1 as amended, R12.11–R12.15.* Everything above assumed a person who had already seen the Work screen: every command takes a skill id and none listed them, a gate could be run and its meaning for the release could not be read, and a failed lookup was a stack trace. This section is what closes that, and it is written as a contract because an agent parses it.
+
+**`run` without `--stage` runs `GATE_STAGES`** — validate, evaluate, security, the three R9.8 reads — and never release, which needs a target and `--yes`.
+
+**`list`** (R12.11) prints one row per discovered skill and, under `--json`, one document:
+
+```
+{ "skills": [ { "id", "name", "repoId", "dir", "version": string|null, "deprecated": boolean,
+                "gates": { "validate": outcome|null, "evaluate": outcome|null, "security": outcome|null },
+                "openIssues": number } ] }
+```
+
+It reads `latestGateOutcomes` and `openIssueCounts` and computes no digest, so a verdict here is the last one recorded and may be about other bytes. Saying whether it still holds costs a read of every file in the skill, which is `status`'s job for one skill and would be a walk of the whole repo here.
+
+**`status`** (R12.12) is the readiness document:
+
+```
+{ "skill":  { "id", "name", "repoId", "dir", "repoPath", "version": string|null,
+              "deprecated": boolean, "digest": "sha256:…" },
+  "gates":  [ { "stage", "outcome": outcome|null, "runId": string|null,
+                "runDir": string|null, "current": boolean } ],          // always three, in GATE_STAGES order
+  "hasEvalSuite": boolean,
+  "issues": { "open": number, "suppressed": number,
+              "bySeverity": [ { "severity", "count" } ],
+              "items": [ { "fingerprint", "severity", "ruleClass", "path",
+                           "state": "open"|"acknowledged", "detectors": string[] } ] },
+  "release": { "ready": boolean, "blockers": [ { "code", "message" } ],
+               "dirty": string[], "unchecked": string[] },
+  "next":   [ { "command": string|null, "why": string } ] }
+```
+
+A gate that has never reached a verdict is `outcome: null` with null run fields and `current: false`. `current` is the recorded run's digest compared with the one computed now. "Open" is `openIssueCounts`' meaning — `open` or `acknowledged`, and not suppressed — with the suppressed count beside it, so the number agrees with the Dashboard's.
+
+**`release.blockers` comes from release's own gathering.** `release-stage.ts` assembled its inputs inline: the versions manifest, the candidate digest, the gate outcomes, then `checkPreconditions`. That assembly is now `gatherReleasePreconditions` in `release/`, returning the refusals together with the evidence it read, and the stage calls it — so `status` cannot answer from a second implementation. It carries R9's codes unchanged plus two for refusals the stage made outside `checkPreconditions`: `manifest-unreadable`, which still returns alone as it always did, and `release-tool-missing` for a lock without the installability tool, which the stage reports as a skip and a caller should hear as a reason.
+
+**`ready` means ready to attempt, and `unchecked` says what that leaves.** Three refusals are decided only once a target exists: whether the target resolves against the current version, whether the archive it names is already dirty in the tree (`releaseDirtyPaths` excludes it for exactly that reason), and whether the sandbox opens. `unchecked` names them — `target-version`, `archive`, `sandbox` — rather than letting `ready: true` claim a release that has not been planned. `dirty` is reported and is not a blocker, because `--allow-dirty` is the user's call to make.
+
+**`next` is ordered, and every entry says why.** An interrupted mutation comes first and names `recover`. A blocker no command resolves is an entry with `command: null`: a version disagreement, an unreadable `versions.json`, and an absent release tool, whose reason says the maintainer has to run `skillgantry setup` in a terminal. Every blocker leaves at least one entry, so `next` is never empty while `ready` is false. A deprecated skill names `retire --undo`. Then: no eval suite names `evals`; a gate that is absent or stale names one `run --stage` over all such stages; a gate that `failed` against the current bytes names `fix --stage <s> --run <runId>` — a failure recorded against other bytes is stale before it is anything else, and is re-run rather than fixed; a `degraded` one names a re-run and `doctor`, since a tool that did not complete is not a finding to fix. With no blocker left the one entry is `release --version <patch|minor|major> --yes`, and dirty paths ride on its reason. The `--run` is load-bearing: gates are selected per stage and `fix` defaults to the newest run, which need not have executed that stage at all.
+
+**`status` writes nothing to the repo or the sidecar, and does not call `syncLifecycle`.** That function reconciles the ledger's lifecycle cache and is a write; `deprecated` is read from frontmatter, which R1.6 makes the authority anyway. Opening the ledger can create and migrate it, as for every command.
+
+**One error contract** (R12.13). The bin entry is `main()`, exported so it is testable without a spawn. It sets `exitOverride` on the program and every subcommand, so commander's own parse errors arrive as a throw instead of a `process.exit(1)` that no handler sees; help and version still exit `0`, and a parse error commander has already printed is not printed twice. commander uses one code for help that was asked for and help shown because a subcommand was missing, so the two are told apart by the error's own exit code: a bare `skillgantry repo` is `2`. Anything else is one `error: <message>` line on stderr and exit `2`, with `{ "error": { "message" } }` on stdout when `--json` was given, and the stack only under `SG_DEBUG`. The handler is in `main()` and never in `buildProgram`: tests drive the program in-process and assert on the rejection, and a program that swallowed its own errors would make every one of those a pass. `2` already meant "the request was bad" for `suppress`, `optimise` and `evals`; those two now print the same JSON document under `--json` instead of a line of prose. `upgrade` keeps its own table, in which `2` is a foreign install.
+
+**No terminal, no interface** (R12.14). The root action and `setup` check standard input before mounting and exit `2` naming `list`, `status` and `--help`.
+
+**`repo add`** (R12.15) is `registerRepo`, the function the wizard's repo step calls, and prints `{ "repo": { "id", "path", "name", "isGit" }, "skills": number }` under `--json`. `skill install` prints `{ "installed": [ { "path", "version", "replaced": boolean } ] }`; §5.5 holds its rules.
 
 ## 16. Test strategy
 
@@ -1498,6 +1574,7 @@ There is no `--then-run`, unlike §14.7's toggle. The shell composes `suppress &
 | Target resolution | `previewSuppression` over multi-detector rule sets | A tool with a baseline plans a write; one without is named as uncovered only while it is still reporting; several rule ids for one tool fold into one plan; no baseline anywhere plans nothing — R11.16 |
 | `skillgantry suppress` | `buildProgram` with a collecting writer | Without `--yes` the diff prints and the file is byte-identical; with it the diff precedes the write in the output; an empty reason, a baseline-less tool and an entry already present each exit non-zero with their own code; `--json` is one document — R12.7 |
 | `SuppressPane` and the toggle | `renderInk` at 80×24 and 50×14, plus `resumedGates` asserted directly | The title names the tool and the file; the uncovered warning and the stale-gate line each appear only in their own case; the resolved chain is contiguous from the first non-passing gate; three passing gates resolve to empty and start the toggle on every gate; the frame's row count is unchanged — R11.16, R11.17 |
+| The agent loop | Fake gate tools and a fake release tool, driven through `main()` with every next command taken from the `status` document (`tests/acceptance/m10.test.ts`) | A never-run skill reaches a release by following `next` alone: the failing gate, the `fix --run` it names, the suppression, the stale verdicts it causes, the re-run, the release; a request that cannot be carried out is one line and exit `2`; `skill install` replaces only what it wrote |
 | Suppression round trip | A fake tool branching on `--baseline`, through the whole CLI (`tests/acceptance/m8.test.ts`) | The gate fails, `suppress` writes the rule, the re-run passes, the issue reads suppressed and still `open` with its history, and deleting the entry brings the finding back |
 | The written rule matches | A real installed skillspector, twice over a real skill (`SG_INTEGRATION=1`) | The rule SkillGantry wrote is one the tool's own `fnmatch` matches. The acceptance tier cannot prove this: its fake tool branches on whether the flag arrived, which is a different question from whether the rule inside the file matches, and a wrong path shape loads cleanly and suppresses nothing |
 | Palette and titled border | `tokens.ts` asserted as data, plus a source scan over `src/tui/**`; `Panel`'s title row measured against the box beneath it | Every token is a hex triple and no background or body foreground is set anywhere in the tree; the title row and its box agree to the cell, so no corner tears; the saved row reaches the layout budget — R11.15, §14.6 |
@@ -1535,6 +1612,8 @@ Fixture capture is a scripted, repeatable step tied to the pinned tool versions,
 | R11.24 the upgrade prompt | [design_tui.md](design_tui.md) 14.14 |
 | R12 headless | 15 |
 | R12.10 `skillgantry upgrade` | 15 |
+| R12.11–R12.15 the surface an agent drives | 15.1 |
+| R3.13 the bundled agent skill | 5.5 |
 | R13 quality and distribution | 2, 16 |
 | R13.8–R13.12 release contract, changelog, versioned prefix, check and apply | 20, 5.3, 15 |
 
@@ -1561,6 +1640,7 @@ Every pass below is recorded in full somewhere else — the two reviews are thei
 | M9 | Distribution as something the product does rather than the maintainer | §5.3, §14.14, §15, §20 | [plan_m9-version-check-and-upgrade.md](plan_m9-version-check-and-upgrade.md) |
 | M1.1 | A run directory named for when it started, separated from the identity everything joins on; then the screen, which still named a run by its id | §9, §9.1, §9.2, §10.3, §11.3, §13, §14.8, §15 | [plan_m1.1-timestamped-run-directories.md](plan_m1.1-timestamped-run-directories.md) |
 | M7.2 | Two levels in the list column; then the row label that undid it, and the doctor condition that says why a skill has no name | §5.3, §14.12 | [plan_m7.2-repo-skill-navigation.md](plan_m7.2-repo-skill-navigation.md) |
+| M10 | A headless surface a coding agent can drive end to end, the prompts reworded for that reader, and the skill that teaches the loop | §5.5, §9.4, §9.4a, §9.4b, §15, §15.1 | [plan_m10-agent-friendly-cli.md](plan_m10-agent-friendly-cli.md) |
 
 ## 19. Risks carried into implementation
 

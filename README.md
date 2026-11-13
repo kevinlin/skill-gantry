@@ -133,11 +133,13 @@ The Work screen shows your skills on the left, the five-stage rail for the selec
 Nothing is hidden from you if the terminal is the wrong place for it. The same run works headless:
 
 ```bash
-skillgantry run declawed --stage validate,evaluate,security
-skillgantry run declawed --stage validate,evaluate,security --json   # ndjson events
+skillgantry run declawed                    # the three gates
+skillgantry run declawed --stage security   # or just one
+skillgantry run declawed --json             # ndjson events
+skillgantry status declawed                 # where it stands, and what to do next
 ```
 
-Exits non-zero when any stage does not pass.
+`run` exits 1 when a stage does not pass. Exit 2 means the request itself could not be carried out, such as a mistyped skill name, and comes with one `error:` line.
 
 **5. Release, when the gates are green.**
 
@@ -147,16 +149,43 @@ skillgantry release declawed --version minor --yes
 
 Release refuses unless the last gate outcomes all passed *and* were recorded against exactly the bytes you are shipping. It then stages the version bump, packages the archive, extracts it, installs it, and only after all of that shows you a diff and writes. An abort leaves no archive behind and no modified file. It never commits or tags — that stays your keystroke.
 
+## Driving it from a coding agent
+
+Everything above works without the terminal app, which is what lets a coding agent do the loop for you. The agent needs one command to orient itself:
+
+```bash
+skillgantry status declawed --json
+```
+
+That prints the skill's digest, each gate's verdict, and whether that verdict is still about the current files. It lists the open issues and everything a release would refuse on. Last comes `next`: the commands that clear those blockers, in order, each with its reason. The agent does the first one and asks again. When a gate has failed, `next` names the `skillgantry fix` command that prints the prompt for it. When nothing is left, it names the release.
+
+SkillGantry ships a skill that teaches an agent this loop and its rules. Two of them: never accept a scanner's findings wholesale, and never release without being asked.
+
+```bash
+skillgantry skill install                 # copies it to ~/.claude/skills/skillgantry
+skillgantry skill install --dir <path>    # or into another agent's skills directory
+```
+
+Then ask your agent, in the skill's repo, to get a skill ready to release. `skillgantry doctor` tells you when the installed copy is older than the binary.
+
+Two things still need you and a real terminal: `skillgantry setup`, because it installs tools and takes your credentials, and the decision to release.
+
 ## The rest of the surface
 
 ```
 skillgantry                        # the terminal app
 skillgantry setup                  # first-run wizard, re-runnable
-skillgantry run <skill> --stage validate,evaluate,security [--json] [--yes]
+skillgantry list [--json]          # every skill and its last gate verdicts
+skillgantry status <skill> [--json]  # readiness, blockers, and the next commands
+skillgantry run <skill> [--stage validate,evaluate,security] [--json] [--yes]
 skillgantry release <skill> --version <semver|major|minor|patch> [--yes] [--notes <text>]
 skillgantry retire <skill> [--undo] [--superseded-by <id>]
 skillgantry fix <skill> [--stage <stage>] [--run <id>]      # print a fix prompt
 skillgantry suppress <skill> --tool <id> --rule <id> --path <p> --reason <text>
+skillgantry evals <skill>          # print a prompt for writing the eval suite
+skillgantry optimise <skill>       # print a prompt for improving the skill
+skillgantry repo add <path>        # register a skill repo without the wizard
+skillgantry skill install          # install the bundled agent skill
 skillgantry doctor                 # re-verify every locked tool, report drift
 skillgantry recover                # resolve a mutation interrupted by a crash
 ```
@@ -189,7 +218,7 @@ Every byte of stdout and stderr SkillGantry writes passes a redaction filter fir
 
 ## Status and docs
 
-Milestones M1 through M8 have shipped: engine, terminal app, tool manager, four adapters, mutating stages with worktree isolation, Dashboard and Issues screens, the Work screen overhaul, and suppression.
+Milestones M1 through M10 have shipped: engine, terminal app, tool manager, four adapters, mutating stages with worktree isolation, Dashboard and Issues screens, the Work screen overhaul, suppression, self-upgrade, and the headless surface a coding agent drives.
 
 The specifications are the contract, and the code follows them. Start at [`docs/specs/index.md`](docs/specs/index.md); it is the only catalogue. [`decision-log.md`](docs/specs/decision-log.md) records why the product is shaped this way, [`requirements.md`](docs/specs/requirements.md) numbers what it must do, and [`design.md`](docs/specs/design.md) holds every contract.
 

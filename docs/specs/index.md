@@ -47,6 +47,7 @@ Every plan is shipped. The description names what the plan covers and the requir
 | [plan_m7.2-repo-skill-navigation.md](plan_m7.2-repo-skill-navigation.md) | M7.2 | — | Two-level repo → skill navigation in the list column (R11.23; R11.11 rev 24) |
 | [plan_m8-suppress-finding.md](plan_m8-suppress-finding.md) | M8 | Compacted | Accepting a finding from the terminal, write-side (R4.16, R8.16, R10.12, R11.16–R11.17, R12.7) |
 | [plan_m9-version-check-and-upgrade.md](plan_m9-version-check-and-upgrade.md) | M9 | Compacted | Version check and self-upgrade (R11.24, R12.10, R13.8–R13.12; D30–D31) |
+| [plan_m10-agent-friendly-cli.md](plan_m10-agent-friendly-cli.md) | M10 | — | A headless surface a coding agent can drive: `list`, `status`, the error contract, `repo add`, the reworded prompts and the bundled skill (R3.13, R6.15, R12.11–R12.15; R6.12, R6.13, R12.1 rev 33) |
 
 ## Reviews (historical)
 

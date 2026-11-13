@@ -1,6 +1,6 @@
 import { resolveBaselinePath } from '../adapters/paths.js'
 import { getAdapter } from '../adapters/registry.js'
-import type { RawFinding, SkillRef } from '../types.js'
+import type { RawFinding, SkillRef, Stage } from '../types.js'
 import { isActionable } from './outcome.js'
 import type { ToolRunRecord } from './types.js'
 
@@ -16,6 +16,31 @@ export type ManifestLookup = (
 /** A message goes into a markdown table cell, so its two breaking characters go. */
 export const cell = (text: string): string =>
   text.replace(/\|/g, '\\|').replace(/\s*\n\s*/g, ' ').trim()
+
+/** `path:line` when the finding has a line, the bare path when it does not. */
+export const location = (path: string, line?: number): string =>
+  line === undefined ? path : `${path}:${line}`
+
+/**
+ * R6.15's closing section, composed here for all three prompts so it cannot
+ * fork: a copy per prompt is how the re-run command comes to be spelled three
+ * ways, and an agent that is told one spelling that no longer exists has no
+ * way to find that out. Lines rather than a string, for `suppressSection`'s
+ * reason — the caller decides what follows it, and the eval prompt adds one
+ * line of its own to this section.
+ *
+ * It says the exit code is a result because `run` exits 1 while a stage has not
+ * passed, and an agent reading that as an error stops to debug SkillGantry.
+ * `stages` is joined with a bare comma, the spelling `--stage` takes.
+ */
+export function verifySection(skillId: string, stages: readonly Stage[]): string[] {
+  return [
+    '## Verify',
+    '',
+    `- Re-verify with \`skillgantry run ${skillId} --stage ${stages.join(',')}\`. It exits 1 while any stage is not \`passed\`; that is a result, not an error.`,
+    `- \`skillgantry status ${skillId}\` lists what still stands between this skill and a release.`,
+  ]
+}
 
 /** One actionable finding with the tool that reported it. */
 export interface AttributedFinding {

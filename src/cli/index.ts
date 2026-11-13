@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-import { buildProgram, defaultDeps } from './run-command.js'
+import { main } from './main.js'
+import { defaultDeps } from './run-command.js'
 
-const program = buildProgram(defaultDeps())
-await program.parseAsync(process.argv)
-process.exitCode = program.exitCode ?? 0
+process.exitCode = await main(process.argv, defaultDeps())

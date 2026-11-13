@@ -1,7 +1,14 @@
 import { join } from 'node:path'
 import { getAdapter } from '../adapters/registry.js'
 import { maxSeverity, type Severity, type SkillRef } from '../types.js'
-import { attributedRows, cell, suppressSection, type ManifestLookup } from './prompt-parts.js'
+import {
+  attributedRows,
+  cell,
+  location,
+  suppressSection,
+  verifySection,
+  type ManifestLookup,
+} from './prompt-parts.js'
 import type { StageResult, ToolRunRecord } from './types.js'
 
 export interface FixPromptInput {
@@ -20,9 +27,6 @@ export interface FixPromptInput {
   /** Injectable so a test need not register an adapter. */
   lookup?: ManifestLookup
 }
-
-const location = (path: string, line?: number): string =>
-  line === undefined ? path : `${path}:${line}`
 
 function toolReportLines(run: ToolRunRecord, lookup: FixPromptInput['lookup']): string[] {
   const version = run.toolVersion ?? 'unknown version'
@@ -100,7 +104,13 @@ export function buildFixPrompt(input: FixPromptInput): string | null {
   /** Named once: an empty section means no detecting tool declares a baseline. */
   const canAccept = accept.length > 0
 
-  const verify = `skillgantry run ${skill.id} --stage ${result.stage}`
+  // The outcome and nothing else: a `passed` stage still gets a prompt when it
+  // carries sub-floor findings (§8.1), and telling that agent the release is
+  // blocked would be false.
+  const purpose =
+    result.outcome === 'passed'
+      ? ' The gate passed; these findings are still on record as open issues.'
+      : ' The skill cannot be released until this gate passes.'
 
   // Numbered at render time: the accept instruction is absent when no
   // detecting tool declares a baseline, and a gap in the numbering reads as a
@@ -109,18 +119,24 @@ export function buildFixPrompt(input: FixPromptInput): string | null {
     "Read the tool report listed above before you read this table. The report carries `properties.explanation`, `properties.remediation`, `properties.confidence` and `properties.code_snippet`; the table below cannot, because SkillGantry normalises every finding to six fields and drops the rest. Judge from the report, not from the table alone.",
     'Judge each finding into exactly one of three: correct and worth fixing; correct, but the remediation the tool suggests does not apply here; a false positive.',
     'Fix only what you judged correct and worth fixing, with the smallest change that removes the cause.',
-    'Where the code is right and the finding is wrong, stop and report it. Do not edit correct code to satisfy a scanner — an open finding is better than a quietly broken skill.',
+    // Not "stop and report": that sat one line above the instruction to record
+    // a false positive, and an agent that stopped never reached it.
+    'Where the code is right and the finding is wrong, leave the code as it is, say so in your report, and carry on with the other findings. Do not edit correct code to satisfy a scanner — an open finding is better than a quietly broken skill.',
     ...(canAccept
       ? [
           'Where you confirmed a finding is a false positive and its tool keeps a suppression file, record it there with the command below and say why. Record nothing you did not judge false.',
         ]
       : []),
     'Never write anything under `*-workspace/` or `.skillgantry-workspace/`. That is the run evidence this prompt points at.',
-    `Re-verify with \`${verify}\`. A finding you deliberately did not fix will still be reported, and that is expected.`,
+    'A finding you deliberately did not fix will still be reported when you re-verify, and that is expected.',
   ]
 
   return `${[
     `# Fix the ${result.stage} findings on ${skill.id}`,
+    '',
+    // Whose work this is and what it is for, before anything else: an
+    // instruction with no purpose is followed to the letter.
+    `You are working for the maintainer of this skill. SkillGantry ran its ${result.stage} gate over the skill and it reported the findings below. Your job is to decide what each finding is worth and act on it.${purpose}`,
     '',
     `The ${result.stage} stage ${result.outcome} with ${rows.length} finding(s), the highest of severity \`${highest}\`.`,
     '',
@@ -151,6 +167,12 @@ export function buildFixPrompt(input: FixPromptInput): string | null {
     ...instructions.map((text, i) => `${i + 1}. ${text}`),
     '',
     ...(canAccept ? [...accept, ''] : []),
+    ...verifySection(skill.id, [result.stage]),
+    '',
+    '## Done when',
+    '',
+    "Every finding above has one of the three judgements and an action, and you have re-verified once after your last change. The gate does not have to pass: a finding you were right to leave open keeps it failing, and that is the maintainer's call.",
+    '',
     '## Report back',
     '',
     'One line per finding: its number, which of the three judgements you reached, and what you did — changed it, recorded it as a false positive, or nothing and why.',

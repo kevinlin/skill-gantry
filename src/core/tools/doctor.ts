@@ -7,6 +7,8 @@ import { parseFrontmatter } from '../discovery/frontmatter.js'
 import type { LifecycleState } from '../ledger/lifecycle.js'
 import type { SkillRef } from '../types.js'
 import type { ToolLockEntry } from '../config/schema.js'
+import { VERSION } from '../version.js'
+import { defaultAgentSkillPath, inspectAgentSkill } from './agent-skill.js'
 import { CATALOGUE, SKILLHONE_TOOL_ID, catalogueEntry } from './catalogue.js'
 import { type Exec, defaultExec } from './exec.js'
 import { RUNTIME_SKILL_DIRS, verifyGitSkill } from './git-skill.js'
@@ -45,6 +47,11 @@ export type ToolDriftKind =
   // with no lock entry is `unlocked`, and a link we made that has gone dangling
   // fails `verifyGitSkill` into `missing` — and neither describes this one.
   | 'skill-link-unmanaged'
+  // R3.13, §5.5. Here and not on `UpgradeFinding`'s side of the line: that one
+  // needs the network, so it is supplied by the caller, and this one is a read
+  // of a file under `userHome`, which `skill-link-unmanaged` already does. A
+  // stale copy of a document breaks no gate, so it is outside `FAILING`.
+  | 'agent-skill-outdated'
 
 /** The four kinds R3.9 names are the ones that fail the report. */
 const FAILING: ReadonlySet<ToolDriftKind> = new Set<ToolDriftKind>([
@@ -338,6 +345,28 @@ async function unmanagedSkillLinks(home: string, userHome: string): Promise<Tool
   return findings
 }
 
+/**
+ * R3.13. Only where the default install writes: a `--dir` copy is the caller's
+ * to track. An absent copy, one with no marker or a foreign one, and a symlink
+ * are all "not ours" and say nothing — `inspectAgentSkill` is the same judgement
+ * the install makes before it replaces anything, so doctor cannot call
+ * something stale that the install would refuse to touch.
+ */
+async function agentSkillOutdated(userHome: string): Promise<ToolFinding | null> {
+  const path = defaultAgentSkillPath(userHome)
+  const found = await inspectAgentSkill(path).catch(() => null)
+  if (found?.kind !== 'ours' || found.version === VERSION) return null
+  return {
+    toolId: 'skillgantry',
+    kind: 'agent-skill-outdated',
+    expectedVersion: VERSION,
+    actualVersion: found.version,
+    detail:
+      `${path} is ${found.version}, skillgantry ${VERSION} is running — ` +
+      'run `skillgantry skill install`',
+  }
+}
+
 export async function doctor(input: DoctorInput): Promise<DoctorReport> {
   const lock = await loadToolLock(input.home)
 
@@ -383,6 +412,9 @@ export async function doctor(input: DoctorInput): Promise<DoctorReport> {
   }
 
   tools.push(...(await unmanagedSkillLinks(input.home, userHome)))
+
+  const agentSkill = await agentSkillOutdated(userHome)
+  if (agentSkill) tools.push(agentSkill)
 
   for (const dir of await installedDirs(input.home)) {
     if (lock.tools[dir]) continue

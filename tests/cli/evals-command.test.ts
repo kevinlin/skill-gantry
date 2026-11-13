@@ -2,6 +2,7 @@ import { readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { runEvals } from '../../src/cli/evals-command.js'
+import { selectSkill } from '../../src/cli/run-command.js'
 import { makeCliFixture, type CliFixture } from '../helpers/tmp-repo.js'
 
 /** Everything R12.9's happy path needs: the runner locked, skill-upper held. */
@@ -44,7 +45,13 @@ describe('skillgantry evals', () => {
     const code = await runEvals(fixture.deps, 'declawed', {}, fixture.userHome)
 
     expect(code).toBe(0)
-    expect(fixture.out.join('\n')).toContain('# Extend the eval suite for declawed')
+    const body = fixture.out.join('\n')
+    expect(body).toContain('# Extend the eval suite for declawed')
+    // The suite file, never the directory that holds it.
+    expect(body).toContain('- Eval assets present: `declawed/evals/eval.yaml`\n')
+    const { skill } = await selectSkill(fixture.home, 'declawed')
+    expect(body).toContain(`skillgantry run ${skill.id} --stage evaluate`)
+    expect(body).toContain(`skillgantry status ${skill.id}`)
   })
 
   it('emits one document under --json', async () => {

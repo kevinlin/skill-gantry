@@ -111,6 +111,14 @@ export {
   type RuntimeStatus,
 } from './tools/runtimes.js'
 export {
+  BUNDLED_MARKER,
+  defaultSkillsDir,
+  installAgentSkill,
+  locateBundledSkill,
+  type InstallAgentSkillOptions,
+  type InstalledAgentSkill,
+} from './tools/agent-skill.js'
+export {
   doctor,
   type DoctorInput,
   type DoctorReport,
@@ -142,6 +150,14 @@ export {
 } from './isolation/recover.js'
 export { retireSkill, type RetireInput, type RetireResult } from './release/retire.js'
 export { releaseDirtyPaths } from './release/preflight.js'
+export {
+  gatherReleasePreconditions,
+  type GatherInput,
+  type GatheredPreconditions,
+  type GatheredRefusal,
+  type GatheredRefusalCode,
+  type ReleaseEvidence,
+} from './release/gather.js'
 export { compareSemver, isBumpLevel, resolveTargetVersion } from './release/version.js'
 export type {
   ChangeEntry,

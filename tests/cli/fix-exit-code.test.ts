@@ -14,7 +14,7 @@ const TMP_DIR = join(process.cwd(), 'tests', 'tmp')
  * `tests/helpers/child.ts` returns stdout and rejects on a non-zero exit, which
  * is precisely what this contract needs to observe, so the code is captured
  * here instead. The second process is the point: R12.6 binds the code the
- * *process* exits with, and `src/cli/index.ts:6` is the line that assigns it —
+ * *process* exits with, and `src/cli/index.ts` is the line that assigns it —
  * asserting `program.exitCode` in process cannot reach it.
  */
 async function runChild(source: string): Promise<{ code: number; stdout: string }> {
@@ -39,16 +39,14 @@ async function runChild(source: string): Promise<{ code: number; stdout: string 
   }
 }
 
-/** The three lines of `src/cli/index.ts`, over a home the test controls. */
+/** The body of `src/cli/index.ts`, over a home the test controls. */
 const child = (home: string, argv: string[]) => `
-import { buildProgram } from '../../src/cli/run-command.js'
-const program = buildProgram({
+import { main } from '../../src/cli/main.js'
+process.exitCode = await main(['node', 'skillgantry', ${argv.map((a) => JSON.stringify(a)).join(', ')}], {
   home: ${JSON.stringify(home)},
   dbPath: ${JSON.stringify(join(home, 'gantry.db'))},
   write: (line) => console.log(line),
 })
-await program.parseAsync(['node', 'skillgantry', ${argv.map((a) => JSON.stringify(a)).join(', ')}])
-process.exitCode = program.exitCode ?? 0
 `
 
 async function harness(findings: unknown[]) {

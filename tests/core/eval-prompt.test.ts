@@ -42,12 +42,15 @@ describe('buildEvalPrompt', () => {
 
   it('asks to extend rather than author when a suite is already there', () => {
     const body = buildEvalPrompt(
-      input({ hasSuite: true, evalAssets: ['declawed/evals/eval.yaml', 'declawed/evals/cases'] }),
+      input({
+        hasSuite: true,
+        evalAssets: ['declawed/evals/eval.yaml', 'declawed/evals/cases/ (3 files)'],
+      }),
     )
 
     expect(body).toContain('# Extend the eval suite for declawed')
     expect(body).toContain('Extend `/repos/zapac/declawed/evals/eval.yaml`')
-    expect(body).toContain('`declawed/evals/cases`')
+    expect(body).toContain('`declawed/evals/cases/ (3 files)`')
   })
 
   it('tracks the manifest rather than a literal argv', () => {
@@ -122,5 +125,74 @@ describe('buildEvalPrompt', () => {
 
     expect(body).toContain('`.skillgantry-workspace/`')
     expect(body).toContain('Do not edit anything the skill ships')
+  })
+})
+
+describe('R6.15 the eval prompt for an agent that drives the CLI', () => {
+  const PREFIX =
+    "You are working for the maintainer of this skill. SkillGantry's evaluate gate runs a skill's own eval suite, and "
+
+  it('opens under the title by saying the gate cannot pass, and to write the suite', () => {
+    const lines = buildEvalPrompt(input()).split('\n')
+
+    expect(lines[0]).toBe('# Author the eval suite for declawed')
+    expect(lines[1]).toBe('')
+    expect(lines[2]).toBe(
+      `${PREFIX}this skill has none, so that gate cannot pass. Your job is to write that suite. You are not fixing the skill.`,
+    )
+  })
+
+  it('opens by saying the suite leaves behaviours uncovered, and to extend it', () => {
+    const lines = buildEvalPrompt(input({ hasSuite: true })).split('\n')
+
+    expect(lines[0]).toBe('# Extend the eval suite for declawed')
+    expect(lines[2]).toBe(
+      `${PREFIX}this skill has one, which may leave behaviours it claims untested. Your job is to extend that suite. You are not fixing the skill.`,
+    )
+  })
+
+  it('forbids running the suite directly and says why', () => {
+    const body = buildEvalPrompt(input())
+
+    expect(body).toContain(
+      '5. Stop and report what you wrote and what you deliberately left uncovered. Do not run the suite with `skill-up run` yourself: a run outside SkillGantry records nothing.',
+    )
+  })
+
+  it('ends its constraints on what SkillGantry did not author, without citing an id', () => {
+    const body = buildEvalPrompt(input())
+
+    expect(body).toContain(
+      '- SkillGantry has authored none of this. Everything here is yours to write.\n',
+    )
+  })
+
+  it('closes with the shared Verify section for evaluate, then the digest warning', () => {
+    const body = buildEvalPrompt(input())
+
+    expect(body.endsWith(
+      [
+        '## Verify',
+        '',
+        '- Re-verify with `skillgantry run zapac/declawed --stage evaluate`. It exits 1 while any stage is not `passed`; that is a result, not an error.',
+        '- `skillgantry status zapac/declawed` lists what still stands between this skill and a release.',
+        "- Adding files under `evals/` changes the skill's digest, so `status` will report the other gates as stale until they are re-run.",
+        '',
+      ].join('\n'),
+    )).toBe(true)
+    // After Constraints, never before: it is the last thing the agent reads.
+    expect(body.indexOf('## Constraints')).toBeLessThan(body.indexOf('## Verify'))
+  })
+
+  it('cites no requirement or decision id in the body', () => {
+    for (const body of [
+      buildEvalPrompt(input()),
+      buildEvalPrompt(input({ hasSuite: true, evalAssets: ['declawed/evals/eval.yaml'] })),
+      buildEvalPrompt(input({ install: { ...input().install, missing: ['the `claude` CLI'] } })),
+    ]) {
+      expect(body).not.toMatch(/\bR\d+\.\d+\b/)
+      expect(body).not.toMatch(/\bD\d+\b/)
+      expect(body).not.toContain('§')
+    }
   })
 })

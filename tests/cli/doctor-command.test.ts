@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { mkdtemp } from 'node:fs/promises'
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { saveToolLock } from '../../src/core/config/config.js'
-import { RULE_CLASS_MAP_VERSION, appliedRuleMapVersion, openLedger } from '../../src/core/index.js'
+import { RULE_CLASS_MAP_VERSION, VERSION, appliedRuleMapVersion, openLedger } from '../../src/core/index.js'
 import { buildProgram, type CliDeps } from '../../src/cli/run-command.js'
 import { formatDoctor } from '../../src/cli/doctor-command.js'
 
@@ -79,6 +79,57 @@ describe('skillgantry doctor', () => {
     expect(appliedRuleMapVersion(after.db)).toBe(RULE_CLASS_MAP_VERSION)
     after.close()
     expect(lines.join('\n')).not.toMatch(/rule-map-pending/)
+  })
+})
+
+describe('skillgantry doctor and the installed agent skill', () => {
+  /** `deps.userHome`, so the report reads a temp home and never the developer's. */
+  async function withInstalled(version: string | null): Promise<{ deps: CliDeps; lines: string[] }> {
+    const made = await deps()
+    await saveToolLock(made.deps.home, { version: 1, tools: {} })
+    const userHome = await mkdtemp(join(tmpdir(), 'sg-doctor-user-'))
+    if (version !== null) {
+      const dir = join(userHome, '.claude', 'skills', 'skillgantry')
+      await mkdir(dir, { recursive: true })
+      await writeFile(
+        join(dir, '.skillgantry-bundled.json'),
+        JSON.stringify({ managedBy: 'skillgantry', version }),
+      )
+    }
+    return { deps: { ...made.deps, userHome }, lines: made.lines }
+  }
+
+  it('names a stale copy and the command that refreshes it, and still exits 0', async () => {
+    const { deps: d, lines } = await withInstalled('0.0.1')
+    const program = buildProgram(d)
+    await program.parseAsync(['node', 'skillgantry', 'doctor'])
+
+    const row = lines.find((line) => line.includes('agent-skill-outdated'))
+    expect(row).toContain('0.0.1')
+    expect(row).toContain(VERSION)
+    expect(row).toContain('skillgantry skill install')
+    expect(lines.at(-1)).toBe('doctor: no drift')
+    expect(program.exitCode).toBe(0)
+  })
+
+  it('carries the finding in the JSON report without failing it', async () => {
+    const { deps: d, lines } = await withInstalled('0.0.1')
+    const program = buildProgram(d)
+    await program.parseAsync(['node', 'skillgantry', 'doctor', '--json'])
+
+    const report = JSON.parse(lines.join('')) as {
+      tools: Array<{ kind: string }>
+      failed: boolean
+    }
+    expect(report.tools.map((tool) => tool.kind)).toContain('agent-skill-outdated')
+    expect(report.failed).toBe(false)
+    expect(program.exitCode).toBe(0)
+  })
+
+  it('prints nothing about it when no copy is installed', async () => {
+    const { deps: d, lines } = await withInstalled(null)
+    await buildProgram(d).parseAsync(['node', 'skillgantry', 'doctor'])
+    expect(lines.join('\n')).not.toContain('agent-skill-outdated')
   })
 })
 

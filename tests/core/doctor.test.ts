@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { chmod, mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, readdir, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { RULE_CLASS_MAP_VERSION } from '../../src/core/adapters/rule-classes.js'
@@ -8,6 +8,7 @@ import type { ToolLockEntry } from '../../src/core/config/schema.js'
 import { discoverSkills } from '../../src/core/discovery/discover.js'
 import { CATALOGUE, SKILLHONE_TOOL_ID, SKILL_UPPER_TOOL_ID } from '../../src/core/tools/catalogue.js'
 import { doctor } from '../../src/core/tools/doctor.js'
+import { VERSION } from '../../src/core/version.js'
 import type { Exec } from '../../src/core/tools/exec.js'
 import { toolRoot } from '../../src/core/tools/install.js'
 import { runtimesFor } from '../../src/core/tools/runtimes.js'
@@ -496,5 +497,118 @@ describe('doctor and an available upgrade', () => {
     const base = { home: h, skills: [], ledgerLifecycle: new Map(), ruleMap: CURRENT }
     expect((await doctor(base)).upgrade).toBeNull()
     expect((await doctor({ ...base, upgradeAvailable: null })).upgrade).toBeNull()
+  })
+})
+
+describe('doctor and the installed agent skill (R3.13)', () => {
+  const MARKER = '.skillgantry-bundled.json'
+
+  const report = async (userHome: string): ReturnType<typeof doctor> => {
+    const h = await home()
+    await saveToolLock(h, { version: 1, tools: {} })
+    return doctor({
+      home: h,
+      skills: [],
+      ledgerLifecycle: new Map(),
+      ruleMap: CURRENT,
+      userHome,
+      exec: async () => ({ stdout: '', stderr: '' }),
+    })
+  }
+
+  /** `<userHome>/.claude/skills/skillgantry`, holding whatever `fill` writes. */
+  const installedWith = async (fill: (dir: string) => Promise<void>): Promise<string> => {
+    const userHome = await mkdtemp(join(tmpdir(), 'sg-user-'))
+    const dir = join(userHome, '.claude', 'skills', 'skillgantry')
+    await mkdir(dir, { recursive: true })
+    await fill(dir)
+    return userHome
+  }
+
+  const marked = (version: string) => async (dir: string) => {
+    await writeFile(join(dir, MARKER), JSON.stringify({ managedBy: 'skillgantry', version }))
+  }
+
+  const outdated = (r: Awaited<ReturnType<typeof doctor>>) =>
+    r.tools.filter((row) => row.kind === 'agent-skill-outdated')
+
+  it('names a stale marked copy and the command that refreshes it, without failing the report', async () => {
+    const userHome = await installedWith(marked('0.0.1'))
+    const dir = join(userHome, '.claude', 'skills', 'skillgantry')
+
+    const r = await report(userHome)
+
+    expect(outdated(r)).toHaveLength(1)
+    const finding = outdated(r)[0]
+    expect(finding).toMatchObject({ expectedVersion: VERSION, actualVersion: '0.0.1' })
+    expect(finding?.detail).toContain('skillgantry skill install')
+    expect(finding?.detail).toContain(dir)
+    expect(r.failed).toBe(false)
+  })
+
+  it('writes nothing while reporting', async () => {
+    const userHome = await installedWith(marked('0.0.1'))
+    const dir = join(userHome, '.claude', 'skills', 'skillgantry')
+    const before = await readFile(join(dir, MARKER), 'utf8')
+
+    await report(userHome)
+
+    expect(await readFile(join(dir, MARKER), 'utf8')).toBe(before)
+    expect(await readdir(dir)).toEqual([MARKER])
+  })
+
+  it('is silent for a copy at the running version', async () => {
+    const r = await report(await installedWith(marked(VERSION)))
+    expect(outdated(r)).toEqual([])
+    expect(r.failed).toBe(false)
+  })
+
+  it('is silent when nothing is installed', async () => {
+    const userHome = await mkdtemp(join(tmpdir(), 'sg-user-'))
+    expect(outdated(await report(userHome))).toEqual([])
+
+    await mkdir(join(userHome, '.claude', 'skills'), { recursive: true })
+    expect(outdated(await report(userHome))).toEqual([])
+  })
+
+  it('is silent for a directory with no marker', async () => {
+    const r = await report(
+      await installedWith(async (dir) => {
+        await writeFile(join(dir, 'SKILL.md'), "someone else's\n")
+      }),
+    )
+    expect(outdated(r)).toEqual([])
+  })
+
+  it.each([
+    ['another tool', JSON.stringify({ managedBy: 'someone-else', version: '0.0.1' })],
+    ['no version', JSON.stringify({ managedBy: 'skillgantry' })],
+    ['not JSON', 'stale'],
+  ])('is silent for a marker holding %s', async (_label, contents) => {
+    const r = await report(
+      await installedWith(async (dir) => {
+        await writeFile(join(dir, MARKER), contents)
+      }),
+    )
+    expect(outdated(r)).toEqual([])
+  })
+
+  it('does not follow a symlink at the destination', async () => {
+    const userHome = await mkdtemp(join(tmpdir(), 'sg-user-'))
+    const target = await mkdtemp(join(tmpdir(), 'sg-target-'))
+    await marked('0.0.1')(target)
+    await mkdir(join(userHome, '.claude', 'skills'), { recursive: true })
+    await symlink(target, join(userHome, '.claude', 'skills', 'skillgantry'))
+
+    expect(outdated(await report(userHome))).toEqual([])
+  })
+
+  it('looks only where the default install writes', async () => {
+    const userHome = await mkdtemp(join(tmpdir(), 'sg-user-'))
+    const elsewhere = join(userHome, '.codex', 'skills', 'skillgantry')
+    await mkdir(elsewhere, { recursive: true })
+    await marked('0.0.1')(elsewhere)
+
+    expect(outdated(await report(userHome))).toEqual([])
   })
 })
