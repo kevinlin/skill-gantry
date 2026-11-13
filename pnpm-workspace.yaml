@@ -1,2 +1,10 @@
 allowBuilds:
   esbuild: true
+
+# Dependabot: lift dev-only transitives off vulnerable versions. minimatch needs a
+# major (eslint and typescript-eslint pin ^10, the fix is 11.0.1); vite is an
+# auto-installed vitest peer that `pnpm update` will not re-resolve.
+overrides:
+  minimatch@<11.0.1: ^11.0.1
+  vite@<8.2.4: ^8.2.4
+  source-map-js@<1.2.2: ^1.2.2
