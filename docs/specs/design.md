@@ -666,6 +666,7 @@ Mapping:
 
 | Report field | Becomes |
 |---|---|
+| `case_results[].configuration` | `without_skill` removes the result from everything below; `with_skill`, an absent field and any other value keep it |
 | `case_results[].status` | `PASS` contributes nothing; anything else is one `RawFinding` of class `eval-failure` |
 | `case_results[].case_id` | the finding's path, as `<skillRelPath>/evals/cases/<case_id>.yaml` |
 | `case_results[].title` and `grading.assertion_results[].evidence` | the finding message |
@@ -674,6 +675,10 @@ Mapping:
 | `input_tokens`, `output_tokens`, `total_tokens` | **dropped** |
 
 A case result carries no file path, so the finding's path is derived from the case id under skill-up's own layout convention. The alternative, pathing every failure at `evals/eval.yaml`, would collapse a whole failing suite into one issue and make "which case regressed" unanswerable from the ledger — R8.4's identity is `(skillId, relPath, ruleClass)`, so the path is the only field that can separate them. The cost is that a repo storing its cases elsewhere gets an issue pathed at a file that does not exist: a display defect, not an identity one, since the fingerprint stays stable and per-case.
+
+**A baseline result is read by nobody** (1.1.2). With `benchmark.enabled: true` skill-up runs every case twice and writes both results into the one report: two entries per case id, told apart only by `configuration`. The `without_skill` entry is the reference the comparison is measured against, and it fails exactly where the skill is doing its job. The parser read every entry. A suite passing 6/6 with the skill was recorded as `failed`, `10/12 cases passed`, with a finding pathed at each case the baseline had failed. `casesTotal` doubled too, and that is the denominator of §10.7's eval case pass rate. skill-up's own exit status skips the same entries, which is how it exited 0 on that report. The filter is the first thing the parser does, so findings, the three case counts, `turns` and the summary all describe the skill under test.
+
+The rule drops the one value it names and keeps every other. `configuration` is `omitempty` in skill-up's report, and a later release may add a variant. So a result with no field, or with a value this parser has not met, still counts against the gate. An unknown variant that fails loudly is found on the next run; one dropped quietly is a gate that passes without having looked. The baseline's own pass rate is not mapped: `MetricKey` has no key for it, and skill-up's `benchmark.md` beside the report already states the comparison.
 
 Token fields are dropped rather than mapped, because `MetricKey` has no key that could hold them. That is R1.5 enforced by construction — `coerceMetrics` throws on an unknown key, so a parser forwarding them fails its own test.
 
@@ -1112,6 +1117,8 @@ interface StatsFilter {
 `dashboard()` composes all five plus the three counts a header needs. Medians
 and the metric sums are computed in TypeScript: SQLite has no median, and
 summing JSON in SQL would put the metric key set in two places.
+
+**A run's case counts are what its parser said that day, and stay that** (1.1.2). `evalCaseRate` sums the saved `metrics_json` of every evaluate stage in scope and re-reads no report. A run recorded before §7.2 stopped counting baseline results therefore keeps its doubled `casesTotal`, and the rate for a benchmark-enabled skill carries those runs until they leave the filter's scope. No migration rewrites them. That would mean reparsing every recorded report from the sidecar, for a rate the old runs weigh on less with each new one.
 
 **A row that names a run carries both handles** (R6.1, §9). `IssueRow` projects `lastSeenRun` and `lastSeenRunDir`, `RunHistoryRow` projects `runId` and `runDir`; the first is what everything joins and orders on, the second is what a screen prints. `listIssues` reaches the directory through a **left** join onto `runs` — an inner one would drop an issue whose run row is gone off the audit surface, which is the one place R8.15 says a row must never disappear from — so the pair degrades to a sighting with no name rather than to no sighting. No column was added for it: `runs.sidecar_path` is the claimed directory, written verbatim by the pipeline.
 
@@ -1664,6 +1671,7 @@ Every pass below is recorded in full somewhere else — the two reviews are thei
 | M7.2 | Two levels in the list column; then the row label that undid it, and the doctor condition that says why a skill has no name | §5.3, §14.12 | [plan_m7.2-repo-skill-navigation.md](plan_m7.2-repo-skill-navigation.md) |
 | M10 | A headless surface a coding agent can drive end to end, the prompts reworded for that reader, and the skill that teaches the loop | §5.5, §9.4, §9.4a, §9.4b, §15, §15.1 | [plan_m10-agent-friendly-cli.md](plan_m10-agent-friendly-cli.md) |
 | M11 | The workflow review's open items: a rail that shows what release reads, a batch run, headless triage and setup, a target checked before release, and a skill bundle whose lock keeps its links | §5.2, §5.3, §12.4, §14.5, §14.13, §14.15, §15, §15.1, §20 | [plan_m11-review-follow-ups.md](plan_m11-review-follow-ups.md) |
+| 1.1.2 | A baseline result removed from the evaluate gate and from the case counts | §7.2, §10.7 | — (a standalone fix) |
 
 ## 19. Risks carried into implementation
 
