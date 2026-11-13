@@ -67,7 +67,7 @@ export {
   stageDirFor,
   toolDirFor,
 } from './workspace/layout.js'
-export { readIndex, type IndexEntry } from './workspace/writer.js'
+export { newestEntry, readIndex, type IndexEntry } from './workspace/writer.js'
 export {
   CATALOGUE,
   PRESETS,

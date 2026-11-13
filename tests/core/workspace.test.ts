@@ -6,6 +6,7 @@ import {
   claimRunDir,
   ensureGitignore,
   finalizeRun,
+  newestEntry,
   readIndex,
   stageDirFor,
   withSkillLock,
@@ -229,6 +230,31 @@ describe('index recovery', () => {
     const entries = await readIndex(root)
     expect(entries).toHaveLength(1)
     expect(entries[0]?.runId).toBe(b.runId)
+  })
+})
+
+describe('newestEntry', () => {
+  const at = (runId: string, dir?: string) => ({
+    runId,
+    ...(dir === undefined ? {} : { dir }),
+    outcome: 'passed',
+    endedAt: '2026-08-01T00:00:00Z',
+  })
+
+  it('is the greatest run id wherever it sits in the index', () => {
+    expect(newestEntry([at('019fe5c3'), at('019fe5a0'), at('019fe5b1')])?.runId).toBe('019fe5c3')
+    expect(newestEntry([at('019fe5a0'), at('019fe5c3'), at('019fe5b1')])?.runId).toBe('019fe5c3')
+  })
+
+  it('orders on the run id, not on the directory name', () => {
+    // Two runs starting in one second share that name's second, and the later
+    // id can carry the earlier name — only the id cannot tie.
+    const entries = [at('019fe5a0', '2026-08-01T00-00-09-a'), at('019fe5c3', '2026-08-01T00-00-01-b')]
+    expect(newestEntry(entries)?.runId).toBe('019fe5c3')
+  })
+
+  it('is null for an empty index', () => {
+    expect(newestEntry([])).toBeNull()
   })
 })
 

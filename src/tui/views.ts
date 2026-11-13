@@ -2,6 +2,7 @@ import { readFile, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   STAGE_ORDER,
+  newestEntry,
   readIndex,
   runDirFor,
   stageDirFor,
@@ -9,7 +10,6 @@ import {
   type DashboardStats,
   type DoctorReport,
   type GantryConfig,
-  type IndexEntry,
   type IssueAction,
   type IssueFilter,
   type IssueRow,
@@ -63,20 +63,6 @@ export async function listArtefacts(runDir: string | null): Promise<string[]> {
   }
   return out.sort()
 }
-
-/**
- * The greatest run id's entry, never the `latest` symlink — which is absent
- * mid-write (§9.2). Ordered on the id, not the entry's directory name: two runs
- * starting in one second share that name's second, and the id cannot tie.
- *
- * One function rather than the same reduce in both readers below, because two
- * copies is how they come to disagree about which run is newest.
- */
-const newestEntry = (entries: readonly IndexEntry[]): IndexEntry | null =>
-  entries.reduce<IndexEntry | null>(
-    (max, entry) => (max === null || entry.runId > max.runId ? entry : max),
-    null,
-  )
 
 /**
  * Last recorded outcome per skill, read from each sidecar index rather than

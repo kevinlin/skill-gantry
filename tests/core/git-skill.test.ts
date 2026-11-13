@@ -1,6 +1,16 @@
-import { mkdir, mkdtemp, readFile, readlink, stat, symlink, writeFile } from 'node:fs/promises'
+import {
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  readlink,
+  stat,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { GitSkillSpec } from '../../src/core/tools/catalogue.js'
 import type { Exec } from '../../src/core/tools/exec.js'
@@ -8,6 +18,7 @@ import {
   detectSkillDirs,
   gitSkillInstall,
   gitSkillUninstall,
+  linksInto,
   verifyGitSkill,
 } from '../../src/core/tools/git-skill.js'
 import {
@@ -56,11 +67,18 @@ const fakeExec = (repoDir: string, calls: string[][], spec = SPEC): Exec => {
   }
 }
 
+/** A SKILL.md for each of `names` under `skillsDir`, as a runtime that holds the bundle has. */
+async function holdSkills(skillsDir: string, names: readonly string[]): Promise<void> {
+  for (const name of names) {
+    await mkdir(join(skillsDir, name), { recursive: true })
+    await writeFile(join(skillsDir, name, 'SKILL.md'), '---\n---\n')
+  }
+}
+
 describe('detectSkillDirs', () => {
   it('reports per directory, so one holding the bundle does not skip the others', async () => {
     const home = await mkdtemp(join(tmpdir(), 'sg-home-'))
-    await mkdir(join(home, '.claude', 'skills', 'skillhone'), { recursive: true })
-    await writeFile(join(home, '.claude', 'skills', 'skillhone', 'SKILL.md'), '---\n---\n')
+    await holdSkills(join(home, '.claude', 'skills'), SPEC.skills)
     await mkdir(join(home, '.agents', 'skills'), { recursive: true })
 
     const found = await detectSkillDirs(home, SPEC)
@@ -69,6 +87,40 @@ describe('detectSkillDirs', () => {
       { dir: join(home, '.claude', 'skills'), holds: true },
       { dir: join(home, '.agents', 'skills'), holds: false },
     ])
+  })
+
+  it('holds only when every skill of the bundle is present, not the first alone', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'sg-home-'))
+    await holdSkills(join(home, '.claude', 'skills'), [SPEC.skills[0] as string])
+
+    expect(await detectSkillDirs(home, SPEC)).toEqual([
+      { dir: join(home, '.claude', 'skills'), holds: false },
+    ])
+  })
+})
+
+describe('linksInto', () => {
+  const dir = '/tools/skillhone'
+  const link = '/home/u/.claude/skills/skillhone'
+
+  it.each([
+    ['the directory itself', dir],
+    ['a path under it', `${dir}/repo/skills/skillhone`],
+    ['a path under it with a trailing slash', `${dir}/repo/`],
+    ['a relative path that resolves under it', '../../../../tools/skillhone/repo'],
+  ])('accepts %s', (_label, target) => {
+    expect(linksInto(dir, link, target)).toBe(true)
+  })
+
+  it.each([
+    // The case `startsWith(dir)` accepted, and a link recorded as ours is a link uninstall removes.
+    ['a sibling sharing the directory name as a prefix', `${dir}-fork/repo`],
+    ['the parent', '/tools'],
+    ['a path that climbs out after descending in', `${dir}/repo/../../elsewhere`],
+    ['a relative path that resolves beside it', '../../../../tools/skillhone-fork/repo'],
+    ['a relative path read from the process directory rather than the link', 'tools/skillhone/repo'],
+  ])('rejects %s', (_label, target) => {
+    expect(linksInto(dir, link, target)).toBe(false)
   })
 })
 
@@ -122,14 +174,126 @@ describe('gitSkillInstall', () => {
     expect(out.sha).toBe(BARE_SPEC.pin)
   })
 
-  it('refuses an existing entry that is not our symlink, rather than clobbering it', async () => {
+  it('writes the same links on a reinstall after a pin bump, not only the ones it made this time', async () => {
     const home = await mkdtemp(join(tmpdir(), 'sg-home-'))
-    await mkdir(join(home, '.agents', 'skills', 'skillhone-optimization'), { recursive: true })
+    await mkdir(join(home, '.claude', 'skills'), { recursive: true })
+    await mkdir(join(home, '.agents', 'skills'), { recursive: true })
     const dir = await mkdtemp(join(tmpdir(), 'sg-tool-'))
+    const repoDir = join(dir, 'repo')
 
-    await expect(gitSkillInstall(dir, SPEC, fakeExec(join(dir, 'repo'), []), home)).rejects.toThrow(
-      /skillhone-optimization already exists/,
+    const first = await gitSkillInstall(dir, SPEC, fakeExec(repoDir, []), home)
+    const bumped = { ...SPEC, pin: 'b'.repeat(40) }
+    const second = await gitSkillInstall(dir, bumped, fakeExec(repoDir, [], bumped), home)
+
+    // Four, so that equal does not mean "both empty" — which is what the lock
+    // recorded for the second install when the first skill read as present.
+    expect(first.links).toHaveLength(4)
+    expect(second.links).toEqual(first.links)
+    expect(second.sha).toBe(bumped.pin)
+  })
+
+  it('links the skill a directory is missing when the first is already our own link', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'sg-home-'))
+    const skills = join(home, '.claude', 'skills')
+    await mkdir(skills, { recursive: true })
+    const dir = await mkdtemp(join(tmpdir(), 'sg-tool-'))
+    for (const name of SPEC.skills) {
+      await mkdir(join(dir, 'repo', 'skills', name), { recursive: true })
+      await writeFile(join(dir, 'repo', 'skills', name, 'SKILL.md'), '---\n---\n')
+    }
+    await symlink(join(dir, 'repo', 'skills', 'skillhone'), join(skills, 'skillhone'))
+
+    const out = await gitSkillInstall(dir, SPEC, fakeExec(join(dir, 'repo'), []), home)
+
+    expect(out.links).toEqual([join(skills, 'skillhone'), join(skills, 'skillhone-optimization')])
+    expect(await readlink(join(skills, 'skillhone-optimization'))).toBe(
+      join(dir, 'repo', 'skills', 'skillhone-optimization'),
     )
+  })
+
+  describe('an entry that is not our link', () => {
+    const foreign: [string, (link: string, dir: string, other: string) => Promise<void>][] = [
+      [
+        'a real directory',
+        async (link) => {
+          await mkdir(link, { recursive: true })
+          await writeFile(join(link, 'SKILL.md'), 'the user\'s own\n')
+        },
+      ],
+      [
+        'a symlink elsewhere',
+        async (link, _dir, other) => {
+          await mkdir(other, { recursive: true })
+          await symlink(other, link)
+        },
+      ],
+      [
+        // `<dir>-fork` shares `<dir>` as a string prefix, and recording it would
+        // make uninstall remove a link into someone else's checkout.
+        'a link into a sibling that shares the tool directory as a prefix',
+        async (link, dir) => {
+          await symlink(join(`${dir}-fork`, 'repo', 'skills', 'skillhone'), link)
+        },
+      ],
+    ]
+
+    it.each(foreign)(
+      'skips %s and installs the rest, where it used to refuse the whole install',
+      async (_label, make) => {
+        const home = await mkdtemp(join(tmpdir(), 'sg-home-'))
+        const skills = join(home, '.agents', 'skills')
+        await mkdir(skills, { recursive: true })
+        const dir = await mkdtemp(join(tmpdir(), 'sg-tool-'))
+        const other = await mkdtemp(join(tmpdir(), 'sg-elsewhere-'))
+        const link = join(skills, 'skillhone')
+        await make(link, dir, other)
+        const before = {
+          kind: (await lstat(link)).isSymbolicLink() ? 'link' : 'directory',
+          target: await readlink(link).catch(() => null),
+          entries: await readdir(link).catch(() => null),
+        }
+
+        const out = await gitSkillInstall(dir, SPEC, fakeExec(join(dir, 'repo'), []), home)
+
+        expect(out.links).toEqual([join(skills, 'skillhone-optimization')])
+        expect({
+          kind: (await lstat(link)).isSymbolicLink() ? 'link' : 'directory',
+          target: await readlink(link).catch(() => null),
+          entries: await readdir(link).catch(() => null),
+        }).toEqual(before)
+      },
+    )
+  })
+
+  it('re-points a dangling link of its own and records it', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'sg-home-'))
+    const skills = join(home, '.claude', 'skills')
+    await mkdir(skills, { recursive: true })
+    const dir = await mkdtemp(join(tmpdir(), 'sg-tool-'))
+    // Inside our directory and resolving to nothing: a clone since replaced.
+    await symlink(join(dir, 'old-repo', 'skills', 'skillhone'), join(skills, 'skillhone'))
+
+    const out = await gitSkillInstall(dir, SPEC, fakeExec(join(dir, 'repo'), []), home)
+
+    expect(out.links).toContain(join(skills, 'skillhone'))
+    expect(await readlink(join(skills, 'skillhone'))).toBe(join(dir, 'repo', 'skills', 'skillhone'))
+  })
+
+  it('re-points a relative link of its own and records it', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'sg-home-'))
+    const skills = join(home, '.claude', 'skills')
+    await mkdir(skills, { recursive: true })
+    const dir = await mkdtemp(join(tmpdir(), 'sg-tool-'))
+    // Resolved against the link's directory, not the process's: from the
+    // process directory this lands nowhere near `dir`.
+    const relativeTarget = relative(skills, join(dir, 'old-repo', 'skills', 'skillhone'))
+    expect(relativeTarget.startsWith('..')).toBe(true)
+    await symlink(relativeTarget, join(skills, 'skillhone'))
+
+    const out = await gitSkillInstall(dir, SPEC, fakeExec(join(dir, 'repo'), []), home)
+
+    expect(out.links).toContain(join(skills, 'skillhone'))
+    expect(await readlink(join(skills, 'skillhone'))).toBe(join(dir, 'repo', 'skills', 'skillhone'))
   })
 })
 

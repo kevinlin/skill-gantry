@@ -1,4 +1,4 @@
-import { access, readFile } from 'node:fs/promises'
+import { access } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   SKILLHONE_TOOL_ID,
@@ -16,21 +16,8 @@ import { digestSkill } from '../core/discovery/digest.js'
 import type { SkillRef } from '../core/types.js'
 import { refuse } from './errors.js'
 import { selectSkill, type CliDeps } from './run-command.js'
+import { readJson, type RunMetaOnDisk } from './sidecar-json.js'
 import { evalAssetsOf } from './skill-evals.js'
-
-interface RunMetaOnDisk {
-  runId: string
-  skillDigest: string
-  git: { commit: string | null; dirty: boolean }
-}
-
-const readJson = async <T>(path: string): Promise<T | null> => {
-  try {
-    return JSON.parse(await readFile(path, 'utf8')) as T
-  } catch {
-    return null
-  }
-}
 
 /**
  * §8.2's two outcomes that mean no tool in the stage reached a verdict. The set
@@ -67,7 +54,12 @@ async function evidenceFor(skill: SkillRef): Promise<StageEvidence[]> {
   const metas = new Map<string, RunMetaOnDisk | null>()
   const metaOf = async (entry: IndexEntry, runDir: string): Promise<RunMetaOnDisk | null> => {
     if (!metas.has(entry.runId)) {
-      metas.set(entry.runId, await readJson<RunMetaOnDisk>(join(runDir, 'run.json')))
+      // Unreadable and absent alike: the skip this function documents. The
+      // shared reader throws on a corrupt file, which `fix` needs and this does not.
+      metas.set(
+        entry.runId,
+        await readJson<RunMetaOnDisk>(join(runDir, 'run.json')).catch(() => null),
+      )
     }
     return metas.get(entry.runId) ?? null
   }
@@ -80,7 +72,7 @@ async function evidenceFor(skill: SkillRef): Promise<StageEvidence[]> {
       const runDir = runDirFor(skill.workspacePath, entry)
       const result = await readJson<StageResult>(
         join(stageDirFor(runDir, index + 1, stage), 'stage.json'),
-      )
+      ).catch(() => null)
       if (result === null) continue
       const meta = await metaOf(entry, runDir)
       if (meta === null) continue

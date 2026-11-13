@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { chmod, mkdir, mkdtemp, readFile, readdir, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, dirname, join, relative } from 'node:path'
 import { RULE_CLASS_MAP_VERSION } from '../../src/core/adapters/rule-classes.js'
 import { saveToolLock } from '../../src/core/config/config.js'
 import type { ToolLockEntry } from '../../src/core/config/schema.js'
@@ -313,6 +313,36 @@ describe('doctor on a skill link it did not create (R3.11)', () => {
     expect(report.tools.some((row) => row.kind === 'skill-link-unmanaged')).toBe(false)
   })
 
+  it('says nothing about a relative link of its own', async () => {
+    const h = await home()
+    await saveToolLock(h, { version: 1, tools: {} })
+    const userHome = await userHomeWith(async (skillsDir, toolDir) => {
+      const target = join(toolDir, 'repo', 'skills', SKILL_UPPER_TOOL_ID)
+      await mkdir(target, { recursive: true })
+      await symlink(relative(skillsDir, target), join(skillsDir, SKILL_UPPER_TOOL_ID))
+    }, h)
+
+    const report = await run(h, userHome)
+
+    expect(report.tools.some((row) => row.kind === 'skill-link-unmanaged')).toBe(false)
+  })
+
+  it('reports a link into a sibling that shares the tool directory as a prefix', async () => {
+    const h = await home()
+    await saveToolLock(h, { version: 1, tools: {} })
+    const userHome = await userHomeWith(async (skillsDir, toolDir) => {
+      // `startsWith(toolDir)` accepted this, and the install would then have
+      // recorded it as ours for uninstall to remove.
+      const target = join(`${toolDir}-fork`, 'repo', 'skills', SKILL_UPPER_TOOL_ID)
+      await mkdir(target, { recursive: true })
+      await symlink(target, join(skillsDir, SKILL_UPPER_TOOL_ID))
+    }, h)
+
+    const report = await run(h, userHome)
+
+    expect(report.tools.filter((row) => row.kind === 'skill-link-unmanaged')).toHaveLength(1)
+  })
+
   it('leaves a dangling link of its own to verifyGitSkill, which fails the report', async () => {
     const h = await home()
     const toolDir = join(toolRoot(h), SKILL_UPPER_TOOL_ID)
@@ -610,5 +640,126 @@ describe('doctor and the installed agent skill (R3.13)', () => {
     await marked('0.0.1')(elsewhere)
 
     expect(outdated(await report(userHome))).toEqual([])
+  })
+})
+
+describe('doctor runs its checks concurrently', () => {
+  const SHA = 'c'.repeat(40)
+  const MARKER = '.skillgantry-bundled.json'
+  const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
+
+  /**
+   * Three locked git-skill bundles, the second being SkillHone so its probes
+   * fire, and one finding of every kind that follows them in the report.
+   */
+  const seed = async (h: string): Promise<string> => {
+    const lockTools: Record<string, ToolLockEntry> = {}
+    for (const id of ['alpha', SKILLHONE_TOOL_ID, 'gamma']) {
+      lockTools[id] = entry({
+        installKind: 'git-skill',
+        requestedPin: SHA,
+        resolvedVersion: SHA,
+        bin: join(toolRoot(h), id, '.venv', 'bin', 'python'),
+        links: [],
+      })
+    }
+    await saveToolLock(h, { version: 1, tools: lockTools })
+    await mkdir(join(toolRoot(h), 'delta'), { recursive: true })
+
+    const userHome = await mkdtemp(join(tmpdir(), 'sg-user-'))
+    const skills = join(userHome, '.claude', 'skills')
+    await mkdir(join(skills, SKILL_UPPER_TOOL_ID), { recursive: true })
+    await mkdir(join(skills, 'skillgantry'), { recursive: true })
+    await writeFile(
+      join(skills, 'skillgantry', MARKER),
+      JSON.stringify({ managedBy: 'skillgantry', version: '0.0.1' }),
+    )
+    return userHome
+  }
+
+  /** `<toolRoot>/<id>/repo` is the `-C` argument, so the tool is its parent's name. */
+  const toolOf = (argv: readonly string[]): string => basename(dirname(argv[1] as string))
+
+  const run = (h: string, userHome: string, exec: Exec) =>
+    doctor({
+      home: h,
+      skills: [],
+      ledgerLifecycle: new Map(),
+      ruleMap: { applied: 1, current: RULE_CLASS_MAP_VERSION },
+      userHome,
+      exec,
+    })
+
+  it('keeps the findings in the order the sequential checks produced, whichever resolves first', async () => {
+    const h = await home()
+    const userHome = await seed(h)
+    const resolved: string[] = []
+    // Each later check answers sooner than the one before it, so a report
+    // assembled in completion order comes out reversed.
+    const delay: Record<string, number> = { alpha: 40, [SKILLHONE_TOOL_ID]: 25, gamma: 5 }
+    const exec: Exec = async (_bin, argv) => {
+      if (argv.includes('rev-parse')) {
+        const id = toolOf(argv)
+        await sleep(delay[id] as number)
+        resolved.push(id)
+        return { stdout: `${SHA}\n`, stderr: '' }
+      }
+      if (argv.includes('import git, yaml, litellm')) {
+        await sleep(30)
+        throw new Error('no litellm')
+      }
+      if (argv[0] === '-v') {
+        await sleep(5)
+        throw new Error('no claude')
+      }
+      return { stdout: '', stderr: '' }
+    }
+
+    const report = await run(h, userHome, exec)
+
+    // The fake did resolve out of order; the order below is not an accident of timing.
+    expect(resolved).toEqual(['gamma', SKILLHONE_TOOL_ID, 'alpha'])
+    expect(report.tools.map((row) => `${row.toolId}:${row.kind}`)).toEqual([
+      'alpha:ok',
+      `${SKILLHONE_TOOL_ID}:ok`,
+      'gamma:ok',
+      `${SKILLHONE_TOOL_ID}:skillhone-deps`,
+      `${SKILLHONE_TOOL_ID}:claude-cli-missing`,
+      `${SKILLHONE_TOOL_ID}:skillhone-config-missing`,
+      `${SKILL_UPPER_TOOL_ID}:skill-link-unmanaged`,
+      'skillgantry:agent-skill-outdated',
+      'delta:unlocked',
+      '(ledger):rule-map-pending',
+    ])
+  })
+
+  it('has started every locked tool before the first one resolves', async () => {
+    const h = await home()
+    const userHome = await seed(h)
+    const started: string[] = []
+    let release: () => void = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const exec: Exec = async (_bin, argv) => {
+      if (argv.includes('rev-parse')) {
+        started.push(toolOf(argv))
+        await gate
+        return { stdout: `${SHA}\n`, stderr: '' }
+      }
+      if (argv.includes('import git, yaml, litellm') || argv[0] === '-v') throw new Error('absent')
+      return { stdout: '', stderr: '' }
+    }
+
+    const pending = run(h, userHome, exec)
+    try {
+      // The gate holds every check open, so three starts means none had to
+      // finish before the next began — which one-after-another cannot show.
+      await vi.waitFor(() => expect(started).toHaveLength(3), { timeout: 500 })
+      expect([...started].sort()).toEqual(['alpha', 'gamma', SKILLHONE_TOOL_ID].sort())
+    } finally {
+      release()
+      await pending
+    }
   })
 })

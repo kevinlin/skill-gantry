@@ -235,6 +235,20 @@ export async function readIndex(workspacePath: string): Promise<IndexEntry[]> {
   return out
 }
 
+/**
+ * The greatest run id's entry, never the `latest` symlink — which is absent
+ * mid-write (§9.2). Ordered on the id, not the entry's directory name: two runs
+ * starting in one second share that name's second, and the id cannot tie.
+ *
+ * One function rather than the same reduce in each reader, because two copies
+ * is how they come to disagree about which run is newest.
+ */
+export const newestEntry = (entries: readonly IndexEntry[]): IndexEntry | null =>
+  entries.reduce<IndexEntry | null>(
+    (max, entry) => (max === null || entry.runId > max.runId ? entry : max),
+    null,
+  )
+
 export async function finalizeRun(workspacePath: string, entry: IndexEntry): Promise<void> {
   await withSkillLock(workspacePath, async () => {
     const path = indexPath(workspacePath)

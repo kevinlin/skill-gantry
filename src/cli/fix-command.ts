@@ -6,6 +6,7 @@ import {
   buildFixPrompt,
   fixPromptPathFor,
   maxSeverity,
+  newestEntry,
   readIndex,
   runDirFor,
   stageDirFor,
@@ -14,6 +15,7 @@ import {
 } from '../core/index.js'
 import type { Severity, SkillRef, Stage } from '../core/types.js'
 import { selectSkill, type CliDeps } from './run-command.js'
+import { readJson, type RunMetaOnDisk } from './sidecar-json.js'
 
 export interface FixOptions {
   stage?: string
@@ -32,21 +34,6 @@ interface PromptDoc {
   suppressed: number
   highestSeverity: Severity
   body: string
-}
-
-const readJson = async <T>(path: string): Promise<T | null> => {
-  try {
-    return JSON.parse(await readFile(path, 'utf8')) as T
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null
-    throw err
-  }
-}
-
-interface RunMetaOnDisk {
-  runId: string
-  skillDigest: string
-  git: { commit: string | null; dirty: boolean }
 }
 
 const highestOf = (result: StageResult): Severity =>
@@ -77,7 +64,7 @@ async function resolveRun(skill: SkillRef, requested: string | undefined): Promi
     if (!found) throw new Error(`no run ${requested} recorded for ${skill.id}`)
     return found
   }
-  const newest = entries.reduce<IndexEntry | null>((max, e) => (max === null || e.runId > max.runId ? e : max), null)
+  const newest = newestEntry(entries)
   if (newest === null) throw new Error(`no runs recorded for ${skill.id}`)
   return newest
 }
