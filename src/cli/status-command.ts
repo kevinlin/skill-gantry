@@ -139,14 +139,18 @@ export function nextSteps(input: NextInput): NextStep[] {
     ) {
       steps.push({ command: null, why: blocker.message })
     }
-    // `setup` is the install path and it is a wizard, so the step is named for
-    // the one who can take it rather than left as a command an agent would try.
+    // Two routes install it, and neither is a command an agent should run on
+    // its own: a preset also rewrites the stage selection (R12.18), so which
+    // one is the maintainer's call, and a `command` here would make it the
+    // agent's. The reason names both so the maintainer is not sent to a
+    // terminal when a script would do.
     if (blocker.code === 'release-tool-missing') {
       steps.push({
         command: null,
         why:
-          `${blocker.message}; the maintainer has to run \`skillgantry setup\` in a terminal ` +
-          'to install it, which an agent cannot',
+          `${blocker.message}; installing it is the maintainer's call, because a preset also ` +
+          'rewrites the stage selection: `skillgantry setup` in a terminal, or ' +
+          '`skillgantry setup --yes --preset <name>`',
       })
     }
   }

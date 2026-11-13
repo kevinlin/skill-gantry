@@ -25,6 +25,7 @@ export {
   type RepoEntry,
   type RepoInspection,
 } from './config/config.js'
+export type { ToolLock } from './config/schema.js'
 export {
   configChanges,
   withRepo,

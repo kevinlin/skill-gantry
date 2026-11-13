@@ -11,8 +11,10 @@ import { runPipeline } from '../core/pipeline/run.js'
 import { VERSION } from '../core/version.js'
 import type { GantryConfig } from '../core/config/schema.js'
 import type { Exec } from '../core/tools/exec.js'
+import type { SetupDriver } from '../core/tools/setup.js'
 import type { SkillRef, Stage } from '../core/types.js'
 import { runDoctor } from './doctor-command.js'
+import { runBatch } from './batch-command.js'
 import { runList } from './list-command.js'
 import { runIssue, type IssueOptions } from './issue-command.js'
 import { runFix, type FixOptions } from './fix-command.js'
@@ -25,7 +27,13 @@ import { runRepoAdd } from './repo-command.js'
 import { runRetire, type RetireOptions } from './retire-command.js'
 import { runSkillInstall, runSkillPath, type SkillInstallOptions } from './skill-command.js'
 import { runStatus, type StatusOptions } from './status-command.js'
-import { needsSetup, startSetup, type SetupOptions } from './setup-command.js'
+import {
+  needsSetup,
+  runSetupHeadless,
+  startSetup,
+  type HeadlessSetupOptions,
+  type SetupOptions,
+} from './setup-command.js'
 import { maybeUpgrade, runUpgrade, type UpgradeOptions } from './upgrade-command.js'
 import { startTui, type TuiOptions } from './tui-command.js'
 
@@ -56,6 +64,13 @@ export interface CliDeps {
   startTui?: (options: TuiOptions) => Promise<void>
   /** Test seam. Defaults to the real wizard. */
   startSetup?: (options: SetupOptions) => Promise<void>
+  /**
+   * The driver `setup --yes --preset` walks (R12.18). A seam for `startSetup`'s
+   * reason: the real one downloads and installs, so no test of the sequence can
+   * run it. Takes the home and the user home so a test sees which pair the
+   * headless path built it with. Defaults to `buildSetupDriver`.
+   */
+  setupDriver?: (home: string, userHome?: string) => SetupDriver
   /** Test seam, and the one that keeps the default suite offline: the real
       `maybeUpgrade` reaches the release index, and every test driving the root
       action would otherwise make that request. */
@@ -186,6 +201,28 @@ export function containCommander(
 export const isCommanderError = (err: unknown): err is CommanderError =>
   err instanceof CommanderError
 
+interface RunOptions {
+  repo?: string
+  stage?: string
+  json?: boolean
+  yes?: boolean
+}
+
+/**
+ * R12.16: exactly one of a skill and `--repo`. Checked before anything is
+ * printed or opened, so a request that names both, or neither, leaves no
+ * notice, no ledger and no run behind. Both would leave the caller guessing
+ * which one the command honoured.
+ */
+function runTarget(skill: string | undefined, repo: string | undefined): { skill: string } | { repo: string } {
+  if (skill !== undefined && repo !== undefined) {
+    throw new Error('give a skill or --repo, not both: --repo is the batch, and a skill names one run')
+  }
+  if (skill !== undefined) return { skill }
+  if (repo !== undefined) return { repo }
+  throw new Error('give a skill to run, or --repo <repoId> to run every skill of a repo')
+}
+
 function parseStages(raw: string): Stage[] {
   return raw.split(',').map((token) => {
     const stage = token.trim()
@@ -273,18 +310,25 @@ export function buildProgram(deps: CliDeps): GantryProgram {
   program
     .command('run')
     .helpGroup(HELP_GROUP.act)
-    .description('run lifecycle stages against a skill and record the evidence')
-    .argument('<skill>', 'skill id or bare name')
+    .description('run lifecycle stages against a skill, or with --repo against every skill of a repo')
+    .argument('[skill]', 'skill id or bare name; omit it with --repo')
+    .option('--repo <repoId>', 'run every skill of this repo, gate stages only (R12.16)')
     .option('--stage <list>', 'comma-separated lifecycle stages (default: validate, evaluate and security)')
     .option('--json', 'emit newline-delimited JSON events')
-    .option('--yes', 'authorise mutating stages')
-    .action(async (selector: string, opts: { stage?: string; json?: boolean; yes?: boolean }) => {
+    .option('--yes', 'authorise mutating stages of one skill; --repo never honours it')
+    .action(async (named: string | undefined, opts: RunOptions) => {
+      const target = runTarget(named, opts.repo)
       await noticeInterrupted(deps)
       // R12.1: the three gate stages, because the commonest request is "is
       // this skill sound" and release, which needs a target and `--yes`, is
       // never implied.
       const requested = opts.stage === undefined ? [...GATE_STAGES] : parseStages(opts.stage)
-      const { config, allSkills, skill } = await selectSkill(deps.home, selector)
+      if ('repo' in target) {
+        // R12.16: its own authorisation, which is none, so `--yes` is not read.
+        program.exitCode = await runBatch(deps, target.repo, requested, opts.json === true)
+        return
+      }
+      const { config, allSkills, skill } = await selectSkill(deps.home, target.skill)
       const lock = await loadToolLock(deps.home)
       const env = await loadEnvFile(deps.home)
 
@@ -459,8 +503,20 @@ export function buildProgram(deps: CliDeps): GantryProgram {
   program
     .command('setup')
     .helpGroup(HELP_GROUP.setUp)
-    .description('probe runtimes, install tools, write credentials and register a repo')
-    .action(async () => {
+    .description(
+      'probe runtimes, install tools, write credentials and register a repo; ' +
+        'with --yes --preset, install a preset without the wizard',
+    )
+    .option('--yes', 'prior authorisation to install the preset; needs --preset')
+    .option('--preset <name>', 'minimal, recommended or everything; without --yes, report and install nothing')
+    .option('--json', 'emit one JSON document (with --preset or --yes)')
+    .action(async (opts: HeadlessSetupOptions) => {
+      // R12.18: either flag takes the headless path, which never mounts the
+      // wizard and so never needs a terminal. Bare `setup` is R12.14's.
+      if (opts.yes === true || opts.preset !== undefined) {
+        program.exitCode = await runSetupHeadless(deps, opts)
+        return
+      }
       requireTerminal(deps, 'the setup wizard')
       await (deps.startSetup ?? startSetup)({ home: deps.home })
     })

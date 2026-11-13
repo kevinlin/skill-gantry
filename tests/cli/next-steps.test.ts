@@ -250,17 +250,23 @@ describe('nextSteps — a blocker no command clears still has an entry', () => {
     ).toEqual([{ command: null, why: message }])
   })
 
-  it('reports a missing release tool as an entry no command resolves, and says an agent cannot clear it', () => {
+  it('reports a missing release tool as an entry no command resolves, and names both ways to install it', () => {
     const message = 'skills is not installed: release cannot run its installability gate'
     const steps = nextSteps({ ...READY, blockers: [{ code: 'release-tool-missing', message }] })
 
     expect(steps).toHaveLength(1)
     expect(steps[0]?.command).toBeNull()
     expect(steps[0]?.why).toContain(message)
-    // `setup` is the one command that installs it, and it needs a terminal: the
-    // reader has to learn that the step is the maintainer's, not its own.
+    // `setup` is the one command that installs it: the reader has to learn that
+    // the step is the maintainer's, not its own.
     expect(steps[0]?.why).toContain('maintainer')
     expect(steps[0]?.why).toContain('`skillgantry setup`')
     expect(steps[0]?.why).toContain('in a terminal')
+    // R12.18: and that a preset reaches it without one. `command` stays null
+    // above because a preset also rewrites the stage selection, so which one
+    // is the maintainer's call.
+    expect(steps[0]?.why).toContain('`skillgantry setup --yes --preset <name>`')
+    expect(steps[0]?.why).toContain('stage selection')
+    expect(steps[0]?.why).not.toContain('an agent cannot')
   })
 })
