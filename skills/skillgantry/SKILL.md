@@ -52,7 +52,7 @@ Then take what `next` names:
 | an entry with no command | Something only a person can settle, such as two files disagreeing on the version. Report it and stop. |
 | `skillgantry release <skill> --version … --yes` | Every gate passed against the current files. See "Releasing". |
 
-For a skill that declares no version, `next` asks for `--version <semver>`: there is nothing for `patch` to bump, so the user has to name the first version.
+For a skill that declares no version, `next` asks for `--version <semver>`. There is nothing for `patch` to bump, so the user has to name the first version.
 
 Any edit to the skill, including a new eval or a suppression, changes its digest. Gates recorded before the edit then count as stale, and `status` will send you back to `run`. This is expected. Finish your edits, then run the gates once.
 
@@ -68,7 +68,7 @@ The `fix` prompt is the authority for a stage's findings; do what it says. The p
 
 Tell the user which findings you left open and why. Whether to release with them open is their decision.
 
-An open finding stays in the issue count until someone rules on it. When the user agrees one is right but will not be fixed, record that: `skillgantry issue <fingerprint> wontfix`, with the fingerprint from `issues.items` in the status document. `acknowledge` marks one as seen and still open, and `reopen` undoes either. This is triage, and the gates do not read it. Do not use it to make a number go down.
+An open finding stays in the issue count until someone rules on it. When the user agrees one is right but will not be fixed, record that with `skillgantry issue <fingerprint> wontfix`. The fingerprint is in `issues.items` in the status document. `acknowledge` marks one as seen and still open, and `reopen` undoes either. This is triage, and the gates do not read it. Do not use it to make a number go down.
 
 ## Releasing
 
@@ -91,7 +91,7 @@ It prints the diff, then writes the version into `SKILL.md` and `versions.json`,
 - Never write under `*-workspace/` or `.skillgantry-workspace/`. That is the recorded evidence.
 - `release`, `retire` and `suppress` change the user's repo. Each prints its diff first and needs `--yes`. Do not pass `--yes` to `release` or `retire` unless the user asked for that action.
 - Never read, print or edit `~/.skillgantry/.env`. If a gate reports a missing credential, name the key to the user and let them add it.
-- One skill at a time. Finish the loop for one before starting the next. `skillgantry run --repo <repoId>` sweeps every skill in a repo and is for when the user asks for exactly that: with the default stages it runs every skill's eval suite, which is slow and costs money, so offer `--stage validate,security` first.
+- One skill at a time. Finish the loop for one before starting the next. `skillgantry run --repo <repoId>` sweeps every skill in a repo. Use it only when the user asks for a sweep. With the default stages it runs every skill's eval suite, which is slow and costs money, so offer `--stage validate,security` first.
 - Exit code 0 means done. 1 means it ran and the answer was no. 2 means the request could not be carried out, and one `error:` line says why. Fix the request on 2. Do not retry it unchanged.
 
 ## Other commands

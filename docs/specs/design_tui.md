@@ -529,7 +529,7 @@ The rail answered for the newest run. `declawed` in the reference home had passe
 
 Cells are matched to verdicts by run id, not by path: the ledger's `sidecar_path` and the directory the TUI resolved from the index are two spellings of one place.
 
-**The mark is `~` in the cell's own leading space, and the word goes dim.** `~passed`, `~FAIL`. Every cell already rendered a space before its word, so the column width `cellWidth` fixes from the vocabulary does not change and nothing moves at the 80×24 floor. It is a character and not a colour (R11.25, and §14.6's rule that an outcome is never colour-only), and the dim says the same thing the character does: this verdict is about bytes that are gone. Help names it.
+**The mark is `~` in the cell's own leading space, and the word goes dim in its own hue.** A stale `FAIL` is still not a stale pass, so the outcome's colour stays and only its weight drops. `~passed`, `~FAIL`. Every cell already rendered a space before its word, so the column width `cellWidth` fixes from the vocabulary does not change and nothing moves at the 80×24 floor. It is a character and not a colour (R11.25, and §14.6's rule that an outcome is never colour-only), and the dim says the same thing the character does: this verdict is about bytes that are gone. Help names it in its footnote, the one row under the bindings that is not a key: `KEYS` already fills the 80×24 budget, and `~` is drawn, never pressed.
 
 **Read on selection, when a job for the skill settles, and when a suppression is applied.** The first is §14.5's lazy read and shares its effect. The other two are the moments currency changes without the selection moving — a suppression is an edit, which is the review's original complaint — and neither needs a relaunch.
 

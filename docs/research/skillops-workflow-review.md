@@ -4,7 +4,7 @@
 **Against:** SkillGantry 0.7.0 as installed, a home with three registered repos and 33 skills, and `zapac-agent-skills` as the reference skill repo
 **Method:** ran every headless command and the terminal interface against that home; read the three generated prompts as the agent that receives them; read design §9.4, §12 and §15
 
-Short, in bullets. Part 1 is what 1.0.0 changed as a result. Part 2 is what it did not, with what each would take.
+Short, in bullets. Part 1 is what 1.0.0 changed as a result. Part 2 is what it did not, with what each would take. Part 3 is what 1.1.0 then did with part 2.
 
 ## 1. Found and fixed in 1.0.0
 
@@ -48,3 +48,34 @@ Ordered by how much each would help the daily loop.
 - The Work screen's status line says `v0.7.0` but not which home it is reading. With `SG_HOME` set for a test, it is easy to act on the wrong ledger.
 - `--help` lists commands alphabetically by registration order with no grouping. Three groups would read better: look (`list`, `status`, `doctor`), act (`run`, `fix`, `evals`, `optimise`, `suppress`), ship (`release`, `retire`, `recover`).
 - `~/.skillgantry/backup/` holds five old versions that nothing prunes.
+
+## 3. What 1.1.0 did with part 2
+
+Each item was assessed against the code and a copy of a real home. The reasoning is in [plan_m11-review-follow-ups.md](../specs/plan_m11-review-follow-ups.md).
+
+### Workflow
+
+- **Stale gates on the rail: done, and widened.** The rail also showed only the newest run. A skill whose gates passed in three runs read `· passed ·`. Gate cells now show each stage's latest verdict and mark a stale one `~` (R11.25).
+- **One fix invalidates every gate: deferred.** It changes R9.9 and the one-manifest rule of design §4.4. It still needs its own review.
+- **Batch run: done.** `run --repo <repoId>` (R12.16).
+- **Headless issue triage: done.** `issue <fingerprint> <acknowledge|wontfix|reopen>` (R12.17).
+- **Release stops before the commit: done.** A release that applied prints the `git add` and `git commit` for the files it changed (R9.7).
+- **`ready` cannot see the target checks: done for two of three.** `status --version` decides the target and the archive. The sandbox stays undecided, because opening one is a write (R12.19).
+
+### Setup
+
+- **Wizard-only installation: done.** `setup --yes --preset <name>`. It never installs a runtime and never writes `.env` (R12.18).
+- **The wizard does not offer the bundled skill: done, in its smallest form.** The done step names `skillgantry skill install`.
+- **`doctor --quick`: declined.** The checks run concurrently instead, so plain `doctor` is the faster one and `ok` still means the tool ran.
+
+### Bugs
+
+- **git-skill reinstall drops its links: fixed.** Found live: one lock entry recorded one of the two links it owned.
+- **`detectSkillDirs` probes the first skill only: fixed** by the same per-skill rule.
+- **Private readers in `fix` and `optimise`: merged.** One strict reader; `optimise` keeps its tolerance where it calls it.
+
+### Smaller things
+
+- **The home on the status line: done**, shown when it is not the default.
+- **`--help` grouping: done.** Look, act, ship, set up.
+- **`backup/` pruning: done.** A snapshot goes when its version's prefix does.

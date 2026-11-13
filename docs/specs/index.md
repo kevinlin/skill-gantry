@@ -63,3 +63,4 @@ Every plan is shipped. The description names what the plan covers and the requir
 |---|---|
 | [meta/convention.md](meta/convention.md) | Naming and structure convention reference (used by spec-lint) |
 | [meta/lint-report-2026-08-11.md](meta/lint-report-2026-08-11.md) | spec-lint findings, 2026-08-11. Point-in-time; not a contract |
+| [meta/lint-report-2026-11-13.md](meta/lint-report-2026-11-13.md) | spec-lint findings for requirements revisions 33 and 34, 2026-11-13. Point-in-time; not a contract |

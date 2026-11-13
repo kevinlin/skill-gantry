@@ -158,7 +158,7 @@ skillgantry status declawed --version minor   # check the target first, writing 
 skillgantry release declawed --version minor --yes
 ```
 
-Release refuses unless the last gate outcomes all passed *and* were recorded against exactly the bytes you are shipping. It then stages the version bump, packages the archive, extracts it, installs it, and only after all of that shows you a diff and writes. An abort leaves no archive behind and no modified file. It never commits or tags — that stays your keystroke. In a git repo it ends by printing the `git add` and `git commit` for exactly the files it changed, so work you had staged for something else stays out of the commit.
+Release refuses unless the last gate outcomes all passed *and* were recorded against exactly the bytes you are shipping. It then stages the version bump, packages the archive, extracts it, installs it, and only after all of that shows you a diff and writes. An abort leaves no archive behind and no modified file. It never commits or tags — that stays your keystroke. In a git repo it ends by printing the `git add` and `git commit` for exactly the files it changed. Work you had staged for something else stays out of that commit.
 
 ## Driving it from a coding agent
 
@@ -179,7 +179,7 @@ skillgantry skill install --dir <path>    # or into another agent's skills direc
 
 Then ask your agent, in the skill's repo, to get a skill ready to release. `skillgantry doctor` tells you when the installed copy is older than the binary.
 
-Two things still need you: your credential file, which no command writes, and the decision to release. Installing the tools no longer needs a terminal, but it is still your call: `skillgantry setup --yes --preset <name>` installs software and sets which tool each stage uses, so the bundled skill tells an agent to run it only when asked.
+Two things still need you: your credential file, which no command writes, and the decision to release. Installing the tools no longer needs a terminal, but it is still your call. `skillgantry setup --yes --preset <name>` installs software and sets which tool each stage uses, so the bundled skill tells an agent to run it only when asked.
 
 ## The rest of the surface
 

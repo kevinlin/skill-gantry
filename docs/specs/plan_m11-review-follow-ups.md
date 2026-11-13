@@ -1,7 +1,7 @@
 # Plan — M11: the workflow review's open items
 
 **Date:** 2026-11-13
-**Status:** in progress
+**Status:** shipped
 **Layer:** plan (layer 3 of 3: [requirements](requirements.md) → [design](design.md) → plan)
 **Satisfies:** R11.25, R12.16–R12.19; R9.7, R11.10, R12.12, R12.15, R13.12 as amended in requirements revision 34
 **Design:** [design.md](design.md) §5.2, §5.3, §12.4, §15, §15.1; [design_tui.md](design_tui.md) §14.5, §14.15; [design_version-check-and-upgrade.md](design_version-check-and-upgrade.md) §3, §4.4
@@ -70,14 +70,14 @@ Run through the agent-handoff flow: the driver plans, splits and reviews every d
 
 | id | owner | task | acceptance | depends | state |
 |---|---|---|---|---|---|
-| T0 | driver | Spec amendments and this plan, committed before implementation | `pnpm vitest run tests/specs` passes | - | |
-| T1 | fast_worker | `gateStatuses` extraction, `status --version`, version-less `next`, `issue`, the release hint, help groups | `pnpm check` green; status and release agree over a target; every new exit code tested | T0 | |
-| T2 | fast_worker | `run --repo` over the shared queue wiring, `setup --yes --preset` over `buildSetupDriver` | `pnpm check` green; batch exit codes tested; setup driven offline with an injected driver | T1 | |
-| T3 | fast_worker | The git-skill rule with a reinstall test, concurrent doctor, backup prune, reader dedupe; in a worktree | `pnpm check` green; a reinstall records every own link; existing doctor tests pass untouched | T0 | |
-| T4 | fast_worker | The rail's gate cells and the stale mark, the home on the status line, the wizard's done line, the release hint in the Log pane | `pnpm check` green; frames at 80×24 and wide; a suppression marks the cells without a relaunch | T2, T3 | |
-| T5 | driver | The bundled skill and its reference, README, `CLAUDE.md`; `declawed` pass | the version pin test passes; the skill's floor reads 1.1.0 | T4 | |
-| T6 | driver | `tests/acceptance/m11.test.ts` | passes under `pnpm acceptance` | T4 | |
-| T7 | driver | The review's §2 marked with these verdicts and `spec-lint`, committed; then `pnpm release:version minor` on the clean tree, the hand-edited 1.1.0 section, final `pnpm check`, commit | `pnpm check` green on the final commit; an install with a temp `SG_HOME` and `SG_BIN_DIR` prints 1.1.0 | T5, T6 | |
+| T0 | driver | Spec amendments and this plan, committed before implementation | `pnpm vitest run tests/specs` passes | - |done `63e19f4` |
+| T1 | fast_worker | `gateStatuses` extraction, `status --version`, version-less `next`, `issue`, the release hint, help groups | `pnpm check` green; status and release agree over a target; every new exit code tested | T0 |done `d27b80b` |
+| T2 | fast_worker | `run --repo` over the shared queue wiring, `setup --yes --preset` over `buildSetupDriver` | `pnpm check` green; batch exit codes tested; setup driven offline with an injected driver | T1 |done `cdea039` |
+| T3 | fast_worker | The git-skill rule with a reinstall test, concurrent doctor, backup prune, reader dedupe; in a worktree | `pnpm check` green; a reinstall records every own link; existing doctor tests pass untouched | T0 |done `d1f459d` |
+| T4 | fast_worker | The rail's gate cells and the stale mark, the home on the status line, the wizard's done line, the release hint in the Log pane | `pnpm check` green; frames at 80×24 and wide; a suppression marks the cells without a relaunch | T2, T3 |done `fdf2e1a` |
+| T5 | driver | The bundled skill and its reference, README, `CLAUDE.md`; `declawed` pass | the version pin test passes; the skill's floor reads 1.1.0 | T4 |done `dd6c1ae` |
+| T6 | driver | `tests/acceptance/m11.test.ts` | passes under `pnpm acceptance` | T4 |done `e5afba1` |
+| T7 | driver | The review's §2 marked with these verdicts and `spec-lint`, committed; then `pnpm release:version minor` on the clean tree, the hand-edited 1.1.0 section, final `pnpm check`, commit | `pnpm check` green on the final commit; an install with a temp `SG_HOME` and `SG_BIN_DIR` prints 1.1.0 | T5, T6 |done |
 
 - T1, T2 and T4 share `src/cli/run-command.ts` and `src/cli/tui-command.ts` and run one at a time. T3 runs beside T1 in a worktree and is collected as a patch before T4 starts, because T3 moves `newestEntry` out of `src/tui/views.ts` and T4 edits that file.
 - Workers do not commit. The driver commits each row after reading its whole diff against the row's brief.
@@ -86,7 +86,7 @@ Run through the agent-handoff flow: the driver plans, splits and reviews every d
 
 - `pnpm check` after every row and on the final commit.
 - **Against a copy of the real home** (`config.json` and `gantry.db` copied, `tools/` symlinked, no `.env`): `status` for `declawed` beside a pty capture of the Work screen, where the rail must agree gate for gate; `status agent-insights --version patch` lists the archive as uncommitted; `status` on a version-less skill suggests a semver; `--help` shows four groups.
-- `skillgantry doctor` timed three times before and three times after against the same home copy, the six numbers recorded below; a unit test asserts every tool check has started before the first resolves, and that findings keep lock order when they resolve out of it.
+- `skillgantry doctor` timed three times before and three times after against the same home copy, interleaved: 3.75s, 3.69s and 3.66s on 1.0.0, then 3.76s, 1.89s and 1.96s after, with byte-identical reports. The first run of each build is the slow one; cold, 1.0.0 took between 8s and 19s on the same machine. Also a unit test asserts every tool check has started before the first resolves, and that findings keep lock order when they resolve out of it.
 - **A disposable repo with stand-in tools:** `run --repo` exits `1` with one failing skill and `0` without; an `issue` round trip; a release prints two git lines that run as printed.
 - `setup --yes --preset minimal` under `SG_INTEGRATION=1` only, against a temp `SG_HOME` **and** a temp agent home, asserting that nothing under the real `~/.claude`, `~/.codex` or `~/.agents` changed. The default suite stays offline.
 - The `declawed` skill run over the bundled skill, its reference, this plan and the 1.1.0 changelog section; its re-scan reporting no remaining tell is the evidence.
@@ -122,4 +122,16 @@ The plan had one read-only review by the deep_reasoner identity before any work 
 
 ## Deviations found while implementing
 
-(Written as the rows land.)
+- **Every delegated row was accepted on its first pass.** No fix round ran. One integration edit was the driver's: `release-stage.ts` spelled the archive name inline in two places the T1 row was told not to touch, and now calls `archiveNameFor`.
+- **No independent acceptance job, again.** The e2e identity's backend still fails at launch (the installed GitHub Copilot CLI rejects `--no-remote`, which the handoff script always passes and which was not stripped). The driver wrote and ran `tests/acceptance/m11.test.tsx`. Its rail case was checked by stubbing the port: the frame then read `· · passed`, which is 1.0.0's.
+- **`buildStatus` does not call `gateStatuses`.** The plan said it would. Calling it would open the ledger and walk the skill a second time, and could compare gates against a different digest from the one the document prints. Both call one internal `readGates`, so the mapping still has one implementation.
+- **`issue` reads the issue through `listIssues`.** `setIssueState` cannot say why it returned `null`, and the row could not add a query to the ledger module. Under `--json` an illegal transition still prints the document, with the state the issue is in; the exit code says it did not move.
+- **The commit hint quotes with single quotes, and is absent when nothing changed.** Design §12.4 was amended for both.
+- **Help groups follow registration order.** commander lists a group where its first member was registered, so `buildProgram` was reordered to look, act, ship, set up. That is why T1's diff of `run-command.ts` is large and almost all moves.
+- **A missing runtime refuses a dry run too.** §15.1 said `--yes`; the row refused in both modes, and §15.1 now says why.
+- **The stale word keeps its hue.** §14.15 said the word goes dim. It goes dim in its own colour, so a stale `FAIL` does not read as a stale pass.
+- **The Help legend is the footnote.** `KEYS` has no row to spare at 80×24, so the footnote was shortened to carry it.
+- **The selection effect no longer depends on `runDir`.** With the verdict read chained after the last-run read, the run landing re-ran the effect and read the ledger twice per selection.
+- **`y` on a filled cell can be cut off at 80 columns.** The flash is the `fix … --run <runId>` command, and a long skill id plus a run id is wider than the footer. Left: `skillgantry status` prints the same command whole.
+- **The home label is dropped whole when it does not fit.** A long home on a narrow terminal shows the key hints and no label, by §14.1's rule. A version alone would read as the default home.
+- **`tests/core/spawn.test.ts` failed once under a loaded full run** ("kills the whole process tree on timeout") and passed alone and on the next full run. It is timing-sensitive and predates this milestone.
