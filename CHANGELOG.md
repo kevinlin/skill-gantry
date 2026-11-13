@@ -11,6 +11,17 @@ rather than replaying its commits. Standalone fixes belonging to no plan are lis
 `parseChangelog` reads only the `- ` lines, and the upgrade prompt gives each one row. So a bullet
 is a headline that fits a terminal, and the paragraph under it carries the detail.
 
+## 1.1.2 — 2026-11-14
+- fix(evaluate): a failing without-skill baseline case no longer fails the gate
+
+  With `benchmark.enabled: true` in a skill's `evals/eval.yaml`, skill-up runs every case twice,
+  with the skill and without it, and writes both results into one report. The evaluate gate read
+  both. A skill passing 6/6 was recorded as failed at 10/12, with an issue filed for each case
+  the baseline got wrong. The gate now reads the with-skill results only, which is what
+  skill-up's own exit code does. An issue filed from a baseline failure closes on the next
+  evaluate run. The Dashboard's eval case rate follows for new runs; a run recorded before this
+  version keeps the doubled counts it was saved with.
+
 ## 1.1.1 — 2026-11-13
 - feat(skill): the agent sets an installed copy of a skill aside before gating it
 

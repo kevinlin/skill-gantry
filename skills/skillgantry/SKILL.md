@@ -8,7 +8,7 @@ description: >
   findings, to see whether a skill is ready to ship, or to release one, and
   whenever they mention skillgantry or SkillOps.
 metadata:
-  version: 1.1.1
+  version: 1.1.2
 ---
 
 # SkillGantry
