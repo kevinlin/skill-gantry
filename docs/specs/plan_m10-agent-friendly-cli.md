@@ -122,3 +122,26 @@ The plan had one read-only review by the deep_reasoner identity before any work 
 - **`agent-skill-outdated` is a `ToolDriftKind`**, not a caller-supplied finding like `skillgantry-outdated`. It reads a file and needs no network. §5.5 says so.
 - **`CliDeps` gained `userHome`.** Without it the existing doctor CLI tests read the developer's real `~/.claude`.
 - **Ink 8 resolves `waitUntilExit` from a write callback.** The test double dropped the callback, so every "did not exit" assertion had been passing whether or not the app quit. Fixed in `tests/helpers/render-ink.tsx`.
+
+## Changelog
+
+- 2026-11-12 — Written.
+- 2026-11-13 — Shipped as 1.0.0.
+- 2026-11-13 — **The bundled skill sets an installed copy of the skill under test aside before the gates run, and puts it back when the work stops.** Skill text only: `skills/skillgantry/SKILL.md`, no command, no flag, no change to the `status` document.
+  - **Why.** The evaluate gate starts an agent on the host, and that agent can load whatever is installed there. On the maintainer's machine `~/.claude/skills/declawed` is a link into a second checkout, not the registered one. An eval could then be scored against bytes the digest does not cover, and a baseline run without the skill would still have it.
+  - **What the skill now says.**
+    - Pre-flight step 5, before the first `run`: look for `<name>` in `~/.claude/skills`, in the working project's `.claude/skills` and in the skill repo's `.claude/skills`. Move each hit into a `skills_disabled` directory beside the `skills` it was in, and tell the user.
+    - Put it back on every exit: released, blocked or abandoned. A new rule under "Rules that always hold" and a line at the end of "Releasing" repeat it.
+    - Read-only requests (`status`, `list`) skip the step.
+  - **Decisions.**
+    - **No new command.** The mechanism is one `mv`. A subcommand would be one more path that writes under the user's home, and it would need its own safety argument. An agent does the same thing in a line.
+    - **A real directory that resolves to `skill.dir` is left alone.** `~/.claude/skills` is itself a registered repo for some users; the decision log counts 54 skills there. Moving the entry would take the skill away from SkillGantry. A symlink is always safe to move: the link goes, the target stays.
+    - **An existing `skills_disabled/<name>` is never overwritten and never assumed to be ours.** An interrupted session leaves one, and so does a user who disabled the skill on purpose. Only the user can say which.
+    - **A symlink goes back as it was.** That is the re-link. When its target is another checkout, the skill says that checkout still holds the old version; updating it is whatever syncs that checkout.
+    - **A copy is updated only from a release archive, and only on the user's yes.** `<repoPath>/<name>_<version>.zip` is unpacked at the install path. The old copy is deleted after the new `SKILL.md` is there. Unreleased edits never reach an installed copy. The archive's entries are relative to the skill root (`packageCandidate` zips from inside the materialised tree), so `unzip -d <skills>/<name>` gives the right shape.
+  - **Verification.** The set-aside and both put-back paths were rehearsed in a scratch directory: an absolute link, a relative link, and a copy replaced from an archive built the way `packageCandidate` builds one. No evaluate run was compared with and without an installed copy. The contamination is argued from how skill-up runs on the host, and it has not been measured.
+  - **Left as is.**
+    - Shipped as 1.1.1, a patch with no command change. An installed 1.1.0 copy keeps the old text until `skillgantry skill install` is re-run, and `doctor` names it once the binary is 1.1.1.
+    - Requirements and design are unchanged. R3.13 and §5.5 say how the skill is shipped and installed, not what it teaches.
+    - A session that dies between the move and the put-back leaves the skill disabled. The next session's pre-flight finds it and asks.
+    - `skillgantry` itself is the exception to replacing a copy from an archive. The new copy would have no `.skillgantry-bundled.json`, so a later `skill install` refuses it. For that one skill the right put-back is the old copy moved back, then `skillgantry skill install`.
