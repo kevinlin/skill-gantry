@@ -11,6 +11,78 @@ rather than replaying its commits. Standalone fixes belonging to no plan are lis
 `parseChangelog` reads only the `- ` lines, and the upgrade prompt gives each one row. So a bullet
 is a headline that fits a terminal, and the paragraph under it carries the detail.
 
+## 1.1.0 — 2026-11-13
+- feat(tui): the rail shows each gate's latest verdict and marks a stale one
+
+  The lifecycle rail showed the newest run and nothing else. A skill whose three gates had passed
+  in three runs read `· passed ·`, and a gate that passed before an edit read `passed` until
+  release refused it. Each gate cell now shows that stage's latest verdict, read through the
+  function `status` uses. A verdict recorded against older files reads `~passed`, dimmed, and a
+  suppression marks the cells straight away. A stage the newest run cancelled or errored keeps
+  that run's outcome.
+
+- feat(cli): `run --repo` runs the gates over every skill in a repo
+
+  `skillgantry run --repo <repoId>` runs the requested stages over each skill of one repo, several
+  at a time under the configured `concurrency`. It ends on one count and one exit code: `0` when
+  every skill passed. Gate stages only. `--json` wraps each event as `{ "skillId", "event" }` and
+  closes with a summary line. `run <skill>` is unchanged.
+
+- feat(cli): `setup --yes --preset` installs the toolchain without the wizard
+
+  `skillgantry setup --yes --preset <minimal|recommended|everything>` installs and verifies a
+  preset's tools and sets the stage selection. It needs no terminal, so CI and a coding agent can
+  run it. Without `--yes` it reports what it would install and writes nothing. It never
+  installs a runtime and never writes `~/.skillgantry/.env`: it names what is missing. The stage
+  selection is written only when every tool installed. Bare `setup` is still the wizard.
+
+- feat(cli): `issue` acknowledges, wontfixes or reopens an issue
+
+  `skillgantry issue <fingerprint> <acknowledge|wontfix|reopen>` is the Issues screen's triage
+  from the shell. The fingerprint is the one `status --json` lists. Exit `1` means that move is
+  not allowed from the issue's current state, `2` that no issue has that fingerprint. Release
+  reads gates and not issue state, so this changes a count and opens no way round a gate.
+
+- feat(cli): `status --version` checks the target before a release
+
+  `skillgantry status <skill> --version <target>` also decides the two release checks that need a
+  target and no write. A target that does not resolve is the blocker `target-invalid`. An archive
+  of that version already in the repo is listed under `dirty`, ignored by git or not. `next` then
+  names the release with the resolved version. Only the sandbox is left unchecked. A skill that
+  declares no version is no longer told to release with a bump level.
+
+- feat(release): a release ends by naming the commit it left to you
+
+  Release never commits. In a git repo it now ends by printing the `git add` and `git commit` for
+  the files it changed, and the terminal app writes the same two lines to the Log pane. Both carry
+  the paths, so work staged for something else stays out of the commit. An archive the repo ignores
+  is left out.
+
+- fix(tools): a reinstalled skill bundle keeps its links in the lock
+
+  After a pin bump, reinstalling SkillHone or skill-upper found its own links and created none.
+  The lock entry it wrote recorded only the links made that time, so `doctor` and uninstall lost
+  track of links SkillGantry owned. Each link is now decided on its own: absent is created, ours is
+  re-pointed and recorded, anything else is left alone. An entry written by the old rule is put
+  right the next time the tool is installed.
+
+- perf(doctor): tools are verified concurrently
+
+  Every locked tool is still run to verify it, all at once instead of one after another. On the
+  reference machine a warm `skillgantry doctor` went from about 3.7s to about 1.9s, with the same
+  findings in the same order.
+
+- ui: grouped `--help`, the home on the status line, a skill hint in setup
+
+  `--help` lists commands under Look, Act, Ship and Set up. The status line names the home when it
+  is not `~/.skillgantry`, so a session under `SG_HOME` says which ledger it is reading. The
+  wizard's last step names `skillgantry skill install`.
+
+- fix(upgrade): old snapshots are pruned with old versions
+
+  `~/.skillgantry/backup/` kept a snapshot for every version ever upgraded from. An upgrade now
+  removes each snapshot whose version it no longer retains, after the new version is adopted.
+
 ## 1.0.0 — 2026-11-13
 - feat(cli): `status` says where a skill stands and what to do next
 
