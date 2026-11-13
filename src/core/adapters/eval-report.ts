@@ -15,6 +15,8 @@ interface CaseResult {
   title?: string
   status?: string
   turns?: number
+  /** skill-up 0.11.0 writes `with_skill` or `without_skill`; the JSON field is omitempty, so nothing here relies on it being present. */
+  configuration?: string
   grading?: { assertion_results?: AssertionResult[] }
 }
 
@@ -64,7 +66,12 @@ export function parseEvalReport(bytes: Buffer, opts: EvalReportOptions): ToolRes
     )
   }
 
-  const cases = doc.case_results ?? []
+  // A benchmark run lists every case twice, and the without_skill baseline fails
+  // where the skill works: reading it recorded a 6/6 suite as 10/12 failed.
+  // Only that one value is dropped. A missing or unfamiliar configuration still
+  // counts, so a variant this parser has not met fails the gate rather than
+  // slipping past it.
+  const cases = (doc.case_results ?? []).filter((c) => c.configuration !== 'without_skill')
   const findings: RawFinding[] = []
   let passed = 0
   let errors = 0
