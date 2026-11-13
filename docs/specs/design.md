@@ -1,7 +1,7 @@
 # SkillGantry — Design
 
 **Date:** 2026-08-01
-**Status:** revision 3, incorporating [design-review-r2.md](design-review-r2.md); amended in place through M10
+**Status:** revision 3, incorporating [design-review-r2.md](design-review-r2.md); amended in place through M11
 **Layer:** design (layer 2 of 3: [requirements](requirements.md) → design → plan)
 **Traces to:** [requirements.md](requirements.md), [decision-log.md](decision-log.md)
 
@@ -301,7 +301,9 @@ Its selection follows skill-up's rather than being offered under its own name (R
 
 `git-skill` verification is three facts rather than a version argv, because `verifyTool`'s semver regex rejects a commit sha and nothing in a skill bundle answers a version argv at all: `git rev-parse HEAD` equals `resolvedVersion`, every recorded symlink resolves into the tool root, and — where one was built — the interpreter runs. That is what gives §5.3's existing drift kinds meaning here — `missing` is a vanished clone or a dangling link, `unverifiable` an interpreter that will not run, `version-drift` a HEAD moved off the pin. The pin is a commit sha because upstream publishes no tags, and git's own object hashing is the integrity check, so the lock records `integrity: "n/a"`.
 
-The symlinks are the one place an install writes outside the tool root, which R3.1 permits only because they are recorded in the lock and removed on uninstall. They are per skill directory, never the parent `skills/`: upstream advises `cp -r` and the reason it gives — other skills already live in that directory — is an argument against linking the parent, not against linking a member. An existing entry that is not a symlink into our tool root is refused and named rather than clobbered, and detection is per directory rather than global, so a machine holding the bundle in one runtime gains links in the others without the first being disturbed. Detection cannot tell our install from someone else's, so a pre-existing copy is left alone and reported as installed but unmanaged — no sha, no drift — because clobbering a user's own install is a worse failure than a weaker doctor line. Uninstall is an explicit path rather than a consequence of deleting the tree: links outlive the clone, and a dangling `~/.claude/skills/skillhone` breaks every agent that scans that directory, which is the cost R3.1 exists to avoid.
+The symlinks are the one place an install writes outside the tool root, which R3.1 permits only because they are recorded in the lock and removed on uninstall. They are per skill directory, never the parent `skills/`: upstream advises `cp -r` and the reason it gives — other skills already live in that directory — is an argument against linking the parent, not against linking a member. An existing entry that is not a symlink into our tool root is refused and named rather than clobbered, and detection is per directory rather than global, so a machine holding the bundle in one runtime gains links in the others without the first being disturbed. Detection cannot tell our install from someone else's, so a pre-existing copy is left alone and reported as installed but unmanaged — no sha, no drift — because clobbering a user's own install is a worse failure than a weaker doctor line. **Detection is per (directory, skill), and our own link counts as ours.** It was per directory and by the bundle's first skill, with two consequences. A reinstall after a pin bump found the first skill present through the link the previous install had made, classed the whole directory as already holding the bundle, created nothing there, and wrote a lock entry recording only the links made *this* time — often none — so verification and uninstall stopped knowing about links SkillGantry owned. And a directory holding the first skill and missing the rest read as fully installed. Each pair is now one of three: absent, so the link is created; a symlink into this tool's root, so it is re-pointed and recorded; anything else, so it is left alone and reported unmanaged. "Into this tool's root" is one predicate, shared with `doctor`'s `skill-link-unmanaged`: the link's target, resolved against the link's own directory when it is relative, is `<toolRoot>/<id>` or lies under it at a path-segment boundary. Both callers tested `startsWith(<toolRoot>/<id>)`, which also accepts a sibling such as `<toolRoot>/<id>-fork` — and a link recorded as ours is a link uninstall removes. A dangling link of ours is still ours. The lock therefore records every link the bundle owns after any install, and an entry written by the earlier rule heals the next time the tool is installed.
+
+Uninstall is an explicit path rather than a consequence of deleting the tree: links outlive the clone, and a dangling `~/.claude/skills/skillhone` breaks every agent that scans that directory, which is the cost R3.1 exists to avoid.
 
 Revision 2 specified `uv tool install --tool-dir <path>`. uv 0.7.12, the version this project targets, rejects that with `unexpected argument '--tool-dir'`; relocation is done through `UV_TOOL_DIR` and `UV_TOOL_BIN_DIR`. Both are set explicitly on the child rather than inherited, so an install can never land in the user's global `~/.local/share/uv/tools`.
 
@@ -360,6 +362,10 @@ All of them are R3.7's probe-and-report rule — applied to a tool's runtime dep
 One condition is about a skill rather than a tool: `frontmatter-unreadable`, a `SKILL.md` whose frontmatter block is present and would not parse (R2.5). Reported, never failing the report, for the nine above's reason. It is a `SkillFinding` on its own array rather than a `ToolDriftKind`, for `skillgantry-outdated`'s reason: a skill is not one of the tools in the lock. It reads no file — `SkillRef.frontmatterReadable` is what discovery saw when it parsed, so doctor filters the skills it was already given, while `lifecycleDrift` re-reads because comparing the file against the ledger's cache is a different question.
 
 Doctor reads the skills it checks and the ledger's lifecycle column as data supplied by its caller, so `tools` needs neither discovery's I/O nor a sqlite dependency.
+
+**The checks run concurrently and report in lock order.** Each locked tool is verified by running it, and one after another that took eleven seconds on a healthy six-tool machine — long enough that nobody ran it as a preflight. They are independent reads, so they are started together and their findings collected in the order the sequential loop produced. A `--quick` that skipped the invocations was the alternative and was declined: it would be a second report in which `ok` meant "present" rather than "ran", and R3.9's word is *re-verify*.
+
+**Setup has a second caller that asks nothing** (R12.18, §15.1): `skillgantry setup --yes --preset <name>` drives the same `SetupDriver` through the same states without the two a person answers, and the wizard's `done` state names `skillgantry skill install` so that a new user learns §5.5's command where they finish.
 
 ### 5.4 Tool-owned configuration
 
@@ -1363,7 +1369,7 @@ The two are §8.1's rows 3b and 3c, and they call for opposite recovery — see 
 
 A refusal is `failed` with no `error_kind`, because the gate ran and understood the skill — the same distinction §8.1's governing rule draws between a verdict and an error. A tool run with no adapter touches no issue: `reconcile.ts` tolerates a tool it has no rule-class map for, so this `skills` tool run never enters reconciliation.
 
-Git commit and tag are offered as a separate confirmed action after `done`. `apply()` never commits.
+`apply()` never commits, and nothing else does either (R9.7). What a release owes the user is the next step, which until M11 it left unsaid: a headless release that applied ends by printing `git -C <repo> add -- <paths>` and `git -C <repo> commit -m "release(<name>): <version>" -- <paths>`, and the terminal interface writes the same two lines to the Log pane. The paths are on the commit as well as on the add. A release is permitted over a tree with other work staged — R10.3's dirty check covers the release scope and nothing else — and a bare `git commit` would sweep that work into a commit titled for one skill; with a pathspec git commits those paths alone and leaves the rest of the index as it was. Every path, the repo and the message are shell-quoted, since a skill directory may hold a space. `commitHint` in `release/` composes them from the applied change set, keeping only the paths git reports as changed — so an archive the repo ignores is not handed to a `git add` that would refuse it. No tag is suggested: a multi-skill repo's tag scheme is its maintainer's, and the reference repo has none. A repo that is not git-backed gets no hint.
 
 ### 12.5 The narrow write path
 
@@ -1415,18 +1421,19 @@ The cache still earns its place: the Issues and Dashboard screens filter depreca
 
 ## 14. Terminal interface
 
-Specified in [design_tui.md](design_tui.md), which holds §14 through §14.14 under their own numbers: the store and render discipline, the responsive row budget, Settings, the fix-prompt copy, the queue's progress reporting, run rehydration, the Work screen overhaul, accepting a finding, the full-length detail view, the release target, the optimise and eval-bootstrap prompt surfaces, the two-level repo and skill list, the setup repo step, and the upgrade prompt. It is a separate file because it is a fifth of this document and no engine change reads it.
+Specified in [design_tui.md](design_tui.md), which holds §14 through §14.15 under their own numbers: the store and render discipline, the responsive row budget, Settings, the fix-prompt copy, the queue's progress reporting, run rehydration, the Work screen overhaul, accepting a finding, the full-length detail view, the release target, the optimise and eval-bootstrap prompt surfaces, the two-level repo and skill list, the setup repo step, the upgrade prompt, and the rail's gate cells. It is a separate file because it is a fifth of this document and no engine change reads it.
 
 ## 15. Headless interface
 
-*Satisfies R12.1–R12.4, R12.5a, R12.5b, R12.6, R12.7, R12.8, R12.9, R12.10, R12.11–R12.15.*
+*Satisfies R12.1–R12.4, R12.5a, R12.5b, R12.6, R12.7, R12.8, R12.9, R12.10, R12.11–R12.19.*
 
 ```
 skillgantry list [--json]
-skillgantry status <skill> [--json]
+skillgantry status <skill> [--version <semver|major|minor|patch>] [--json]
 skillgantry run <skill> [--stage validate,evaluate,security] [--json] [--yes]
+skillgantry run --repo <repoId> [--stage validate,evaluate,security] [--json]
 skillgantry doctor [--json] [--migrate-rule-map]
-skillgantry setup
+skillgantry setup [--yes --preset <minimal|recommended|everything>] [--json]
 skillgantry repo add <path> [--json]
 skillgantry skill install [--dir <path>] [--json]
 skillgantry skill path
@@ -1439,15 +1446,16 @@ skillgantry fix <skill> [--stage <stage>] [--run <id-or-dir>] [--json]
 skillgantry suppress <skill> --tool <id> --rule <nativeRuleId> --path <skillRelPath>
                              --reason <text> [--yes] [--json]
 skillgantry suppress <skill> --fingerprint <fp> --reason <text> [--yes] [--json]
+skillgantry issue <fingerprint> <acknowledge|wontfix|reopen> [--json]
 skillgantry optimise <skill> [--json]
 skillgantry evals <skill> [--json]
 skillgantry upgrade [--yes] [--json] [--check]
 skillgantry [--concurrency <n>]                    # no subcommand: the TUI
 ```
 
-A skill is named by `<repoId>/<name>`, by a bare name when that is unambiguous, or by the `name` its frontmatter declares — which is what a repo-root skill is usually called, since its id comes from the directory. There is no `--repo` filter; the selector already disambiguates.
+A skill is named by `<repoId>/<name>`, by a bare name when that is unambiguous, or by the `name` its frontmatter declares — which is what a repo-root skill is usually called, since its id comes from the directory. There is no `--repo` filter on a command that takes a skill; the selector already disambiguates. `run --repo` is not a filter but a batch, and §15.1 holds it.
 
-`--concurrency` belongs to the root action alone, because it sizes the worker pool for a session and a headless `run` executes one skill. Root `--version` and `release --version` are distinct options on distinct commands; commander only keeps them apart under `enablePositionalOptions`, without which the root swallows the argument before the subcommand is reached.
+`--concurrency` belongs to the root action alone, because it sizes the worker pool for a session. A headless `run` executes one skill, or under `--repo` a batch sized by the configured `concurrency`, which is the value a sweep in CI should be reproducible against. Root `--version` and `release --version` are distinct options on distinct commands; commander only keeps them apart under `enablePositionalOptions`, without which the root swallows the argument before the subcommand is reached.
 
 Consumes the same event stream, rendering line output or newline-delimited JSON. Exits non-zero when any executed stage outcome is not `passed`. Mutating stages are skipped without `--yes`; with it, the diff is emitted before the write.
 
@@ -1471,7 +1479,7 @@ There is no `--then-run`, unlike §14.7's toggle. The shell composes `suppress &
 
 ### 15.1 The surface an agent drives
 
-*R12.1 as amended, R12.11–R12.15.* Everything above assumed a person who had already seen the Work screen: every command takes a skill id and none listed them, a gate could be run and its meaning for the release could not be read, and a failed lookup was a stack trace. This section is what closes that, and it is written as a contract because an agent parses it.
+*R12.1 as amended, R12.11–R12.19.* Everything above assumed a person who had already seen the Work screen: every command takes a skill id and none listed them, a gate could be run and its meaning for the release could not be read, and a failed lookup was a stack trace. This section is what closes that, and it is written as a contract because an agent parses it.
 
 **`run` without `--stage` runs `GATE_STAGES`** — validate, evaluate, security, the three R9.8 reads — and never release, which needs a target and `--yes`.
 
@@ -1498,7 +1506,8 @@ It reads `latestGateOutcomes` and `openIssueCounts` and computes no digest, so a
               "items": [ { "fingerprint", "severity", "ruleClass", "path",
                            "state": "open"|"acknowledged", "detectors": string[] } ] },
   "release": { "ready": boolean, "blockers": [ { "code", "message" } ],
-               "dirty": string[], "unchecked": string[] },
+               "dirty": string[], "unchecked": string[],
+               "target"?: { "requested": string, "resolved": string|null } },   // only under --version
   "next":   [ { "command": string|null, "why": string } ] }
 ```
 
@@ -1517,6 +1526,18 @@ A gate that has never reached a verdict is `outcome: null` with null run fields 
 **No terminal, no interface** (R12.14). The root action and `setup` check standard input before mounting and exit `2` naming `list`, `status` and `--help`.
 
 **`repo add`** (R12.15) is `registerRepo`, the function the wizard's repo step calls, and prints `{ "repo": { "id", "path", "name", "isGit" }, "skills": number }` under `--json`. `skill install` prints `{ "installed": [ { "path", "version", "replaced": boolean } ] }`; §5.5 holds its rules.
+
+**`status --version <target>`** (R12.19) decides the two checks that need a target and no write. The target goes through `resolveTargetVersion`, the function `plan()` calls, and a target that does not resolve is one more blocker, `target-invalid`, carrying that function's message. The archive goes through the dirty-path preview with the archive's name in the scope, which is what `releaseDirtyPaths` leaves out for want of a version and what `openSandbox` then checks — so an archive already in the repo root appears in `dirty` beside any other uncommitted scope path, and is the user's `--allow-dirty` call for the reason every other entry there is. It is seen whether or not git ignores it, because `dirtyPaths` asks git with `--ignored` (§4.4). The document gains `"target": { "requested", "resolved": string|null }` under `release`, `unchecked` shrinks to `["sandbox"]`, and the release entry in `next` carries the resolved version in place of `<patch|minor|major>`. The sandbox stays undecided: opening one registers a worktree, and this command writes nothing. Without the flag the document is byte for byte R12.12's, with one correction: a skill declaring no version is offered `--version <semver>`, since a bump level has nothing to bump.
+
+**`run --repo <repoId>`** (R12.16) is a batch through `createQueue`, the pool §11.1 gives the terminal interface, wired to `runPipeline` by the one function `tui-command.ts` already had and now shares. The alternative was a loop over the single-skill path, which is the shell loop this replaces: serial, and one exit code per iteration. `<skill>` becomes optional and exactly one of the two must be given. Stages default to `GATE_STAGES` and a mutating stage is refused before anything is enqueued, because a release target and its confirmation are answered per skill (R11.19) and a batch has nowhere to ask. That refusal is `--repo`'s alone: `run <skill> --stage release` without `--yes` still reaches the engine and is recorded as `skipped`, as R12.4 requires and its tests assert. The shared wiring takes `authorised` from its caller for the same reason — the terminal interface passes `true` because its confirmation is interactive, the batch passes `false`, and a function that hardcoded the first would hand a headless caller an authorisation nobody gave. Line output is one `<skillId>  <stage>  <outcome>` row per finished stage and a closing `<n> skills: <p> passed, <f> not passed`; `--json` is the run's own events, each wrapped as `{ "skillId", "event" }`, since one stream now carries many runs and `run:start` alone names which, closed by one `{ "summary": { "skills": number, "passed": number, "notPassed": string[] } }` line. The exit is `0` when every job's outcome is `passed`, `1` otherwise, `2` for an unknown repo, a repo holding no skill, or both a skill and `--repo`. A skill with no eval suite errors at evaluate, as R11.22 says it does inside a batch: the sweep reports what the gates say and invents no skip.
+
+**`issue <fingerprint> <action>`** (R12.17) is `setIssueState`, the function the Issues screen calls, and prints `{ "fingerprint", "state" }`. That function answers `null` both for a transition §10.5 does not allow and for a fingerprint it has never seen, which one screen could not tell apart and did not need to. A command has to: `1` is "it ran and the answer was no" and `2` is "the request was bad" (R12.13), so the issue is read first and an unknown fingerprint throws. It takes no skill: a fingerprint is the ledger's key and `status` prints it.
+
+**`setup --yes --preset <name>`** (R12.18) is the wizard's forward walk with nobody walking it: `probe`, then R3.7's check, then the install set, then `saveSelection`, over the `SetupDriver` `buildSetupDriver` returns — so the headless path and the wizard cannot install differently, which is §5.3's reason for one driver. It is refused nowhere for want of a terminal, which is the point, and it stops where a person is needed: a missing runtime exits `2` naming the official command and installs nothing, and the credential file is reported present or absent and never written. Tools `installedTools` already reports are skipped, so a second run is a no-op and a catalogue bump is picked up by re-running it. The install set is `expandSelection` over the preset, attempted in order and to the end: one tool failing does not stop the next, since each is its own download. `configure` then runs for each tool that is now usable, the wizard's rule, and its outcome is reported and is never a failure — `no-credentials` is a fact about `.env`, which this command does not write. **The selection is written only when every tool of the preset is usable.** The wizard cannot leave its install step otherwise, and writing a partial one would deselect a tool that failed to move to a new pin while its old install still runs. So a failure exits `1` with `config.json` byte-identical and the lock holding whatever did install.
+
+The document, under `--json`, is `{ "preset", "applied": boolean, "runtimes": [ { "runtime", "present", "installCommand" } ], "tools": [ { "id", "state": "installed"|"present"|"failed"|"would-install", "error"?: string, "config"?: string } ], "credentials": { "present": boolean, "warnings": string[] } }`. Without `--yes` it is the same document with `applied: false` and `would-install` rows, and the exit is `1` with nothing written — `suppress`'s shape. `--yes` without `--preset`, and a preset name that is not one of the three, are `2`: per-stage choice is a conversation, and the wizard is where that conversation is held. `buildSetupDriver` took a `userHome` and did not pass it to `installTool`, so a `git-skill` install under a temporary `SG_HOME` still linked into the real `~/.claude/skills`; it is forwarded now, and the one test that installs for real sets both.
+
+**Help is grouped** — look (`list`, `status`, `doctor`), act (`run`, `fix`, `evals`, `optimise`, `suppress`, `issue`), ship (`release`, `retire`, `recover`), set up (`setup`, `repo`, `skill`, `upgrade`) — through commander's `helpGroup`, because twenty rows in registration order read as a list and the loop is three verbs.
 
 ## 16. Test strategy
 
@@ -1612,7 +1633,8 @@ Fixture capture is a scripted, repeatable step tied to the pinned tool versions,
 | R11.24 the upgrade prompt | [design_tui.md](design_tui.md) 14.14 |
 | R12 headless | 15 |
 | R12.10 `skillgantry upgrade` | 15 |
-| R12.11–R12.15 the surface an agent drives | 15.1 |
+| R12.11–R12.19 the surface an agent drives | 15.1 |
+| R11.25 the rail's gate cells | [design_tui.md](design_tui.md) 14.15 |
 | R3.13 the bundled agent skill | 5.5 |
 | R13 quality and distribution | 2, 16 |
 | R13.8–R13.12 release contract, changelog, versioned prefix, check and apply | 20, 5.3, 15 |
@@ -1641,6 +1663,7 @@ Every pass below is recorded in full somewhere else — the two reviews are thei
 | M1.1 | A run directory named for when it started, separated from the identity everything joins on; then the screen, which still named a run by its id | §9, §9.1, §9.2, §10.3, §11.3, §13, §14.8, §15 | [plan_m1.1-timestamped-run-directories.md](plan_m1.1-timestamped-run-directories.md) |
 | M7.2 | Two levels in the list column; then the row label that undid it, and the doctor condition that says why a skill has no name | §5.3, §14.12 | [plan_m7.2-repo-skill-navigation.md](plan_m7.2-repo-skill-navigation.md) |
 | M10 | A headless surface a coding agent can drive end to end, the prompts reworded for that reader, and the skill that teaches the loop | §5.5, §9.4, §9.4a, §9.4b, §15, §15.1 | [plan_m10-agent-friendly-cli.md](plan_m10-agent-friendly-cli.md) |
+| M11 | The workflow review's open items: a rail that shows what release reads, a batch run, headless triage and setup, a target checked before release, and a skill bundle whose lock keeps its links | §5.2, §5.3, §12.4, §14.5, §14.13, §14.15, §15, §15.1, §20 | [plan_m11-review-follow-ups.md](plan_m11-review-follow-ups.md) |
 
 ## 19. Risks carried into implementation
 

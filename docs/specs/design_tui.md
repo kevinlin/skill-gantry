@@ -206,6 +206,8 @@ Every field of `SkillRow` but one was a pure function of the session's queue eve
 
 `logLines` and `logDropped` sit beside `outputWindow` for its reason: the pane renders against those lines and the key handler clamps against their count, so a second derivation is how `j` comes to stop short of the end. The replay carries the tool-id prefix the pump writes, so a recorded frame and a live one read identically; it is capped at `LOG_CAPACITY` keeping the newest and reporting the rest through the footnote R11.5 already spends a row on; and the two streams are ordered stdout-then-stderr per tool rather than merged, because the pipeline writes them as two files and their true interleaving is not on disk. The empty case now means the run's tools wrote no log at all, and still names the directory.
 
+**A gate the newest run did not execute is no longer left at `·`.** That was this section's rule and it made the rail answer "what did the last run do" for a skill whose gates had passed in three separate runs. §14.15 fills those cells from each stage's latest verdict, through a port, and leaves everything else here as it is: the findings, the artefacts and the log are still the newest run's.
+
 Read-only throughout. The pipeline stays the only writer under `runs/`, which is the constraint R11.10 shares with R12.6 and for the same reason: a screen that answers for a run must not rewrite that run's evidence.
 
 ### 14.6 The Work screen overhaul
@@ -506,3 +508,33 @@ enter save · ↑/↓ choose · esc back · ctrl-d finish
 **It costs nothing from §14.1's row budget.** This is not the main app: it renders, resolves and unmounts before `startTui` is reached, so no panel allocation, no `SKILL_LIST_MIN` and no Overview tier boundary is involved. Its own height is bounded the way the Findings pane's is — the frame and the footer take their rows first, the entries take the remainder, and what does not fit is reported as a count rather than cut silently.
 
 **Newest first, headed by version.** The entries arrive already sliced to those above the running version (§20), so a user two versions behind sees both sections and knows what the intervening release contained. The install path is on screen because the answer authorises a write, and R11.24 requires the prompt to name where it lands.
+
+### 14.15 The rail's gate cells
+
+*Satisfies R11.25.*
+
+The rail answered for the newest run. `declawed` in the reference home had passed validate, evaluate and security in three runs, and its rail read `· passed · · ·`; after an edit a `passed` cell stayed `passed` until `release` refused on R9.9. `status` (design.md §15.1) had the right answer for both and the screen a maintainer actually looks at did not.
+
+**One function, reached through the port.** `gateStatuses` is the mapping `buildStatus` ran inline — release's own gathering, then `current` as the recorded digest compared with the one computed now — and `status` and the rail both call it. It opens the ledger, so `src/tui/**` cannot: `GantryViews.gates(skillId)` carries it, re-discovering the skill the way `planRelease` does and for its reason. A second reading of R9.8 over the sidecar would have kept the rail inside the TUI's own I/O and is exactly what made the optimise prompt (design.md §9.4a) and `status` two implementations of one rule.
+
+**The rail and `status` agree on every verdict, and the rail shows one thing more.** `status` reports what release reads. The rail reports that and, where the newest run executed a stage without reaching a verdict, that run's own outcome in the verdict's place — the third row below. That is the only place the two differ, it is deliberate, and it is why the claim is agreement on verdicts rather than identical cells.
+
+**Fill, never overwrite.** The reducer applies a `set-gates` action to the three gate cells. A skill with a run in flight is not touched at all — the action is dropped while `activeRunId` is set, which is §14.5's race guard for the same reason: the read is async and must not land on a live row — and the read is made again when that job settles:
+
+| The cell | After `set-gates` |
+|---|---|
+| empty, and the stage has a verdict | that verdict's outcome, no summary and no findings count, since those belong to a run the panes beside the rail are not showing |
+| holds the outcome of the run the verdict came from | unchanged, with its currency set |
+| holds an outcome from a newer run that reached no verdict (`errored`, `skipped`, cancelled) | unchanged and unmarked: R9.8 steps over that run for the release, and the user who watched it fail must not see an older pass in its place |
+
+Cells are matched to verdicts by run id, not by path: the ledger's `sidecar_path` and the directory the TUI resolved from the index are two spellings of one place.
+
+**The mark is `~` in the cell's own leading space, and the word goes dim.** `~passed`, `~FAIL`. Every cell already rendered a space before its word, so the column width `cellWidth` fixes from the vocabulary does not change and nothing moves at the 80×24 floor. It is a character and not a colour (R11.25, and §14.6's rule that an outcome is never colour-only), and the dim says the same thing the character does: this verdict is about bytes that are gone. Help names it.
+
+**Read on selection, when a job for the skill settles, and when a suppression is applied.** The first is §14.5's lazy read and shares its effect. The other two are the moments currency changes without the selection moving — a suppression is an edit, which is the review's original complaint — and neither needs a relaunch.
+
+**`resumedGates` counts a stale cell as not passed.** §14.7's toggle offered `resume` the chain from the earliest gate that had not passed, and a gate that passed against older bytes has not passed against these.
+
+**A filled cell knows which run it came from.** It carries that verdict's run id, because every action on the rail otherwise reads the newest run: after a security failure and then an evaluate-only run, the rail shows the security failure and `y` would look in the evaluate run's directory, find no prompt and no findings, and answer "nothing to fix" under a cell reading `FAIL`. So `y` on a filled cell does not consult the newest run. Its flash names `skillgantry fix <id> --stage <stage> --run <runId>` — §14.3's existing answer for a prompt that is not where the screen looked — and on a filled cell that is stale it says to re-run the stage instead, since `status` would.
+
+Two smaller things landed with it. The status bar's right-hand label is `v<version>`, and gains ` · <home>` when the home is not the default, because with `SG_HOME` set for a test the screen gave no sign of which ledger it was reading; it is omitted on the default home, where it would be noise on every frame, and it rides on §14.1's rule that the label appears only when the keys fit beside it whole. And a release that applies writes R9.7's two commit lines to the Log pane (design.md §12.4).
