@@ -11,6 +11,57 @@ rather than replaying its commits. Standalone fixes belonging to no plan are lis
 `parseChangelog` reads only the `- ` lines, and the upgrade prompt gives each one row. So a bullet
 is a headline that fits a terminal, and the paragraph under it carries the detail.
 
+## 1.0.0 — 2026-11-13
+- feat(cli): `status` says where a skill stands and what to do next
+
+  `skillgantry status <skill>` reports the skill's digest, each gate's verdict and whether it is
+  still about the current files, the open issues, and everything a release would refuse on. `next`
+  lists the commands that clear those, in order, each with its reason. The refusals come from the
+  code the release stage itself runs, so a skill reported ready is one release will attempt.
+  `--json` prints one document; design §15.1 is its contract.
+
+- feat(cli): `list`, `repo add`, and `run` with no `--stage`
+
+  `skillgantry list` names every skill by the id every other command takes, with its last gate
+  verdicts. `repo add <path>` registers a repo without the wizard. `run <skill>` with no `--stage`
+  runs validate, evaluate and security.
+
+- fix(cli): a request that cannot be carried out exits 2 with one line
+
+  An unknown or ambiguous skill used to print a Node stack trace and exit 1, which is also the code
+  for a gate that did not pass. It is now one `error:` line on stderr and exit 2, with a JSON
+  document on stdout under `--json`. Scripts that treated 1 as "lookup failed" need to read 2.
+  `SG_DEBUG=1` brings the stack back.
+
+- fix(cli): the terminal app and the wizard refuse when there is no terminal
+
+  Both mounted regardless and threw a raw-mode error from inside the renderer. They now say what to
+  run instead and exit 2.
+
+- feat(skill): a bundled agent skill, and `skill install` to place it
+
+  The package ships a skill that teaches a coding agent the status, run, fix loop and its rules.
+  `skillgantry skill install` copies it to `~/.claude/skills/skillgantry`, or into `--dir`. It
+  replaces only a copy it wrote, and refuses anything else at that path by name. `skillgantry
+  doctor` reports an installed copy older than the binary. Re-run the install after an upgrade.
+
+- feat(prompts): each prompt says why, and ends on how to re-verify
+
+  The fix, optimise and eval prompts open with whose work it is and what it is for, cite no internal
+  requirement ids, and end on the `skillgantry run` and `skillgantry status` lines that check the
+  work. The fix prompt no longer tells the agent to stop at the first finding it judges wrong. A
+  prompt already written beside a recorded run is evidence and keeps its wording.
+
+- fix(prompts): the optimise prompt keeps evidence from earlier runs
+
+  It read the newest run only, so re-running one stage hid the others. It now takes each stage's
+  latest verdict across runs and marks one recorded against older files as history.
+
+- chore(deps): commander 15, ink 8, vitest 5, eslint 10, typescript 6.0
+
+  Every dependency is on its latest stable release except two held back on purpose: TypeScript at
+  6.0, the newest typescript-eslint supports, and `@types/node` at 24, which matches the Node floor.
+
 ## 0.7.0 — 2026-09-14
 - feat(tools): SkillSpector 2.11.2, skill-up 0.11.0, vercel skills 1.5.26
 
