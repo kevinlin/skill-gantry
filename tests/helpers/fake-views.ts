@@ -8,7 +8,7 @@ import type {
   SkillRef,
   SuppressionRequest,
 } from '../../src/core/index.js'
-import type { GantryViews, SettingsView } from '../../src/tui/views.js'
+import type { GantryViews, ReleaseHintRequest, SettingsView } from '../../src/tui/views.js'
 
 export const emptyDashboard: DashboardStats = {
   repos: 0,
@@ -75,6 +75,10 @@ export interface FakeViews extends GantryViews {
   readonly optimisePlans: string[]
   /** Skill ids the eval-bootstrap pre-flight resolved, in order. */
   readonly evalPlans: string[]
+  /** Skill ids whose gate verdicts were read, in order — one per read, repeats and all. */
+  readonly gateReads: string[]
+  /** The release hints asked for, in order. */
+  readonly hintRequests: ReleaseHintRequest[]
 }
 
 /**
@@ -95,6 +99,8 @@ export function fakeViews(
   const releasePlans: string[] = []
   const optimisePlans: string[] = []
   const evalPlans: string[] = []
+  const gateReads: string[] = []
+  const hintRequests: ReleaseHintRequest[] = []
   return {
     actions,
     opened,
@@ -103,6 +109,8 @@ export function fakeViews(
     releasePlans,
     optimisePlans,
     evalPlans,
+    gateReads,
+    hintRequests,
     openPath: async (path) => {
       opened.push(path)
     },
@@ -161,6 +169,17 @@ export function fakeViews(
     },
     discardSuppression: async () => {
       suppressResolutions.push('discard')
+    },
+    // No verdicts and no hint by default: a test that does not ask about the
+    // rail's gates or the commit lines sees a ledger that has none and a repo
+    // that is not git-backed, which is also the answer that adds nothing to a frame.
+    gates: async (skillId) => {
+      gateReads.push(skillId)
+      return []
+    },
+    releaseHint: async (request) => {
+      hintRequests.push(request)
+      return []
     },
     ...overrides,
   }

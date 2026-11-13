@@ -20,6 +20,7 @@ const row = (stages: Partial<Record<Stage, StageCell>>): SkillRow => ({
   workspacePath: '/repo/declawed-workspace',
   status: 'idle',
   activeRunId: null,
+  runId: null,
   runDir: null,
   stages: Object.fromEntries(
     STAGE_ORDER.map((stage) => [stage, stages[stage] ?? cell()]),

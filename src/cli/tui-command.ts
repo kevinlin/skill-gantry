@@ -1,3 +1,5 @@
+import { homedir } from 'node:os'
+import { join, resolve, sep } from 'node:path'
 import {
   createQueue,
   loadConfig,
@@ -89,6 +91,29 @@ export function wireQueue(wiring: QueueWiring): QueueHandle {
   })
 }
 
+/**
+ * design_tui §14.15. What the status line names beside the version, or nothing when the
+ * home is the default one — `~/.skillgantry`, spelled by the same expression
+ * `run-command.ts` falls back to, and deliberately not by `SG_HOME`: a home the
+ * user relocated is the case the label exists for, and reading the variable here
+ * would make a chosen home look like the default because it was chosen.
+ *
+ * Shortened to `~` so the label is the path a person typed, and so a long home
+ * under the user's own spends the columns on what distinguishes it. The match is
+ * on a separator, not a prefix: `/Users/keliana` is not under `/Users/keli`.
+ * Resolved first, so a trailing slash or a dot segment does not make the
+ * default look like somewhere else.
+ *
+ * Here and not in `src/tui/**`, which may not ask the process who its user is.
+ */
+export function homeLabel(home: string, user: string = homedir()): string | undefined {
+  const resolved = resolve(home)
+  const root = resolve(user)
+  if (resolved === join(root, '.skillgantry')) return undefined
+  if (resolved === root) return '~'
+  return resolved.startsWith(`${root}${sep}`) ? `~${resolved.slice(root.length)}` : resolved
+}
+
 export async function startTui(options: TuiOptions): Promise<void> {
   const config = await loadConfig(options.home)
   const lock = await loadToolLock(options.home)
@@ -114,6 +139,7 @@ export async function startTui(options: TuiOptions): Promise<void> {
     trigger: 'tui',
   })
 
+  const label = homeLabel(options.home)
   try {
     await renderApp({
       skills,
@@ -125,6 +151,9 @@ export async function startTui(options: TuiOptions): Promise<void> {
       // never appear there, and a guard reading the configuration would refuse
       // a tool that is installed and working.
       optimiseReady: SKILLHONE_TOOL_ID in lock.tools,
+      // Absent for the default home, so the footer says nothing a user running
+      // the usual setup has to read past.
+      ...(label === undefined ? {} : { homeLabel: label }),
       setup: buildSetupDriver(options.home),
       views: createGantryViews({
         home: options.home,

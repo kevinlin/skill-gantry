@@ -782,8 +782,15 @@ export function overviewRows(
  * validate alone makes the user press `r` again. Empty when all three passed,
  * which is what makes the pane start the toggle on `every gate` there — every
  * one of those runs was still recorded against the pre-write digest.
+ *
+ * R11.25: a pass recorded against other bytes is not a pass. The rail marks it
+ * `~passed`, and counting it here keeps the pane from reading "all three
+ * passed" under a rail that says otherwise — R9.9 is why that pass will not
+ * count at the release either.
  */
 export function resumedGates(cells: Record<Stage, StageCell>): Stage[] {
-  const first = GATE_STAGES.findIndex((stage) => cells[stage]?.outcome !== 'passed')
+  const first = GATE_STAGES.findIndex(
+    (stage) => cells[stage]?.outcome !== 'passed' || cells[stage]?.current === false,
+  )
   return first === -1 ? [] : [...GATE_STAGES.slice(first)]
 }

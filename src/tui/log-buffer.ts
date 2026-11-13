@@ -83,6 +83,17 @@ export class LogPump {
     }
   }
 
+  /**
+   * A line the interface itself has to say, as opposed to a tool's: no source
+   * prefix, because `release │ …` would claim the release tool printed a
+   * `git commit` command that SkillGantry composed. Through the buffer rather
+   * than the reducer for R11.4's reason — the pane has one place text arrives.
+   */
+  note(line: string): void {
+    this.#buffer.push(line)
+    this.#dirty = true
+  }
+
   start(): void {
     if (this.#timer) return
     this.#timer = setInterval(() => this.flush(), this.#intervalMs)

@@ -1,5 +1,6 @@
 import { basename } from 'node:path'
 import {
+  GATE_STAGES,
   STAGE_ORDER,
   hasAdapter,
   isBumpLevel,
@@ -28,7 +29,7 @@ import {
 } from '../core/index.js'
 import { humanMs } from './rows.js'
 import { jobVerdict } from './tokens.js'
-import type { LastRun, SettingsView } from './views.js'
+import type { GateStatus, LastRun, SettingsView } from './views.js'
 
 export const PANELS = ['log', 'findings', 'issues', 'artefacts', 'skill'] as const
 export type Panel = (typeof PANELS)[number]
@@ -147,6 +148,22 @@ export interface StageCell {
    * rail count from a time nothing recorded.
    */
   startedAt: number | null
+  /**
+   * R11.25. Whether `outcome` is a verdict recorded against the bytes on disk
+   * now, once `set-gates` has matched this cell to one. Absent — not `true` —
+   * until then, so a cell no read has reached is never marked as stale and
+   * `false` only ever means the ledger said so.
+   */
+  current?: boolean
+  /**
+   * The run this cell's outcome came from, set only when `set-gates` supplied
+   * it. A filled cell belongs to a run the rest of the row is not showing, so
+   * every action that reads the newest run's directory — `y` — has to route
+   * around it: after a security failure and then an evaluate-only run, the
+   * newest run holds no prompt for a cell that reads `FAIL`, and would answer
+   * "nothing to fix" under it.
+   */
+  filledFrom?: string
 }
 
 export interface SkillRow {
@@ -156,6 +173,13 @@ export interface SkillRow {
   workspacePath: string
   status: SkillStatus
   activeRunId: string | null
+  /**
+   * The newest run this row's cells came from, live or recorded. `activeRunId`
+   * cannot say: it is cleared when the run ends, and `set-gates` has to match a
+   * settled cell to a ledger verdict by run id — the ledger's `sidecar_path` and
+   * `runDir` are two spellings of one place and comparing them is a bet.
+   */
+  runId: string | null
   runDir: string | null
   stages: Record<Stage, StageCell>
   findings: FindingRow[]
@@ -481,6 +505,8 @@ export type Action =
     }
   | { type: 'set-statuses'; statuses: Record<string, string> }
   | { type: 'set-last-run'; skillId: string; run: LastRun }
+  /** R11.25. Fills and marks the gate cells from the ledger's verdicts. */
+  | { type: 'set-gates'; skillId: string; gates: readonly GateStatus[] }
   | { type: 'toggle-help'; open?: boolean }
   /** `viewport` is the diff rows the pane can show, so the clamp leaves a full
       window at the bottom rather than a single line. */
@@ -604,6 +630,7 @@ const toRow = (skill: SkillRef): SkillRow => ({
   workspacePath: skill.workspacePath,
   status: 'idle',
   activeRunId: null,
+  runId: null,
   runDir: null,
   stages: emptyStages(),
   findings: [],
@@ -736,6 +763,21 @@ const cycle = (values: readonly string[], current: string, delta: number): numbe
 const toggle = <T>(list: readonly T[], value: T): T[] =>
   list.includes(value) ? list.filter((item) => item !== value) : [...list, value]
 
+/**
+ * The ledger holds an outcome as text, and a cell holds a `StageOutcome`. A
+ * `Record` over the union rather than an array of its members, so adding one to
+ * the type fails the build here instead of being refused as unknown at run time.
+ */
+const OUTCOMES: Record<StageOutcome, true> = {
+  passed: true,
+  failed: true,
+  degraded: true,
+  errored: true,
+  skipped: true,
+}
+const isOutcome = (value: string | null): value is StageOutcome =>
+  value !== null && Object.hasOwn(OUTCOMES, value)
+
 const statusOf = (outcome: StageOutcome): SkillStatus =>
   outcome === 'passed' ? 'passed' : outcome === 'failed' ? 'failed' : 'errored'
 
@@ -745,6 +787,60 @@ function withSkill(state: AppState, skillId: string, update: (row: SkillRow) => 
   const skills = [...state.skills]
   skills[index] = update(skills[index] as SkillRow)
   return { ...state, skills }
+}
+
+/**
+ * §14.15's table, one gate at a time. Returns `row.stages` itself when nothing
+ * changed, so the caller can tell.
+ */
+function fillGates(row: SkillRow, gates: readonly GateStatus[]): Record<Stage, StageCell> {
+  let stages = row.stages
+  for (const gate of gates) {
+    const cell = stages[gate.stage]
+    // A gate no run has reached a verdict for has nothing to say, a stage that
+    // is not a gate is not this action's to fill, and a running cell is the
+    // live run's — whatever the ledger says about that stage is about an older one.
+    if (
+      !GATE_STAGES.includes(gate.stage) ||
+      !isOutcome(gate.outcome) ||
+      gate.runId === null ||
+      cell.running
+    ) {
+      continue
+    }
+    if (cell.outcome === null || cell.filledFrom !== undefined) {
+      if (
+        cell.outcome === gate.outcome &&
+        cell.current === gate.current &&
+        cell.filledFrom === gate.runId
+      ) {
+        continue
+      }
+      // Empty, or a fill of this action's own: neither is a run the panes beside
+      // the rail are showing, so the verdict replaces it whole and carries no
+      // summary or count that belong to some other run.
+      stages = {
+        ...stages,
+        [gate.stage]: {
+          outcome: gate.outcome,
+          running: false,
+          summary: '',
+          findings: 0,
+          startedAt: null,
+          current: gate.current,
+          filledFrom: gate.runId,
+        },
+      }
+    } else if (row.runId === gate.runId && cell.current !== gate.current) {
+      // The newest run's own cell, and it is the verdict: it keeps its summary
+      // and count and learns only whether its bytes are current.
+      stages = { ...stages, [gate.stage]: { ...cell, current: gate.current } }
+    }
+    // Anything else is a newer run's outcome that reached no verdict. R9.8 steps
+    // over that run for the release, but the user who watched it fail must not
+    // see an older pass in its place.
+  }
+  return stages
 }
 
 const withStage = (row: SkillRow, stage: Stage, patch: Partial<StageCell>): SkillRow => ({
@@ -758,6 +854,7 @@ function onRunEvent(state: AppState, jobId: string, event: RunEvent): AppState {
       ...row,
       status: 'running',
       activeRunId: event.runId,
+      runId: event.runId,
       runDir: event.runDir,
       stages: emptyStages(),
       findings: [],
@@ -1411,6 +1508,7 @@ export function reducer(state: AppState, action: Action): AppState {
         }
         return {
           ...row,
+          runId: action.run.runId,
           runDir: action.run.runDir,
           stages,
           // In stage order, the order a live run would have appended them in.
@@ -1421,6 +1519,18 @@ export function reducer(state: AppState, action: Action): AppState {
           // same index this run was resolved out of.
         }
       })
+    case 'set-gates': {
+      const row = state.skills.find((candidate) => candidate.skillId === action.skillId)
+      // §14.5's race guard, for its reason: the read is async, so a response
+      // resolving after an `r` must not land on the row that run now owns.
+      if (row === undefined || row.activeRunId !== null) return state
+      const stages = fillGates(row, action.gates)
+      // Unchanged is the common case — every settle re-reads — and a new state
+      // object for it would be a render with nothing different to draw.
+      return stages === row.stages
+        ? state
+        : withSkill(state, action.skillId, (current) => ({ ...current, stages }))
+    }
     case 'set-statuses':
       return {
         ...state,

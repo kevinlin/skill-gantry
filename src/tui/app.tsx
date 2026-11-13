@@ -7,11 +7,13 @@ import {
   configChanges,
   fixPromptPathFor,
   isNativeStage,
+  resolveTargetVersion,
 } from '../core/index.js'
 import type {
   GantryConfig,
   IssueAction,
   IssueState,
+  QueueEvent,
   QueueHandle,
   SetupDriver,
   SkillRef,
@@ -27,7 +29,7 @@ import { Settings } from './components/Settings.js'
 import { ReleaseTargetPane } from './components/ReleaseTargetPane.js'
 import { SuppressPane } from './components/SuppressPane.js'
 import { Setup } from './components/Setup.js'
-import { StatusBar } from './components/StatusBar.js'
+import { HomeLabelContext, StatusBar } from './components/StatusBar.js'
 import { Tools } from './components/Tools.js'
 import { Work } from './components/Work.js'
 import {
@@ -71,6 +73,12 @@ export interface AppProps {
   optimiseReady?: boolean
   /** Flush interval, lowered in tests. */
   intervalMs?: number
+  /**
+   * The home the footer names beside the version, already shortened — set only
+   * when it is not the default one. Resolved by the caller because the default
+   * is a fact about the process (`os.homedir()`), which `src/tui/**` leaves alone.
+   */
+  homeLabel?: string
 }
 
 /**
@@ -248,7 +256,20 @@ function PaletteScreen({ state }: { state: AppState }): React.ReactElement {
   )
 }
 
-export function App({
+/**
+ * The home label rides a context rather than a prop because the footer is drawn
+ * by eleven call sites across nine components, and every one of them would have
+ * to be handed the same string to print on a row they all already share.
+ */
+export function App(props: AppProps): React.ReactElement {
+  return (
+    <HomeLabelContext.Provider value={props.homeLabel ?? null}>
+      <AppScreen {...props} />
+    </HomeLabelContext.Provider>
+  )
+}
+
+function AppScreen({
   skills,
   queue,
   stages,
@@ -313,6 +334,73 @@ export function App({
     })
   }
 
+  /**
+   * R9.7. What a release job needs once it lands, held outside the reducer
+   * because nothing renders from it. The ref and target `startRelease` built the
+   * job from, per skill id and in enqueue order — the queue names a job only
+   * once it exists and a stand-in queue names none — and the scope each job's
+   * review announced, per job id, because that is how `mutation:pending` names it.
+   */
+  const releases = useRef(new Map<string, Array<{ skill: SkillRef; version: string }>>())
+  const scopes = useRef(new Map<string, readonly string[]>())
+
+  /**
+   * R11.25. Fills the rail's gates from the ledger. The skill id is captured
+   * here rather than read when the answer lands: the selection can have moved
+   * in between, and the answer belongs to the row it was asked for.
+   */
+  const readGates = (skillId: string): void => {
+    void views.gates(skillId).then(
+      (gates) => dispatch({ type: 'set-gates', skillId, gates }),
+      // Said, not swallowed: an unread ledger leaves the rail showing only the
+      // newest run, which is the thing R11.25 exists to stop it doing quietly.
+      (err: unknown) =>
+        dispatch({
+          type: 'flash',
+          message: `gate verdicts unavailable · ${(err as Error).message}`,
+          tone: 'bad',
+        }),
+    )
+  }
+
+  /**
+   * What the queue's events cause beyond rendering. A ref assigned each render
+   * rather than a closure in the consumer effect, whose dependency is `[queue]`
+   * alone and so would otherwise keep the first render's `views` for good.
+   */
+  const afterQueueEvent = useRef<(event: QueueEvent) => void>(() => undefined)
+  afterQueueEvent.current = (event) => {
+    if (event.type === 'run:event') {
+      // Last one wins, as in `release-command.ts`: the scope the change set was
+      // finally reviewed against is the one that was written.
+      if (event.event.type === 'mutation:pending') scopes.current.set(event.jobId, event.event.scope)
+      return
+    }
+    if (event.type !== 'job:done' && event.type !== 'job:failed' && event.type !== 'job:cancelled') {
+      return
+    }
+    const { job } = event
+    // Every settle, not only a pass: a failed or cancelled job may still have
+    // recorded stages before it stopped.
+    readGates(job.skillId)
+    if (!job.stages.includes('release')) return
+    // Taken whether or not the release applied, so the next release of this
+    // skill does not read the previous one's target.
+    const release = releases.current.get(job.skillId)?.shift()
+    const scope = scopes.current.get(job.jobId)
+    scopes.current.delete(job.jobId)
+    // A discarded release ends `skipped` and a refused one `failed`; only a
+    // pass wrote anything, and a hint for a commit of nothing is a wrong one.
+    if (event.type !== 'job:done' || job.outcome !== 'passed') return
+    if (release === undefined || scope === undefined) return
+    void views.releaseHint({ ...release, scope }).then(
+      (lines) => {
+        for (const line of lines) pump.current?.note(line)
+      },
+      (err: unknown) => pump.current?.note(`commit hint unavailable · ${(err as Error).message}`),
+    )
+  }
+
   useEffect(() => {
     const active = pump.current
     active?.start()
@@ -334,6 +422,7 @@ export function App({
         } else {
           dispatch({ type: 'queue-event', event })
         }
+        afterQueueEvent.current(event)
       }
     })()
     return () => {
@@ -362,13 +451,35 @@ export function App({
   // reads to fill four rows. `skillId` is captured so a response landing after
   // the selection moved still lands on the row it was read for; the reducer
   // holds the precedence rule, because the read can resolve after a `run:start`.
+  //
+  // R11.25's verdict read is chained after it rather than fired beside it:
+  // `set-last-run` rebuilds the row's cells wholesale, so a verdict read that
+  // answered first would be erased by the run it was filling around, and nothing
+  // orders two independent reads. And it is not gated on `runDir`: the
+  // rehydrated run is exactly the one whose evaluate-only rail has two gates to
+  // fill.
   useEffect(() => {
-    if (!current || current.runDir !== null) return
+    if (!current) return
+    // A run in flight owns the row, and `set-gates` would be refused on arrival;
+    // its settle reads again.
+    if (current.activeRunId !== null) return
     const skillId = current.skillId
-    void loadLastRun(current.workspacePath).then((run) => {
-      if (run !== null) dispatch({ type: 'set-last-run', skillId, run })
-    })
-  }, [current?.skillId, current?.runDir])
+    const lastRun =
+      current.runDir === null
+        ? loadLastRun(current.workspacePath).then((run) => {
+            if (run !== null) dispatch({ type: 'set-last-run', skillId, run })
+          })
+        : Promise.resolve()
+    // Either way: a sidecar that cannot be read must not leave the gates unread.
+    void lastRun.then(
+      () => readGates(skillId),
+      () => readGates(skillId),
+    )
+    // Keyed on the selection alone. `runDir` was a dependency while the effect
+    // only loaded the recorded run, and now that the recorded run's own landing
+    // sets it, keeping it here re-ran the effect straight after the load and
+    // read the ledger a second time for the same selection.
+  }, [current?.skillId])
 
   // Keyed on the screen, its filters and `reloads`: a screen the user is not
   // looking at is not queried, and `refresh` is what re-runs the one they are.
@@ -481,6 +592,10 @@ export function App({
         const ref = current ? byId.current.get(current.skillId) : undefined
         if (wanted.length > 0 && ref) queue.enqueue([{ skill: ref, stages: wanted }])
         dispatch({ type: 'end-suppress' })
+        // R11.25. The write moved the skill's bytes, so every recorded verdict
+        // is now for other ones; the rail says so without waiting for a re-run
+        // that `thenRun: none` means is not coming.
+        readGates(slot.request.skillId)
         // R8.15: the file is the authority and the ledger a cache recomputed on
         // conclusive tool runs, so the ⊘ mark appears only after the re-run.
         // Without this line the user applies, sees the Issues screen unchanged,
@@ -586,6 +701,20 @@ export function App({
       const skill = slot.refs[id]
       return skill ? [{ skill, stages: ['release'] as const, releaseTarget, ...override }] : []
     })
+    // R9.7. Recorded before the enqueue, so no event for the job can arrive
+    // ahead of what it is looked up against.
+    for (const spec of specs) {
+      try {
+        const version = resolveTargetVersion(spec.skill.version, releaseTarget.version)
+        const pending = releases.current.get(spec.skill.id) ?? []
+        pending.push({ skill: spec.skill, version })
+        releases.current.set(spec.skill.id, pending)
+      } catch {
+        // `slot.error` already refused an unresolvable single target, and a
+        // batch's bump level can fail for one skill alone: that job fails in
+        // the stage, so it has nothing applied to hint about.
+      }
+    }
     if (specs.length > 0) queue.enqueue(specs)
     dispatch({ type: 'end-release' })
     dispatch({ type: 'clear-marks' })
@@ -608,6 +737,21 @@ export function App({
     })
 
   const copyFixPrompt = (skill: SkillRow, stage: Stage): void => {
+    const filled = skill.stages[stage]
+    if (filled.filledFrom !== undefined) {
+      // R11.25. The cell is a verdict from a run the row's own `runDir` is not,
+      // so reading that directory finds the newest run's prompt or none — and
+      // under a `FAIL` that one answers "nothing to fix". Stale first: a fix
+      // prompt names findings in bytes that are no longer the ones on disk.
+      if (filled.current === false) {
+        flash(`${stage} was recorded against other bytes · press r to re-run it`)
+      } else if (filled.outcome === 'passed') {
+        flash(`${stage} found nothing — no prompt`)
+      } else {
+        flash(`skillgantry fix ${skill.skillId} --stage ${stage} --run ${filled.filledFrom}`)
+      }
+      return
+    }
     if (skill.runDir === null) {
       // R11.10 rehydrates a recorded run, so this branch now means the skill
       // has never run — where `skillgantry fix` would exit non-zero too.

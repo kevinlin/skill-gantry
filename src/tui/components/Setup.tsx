@@ -433,6 +433,18 @@ export function Setup({
                 repoDone(commit, inspection?.resolved ?? state.repoPath)}
           </Text>
         )}
+        {state.state === 'done' && (
+          // The wizard's last screen is where a maintainer stops reading, so it
+          // is where a command they would otherwise never run is named. A line
+          // and not a step or a key: there is nothing for the driver to do, and
+          // a key would have to be spelled in a footer that already carries the
+          // exit and, for the staged caller, `c`. One row, truncated, with the
+          // command leading so that it is what survives a narrow terminal — a
+          // wrapped line pushes the frame a row toward a 50×14 terminal's edge.
+          <Text dimColor wrap="truncate">
+            skillgantry skill install — teaches a coding agent this workflow
+          </Text>
+        )}
       </Box>
 
       {missing.length > 0 && (
