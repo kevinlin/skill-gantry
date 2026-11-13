@@ -1,3 +1,4 @@
+import type { DatabaseSync } from 'node:sqlite'
 import {
   GATE_STAGES,
   gatherReleasePreconditions,
@@ -7,19 +8,32 @@ import {
   openIssueCounts,
   openLedger,
   releaseDirtyPaths,
+  resolveTargetVersion,
+  type GatheredPreconditions,
+  type GatheredRefusalCode,
   type IssueRow,
   type SeverityCount,
 } from '../core/index.js'
 import { candidateManifest } from '../core/discovery/candidate.js'
 import { skillDigest } from '../core/discovery/digest.js'
-import type { Stage } from '../core/types.js'
+import type { SkillRef, Stage } from '../core/types.js'
 import { detectInterrupted } from './recover-command.js'
 import { type CliDeps, selectSkill, skillName } from './run-command.js'
 import { hasEvalSuite } from './skill-evals.js'
 
 export interface StatusOptions {
   json?: boolean
+  /** R12.19: a release target to decide the checks that need only one. */
+  version?: string
 }
+
+/**
+ * Every `release.blockers[].code` the document can carry: the gatherer's, and
+ * the one refusal only a request can cause. Not a member of
+ * `GatheredRefusalCode`, because `gatherReleasePreconditions` takes no target
+ * and a code it could never emit does not belong in its union.
+ */
+export type StatusBlockerCode = GatheredRefusalCode | 'target-invalid'
 
 export interface GateStatus {
   stage: Stage
@@ -45,10 +59,20 @@ export interface NextInput {
   gates: readonly GateStatus[]
   blockers: readonly { code: string; message: string }[]
   dirty: readonly string[]
+  /** Under `--version`: what the target resolved to, which release then names. */
+  releaseVersion?: string
+  /** The skill declares no version, so a bump level has nothing to bump (R12.12). */
+  unversioned?: boolean
 }
 
 /** The three refusals that are decided only once a target version exists. */
 const UNCHECKED = ['target-version', 'archive', 'sandbox'] as const
+
+/**
+ * What `--version` leaves undecided. Opening a sandbox registers a worktree,
+ * and `status` writes nothing, so this is the one check it cannot run.
+ */
+const UNCHECKED_UNDER_TARGET = ['sandbox'] as const
 
 const listOf = (stages: readonly string[]): string => stages.join(',')
 
@@ -75,10 +99,18 @@ export function nextSteps(input: NextInput): NextStep[] {
         ? ''
         : `; uncommitted in the release scope: ${input.dirty.join(', ')} ` +
           '(commit them, or add --allow-dirty to release over them)'
+    // A bump level is offered only where it can resolve. A skill with no
+    // version has none to bump, and R9.10 refuses the level the entry used to
+    // name — five skills in the reference home were each sent to it.
+    const bumpless = input.releaseVersion === undefined && input.unversioned === true
+    const version = input.releaseVersion ?? (bumpless ? '<semver>' : '<patch|minor|major>')
+    const noBump = bumpless
+      ? '; the skill declares no version, so a bump level has nothing to bump: give the first version as a semver'
+      : ''
     return [
       {
-        command: `skillgantry release ${id} --version <patch|minor|major> --yes`,
-        why: `every gate passed against the current bytes and nothing blocks the release${uncommitted}`,
+        command: `skillgantry release ${id} --version ${version} --yes`,
+        why: `every gate passed against the current bytes and nothing blocks the release${noBump}${uncommitted}`,
       },
     ]
   }
@@ -96,18 +128,29 @@ export function nextSteps(input: NextInput): NextStep[] {
     // None of these has a command that clears it, and an entry-less blocker
     // leaves a caller that follows `next` with nowhere to go. A version
     // disagreement and an unreadable versions.json are files the maintainer
-    // owns: no command here knows which bytes are right.
-    if (blocker.code === 'version-disagreement' || blocker.code === 'manifest-unreadable') {
+    // owns: no command here knows which bytes are right. A target that does not
+    // resolve is theirs for the same reason — R9.10 has release never infer a
+    // version, so a command that substituted one would release a number nobody
+    // chose.
+    if (
+      blocker.code === 'version-disagreement' ||
+      blocker.code === 'manifest-unreadable' ||
+      blocker.code === 'target-invalid'
+    ) {
       steps.push({ command: null, why: blocker.message })
     }
-    // `setup` is the install path and it is a wizard, so the step is named for
-    // the one who can take it rather than left as a command an agent would try.
+    // Two routes install it, and neither is a command an agent should run on
+    // its own: a preset also rewrites the stage selection (R12.18), so which
+    // one is the maintainer's call, and a `command` here would make it the
+    // agent's. The reason names both so the maintainer is not sent to a
+    // terminal when a script would do.
     if (blocker.code === 'release-tool-missing') {
       steps.push({
         command: null,
         why:
-          `${blocker.message}; the maintainer has to run \`skillgantry setup\` in a terminal ` +
-          'to install it, which an agent cannot',
+          `${blocker.message}; installing it is the maintainer's call, because a preset also ` +
+          'rewrites the stage selection: `skillgantry setup` in a terminal, or ' +
+          '`skillgantry setup --yes --preset <name>`',
       })
     }
   }
@@ -198,8 +241,80 @@ export interface StatusDocument {
     blockers: Array<{ code: string; message: string }>
     dirty: string[]
     unchecked: string[]
+    /** Only under `--version` (R12.19). */
+    target?: { requested: string; resolved: string | null }
   }
   next: NextStep[]
+}
+
+/**
+ * The same question `runRelease` asks, so the two cannot disagree about it.
+ */
+const isInterrupted = async (home: string, skillId: string): Promise<boolean> =>
+  (await detectInterrupted(home)).some((item) => item.skillId === skillId)
+
+/**
+ * The digest the gates are compared with, and the three gates in `GATE_STAGES`
+ * order, from what `gatherReleasePreconditions` already read. The one place
+ * release's evidence becomes `GateStatus[]`, so `status` and every other caller
+ * of `gateStatuses` report the same verdicts for the same ledger.
+ *
+ * An unreadable versions.json returns the gatherer alone, before it read the
+ * digest or the gates, and the caller still owes both — hence the fallback to
+ * the same two reads, rather than a gate list that is empty because a manifest
+ * is not.
+ */
+async function readGates(
+  db: DatabaseSync,
+  skill: SkillRef,
+  gathered: GatheredPreconditions,
+): Promise<{ gates: GateStatus[]; digest: string }> {
+  const read = gathered.evidence ?? {
+    currentDigest: await skillDigest(await candidateManifest(skill)),
+    gates: latestGateOutcomes(db, skill.id),
+  }
+
+  const recorded = new Map(read.gates.map((gate) => [gate.stage, gate]))
+  const gates: GateStatus[] = GATE_STAGES.map((stage) => {
+    const gate = recorded.get(stage)
+    return gate === undefined
+      ? { stage, outcome: null, runId: null, runDir: null, current: false }
+      : {
+          stage,
+          outcome: gate.outcome,
+          runId: gate.runId,
+          runDir: gate.sidecarPath,
+          current: gate.skillDigest === read.currentDigest,
+        }
+  })
+  return { gates, digest: read.currentDigest }
+}
+
+/**
+ * R11.25's verdicts and R12.12's `gates`, for a caller that wants only those:
+ * each gate stage's most recent verdict, and whether the bytes it was recorded
+ * against are the ones on disk now. Takes just the two paths and a skill, so a
+ * surface that is not a command — the terminal interface's rail, through a port
+ * — reaches the function the document is built from rather than a copy of it.
+ *
+ * It opens and closes the ledger itself, and reads the tree for a digest: a
+ * verdict is only as current as the moment it is asked.
+ */
+export async function gateStatuses(
+  deps: Pick<CliDeps, 'home' | 'dbPath'>,
+  skill: string | SkillRef,
+): Promise<GateStatus[]> {
+  const resolved = typeof skill === 'string' ? (await selectSkill(deps.home, skill)).skill : skill
+  const lock = await loadToolLock(deps.home)
+  const interrupted = await isInterrupted(deps.home, resolved.id)
+
+  const ledger = openLedger(deps.dbPath)
+  try {
+    const gathered = await gatherReleasePreconditions({ skill: resolved, db: ledger.db, lock, interrupted })
+    return (await readGates(ledger.db, resolved, gathered)).gates
+  } finally {
+    ledger.close()
+  }
 }
 
 /**
@@ -211,37 +326,26 @@ export interface StatusDocument {
  * The blockers are `gatherReleasePreconditions`' — the function the release
  * stage calls — so this cannot answer from a second implementation of what
  * release refuses on.
+ *
+ * `target` is R12.19's `--version`. It is resolved by `resolveTargetVersion`,
+ * which `ReleaseStageExecutor.plan` calls, and the archive that resolved
+ * version names is previewed with the rest of the scope; neither needs a
+ * write. A target that does not resolve is one more blocker and leaves the
+ * archive unlooked-for, since there is no name to look for.
  */
-export async function buildStatus(deps: CliDeps, selector: string): Promise<StatusDocument> {
+export async function buildStatus(
+  deps: CliDeps,
+  selector: string,
+  target?: string,
+): Promise<StatusDocument> {
   const { skill } = await selectSkill(deps.home, selector)
   const lock = await loadToolLock(deps.home)
-  // The same question `runRelease` asks, so the two cannot disagree about it.
-  const interrupted = (await detectInterrupted(deps.home)).some((item) => item.skillId === skill.id)
+  const interrupted = await isInterrupted(deps.home, skill.id)
 
   const ledger = openLedger(deps.dbPath)
   try {
     const gathered = await gatherReleasePreconditions({ skill, db: ledger.db, lock, interrupted })
-
-    // An unreadable versions.json returns alone, before the digest or the gates
-    // were read, and the document still owes both.
-    const read = gathered.evidence ?? {
-      currentDigest: await skillDigest(await candidateManifest(skill)),
-      gates: latestGateOutcomes(ledger.db, skill.id),
-    }
-
-    const recorded = new Map(read.gates.map((gate) => [gate.stage, gate]))
-    const gates: GateStatus[] = GATE_STAGES.map((stage) => {
-      const gate = recorded.get(stage)
-      return gate === undefined
-        ? { stage, outcome: null, runId: null, runDir: null, current: false }
-        : {
-            stage,
-            outcome: gate.outcome,
-            runId: gate.runId,
-            runDir: gate.sidecarPath,
-            current: gate.skillDigest === read.currentDigest,
-          }
-    })
+    const { gates, digest } = await readGates(ledger.db, skill, gathered)
 
     const counts = openIssueCounts(ledger.db, { skillId: skill.id })
     const items = listIssues(ledger.db, { skillId: skill.id, suppressed: false })
@@ -256,8 +360,21 @@ export async function buildStatus(deps: CliDeps, selector: string): Promise<Stat
       }))
 
     const suite = await hasEvalSuite(skill)
-    const dirty = await releaseDirtyPaths(skill)
-    const blockers = gathered.refusals.map(({ code, message }) => ({ code, message }))
+
+    let resolved: string | null = null
+    const blockers: Array<{ code: StatusBlockerCode; message: string }> = gathered.refusals.map(
+      ({ code, message }) => ({ code, message }),
+    )
+    if (target !== undefined) {
+      try {
+        resolved = resolveTargetVersion(skill.version, target)
+      } catch (err) {
+        // A refusal the document reports, not a failure of the command: the
+        // question was answered, and the answer was no.
+        blockers.push({ code: 'target-invalid', message: (err as Error).message })
+      }
+    }
+    const dirty = await releaseDirtyPaths(skill, undefined, resolved ?? undefined)
 
     return {
       skill: {
@@ -268,7 +385,7 @@ export async function buildStatus(deps: CliDeps, selector: string): Promise<Stat
         repoPath: skill.repo.path,
         version: skill.version,
         deprecated: skill.deprecated,
-        digest: read.currentDigest,
+        digest,
       },
       gates,
       hasEvalSuite: suite,
@@ -278,7 +395,13 @@ export async function buildStatus(deps: CliDeps, selector: string): Promise<Stat
         bySeverity: counts.bySeverity,
         items,
       },
-      release: { ready: blockers.length === 0, blockers, dirty, unchecked: [...UNCHECKED] },
+      release: {
+        ready: blockers.length === 0,
+        blockers,
+        dirty,
+        unchecked: [...(target === undefined ? UNCHECKED : UNCHECKED_UNDER_TARGET)],
+        ...(target === undefined ? {} : { target: { requested: target, resolved } }),
+      },
       next: nextSteps({
         skillId: skill.id,
         interrupted,
@@ -287,6 +410,8 @@ export async function buildStatus(deps: CliDeps, selector: string): Promise<Stat
         gates,
         blockers,
         dirty,
+        ...(resolved === null ? {} : { releaseVersion: resolved }),
+        ...(skill.version === null ? { unversioned: true } : {}),
       }),
     }
   } finally {
@@ -300,7 +425,7 @@ export async function buildStatus(deps: CliDeps, selector: string): Promise<Stat
  * already the code for "could not answer".
  */
 export async function runStatus(deps: CliDeps, selector: string, opts: StatusOptions): Promise<void> {
-  const doc = await buildStatus(deps, selector)
+  const doc = await buildStatus(deps, selector, opts.version)
   if (opts.json === true) {
     deps.write(JSON.stringify(doc))
     return
@@ -316,8 +441,16 @@ export async function runStatus(deps: CliDeps, selector: string, opts: StatusOpt
   deps.write(`  issues  ${doc.issues.open} open, ${doc.issues.suppressed} suppressed`)
   deps.write(doc.release.ready ? '  release  ready to attempt' : '  release  not ready')
   for (const blocker of doc.release.blockers) deps.write(`    blocked: ${blocker.message}`)
+  if (doc.release.target !== undefined) {
+    const { requested, resolved } = doc.release.target
+    deps.write(`    target  ${requested} -> ${resolved ?? '(does not resolve)'}`)
+  }
   if (doc.release.dirty.length > 0) deps.write(`    uncommitted: ${doc.release.dirty.join(', ')}`)
-  deps.write(`    decided once a target is given: ${doc.release.unchecked.join(', ')}`)
+  deps.write(
+    doc.release.target === undefined
+      ? `    decided once a target is given: ${doc.release.unchecked.join(', ')}`
+      : `    not decided here: ${doc.release.unchecked.join(', ')}`,
+  )
   if (doc.next.length > 0) deps.write('  next')
   for (const step of doc.next) {
     deps.write(`    ${step.command ?? '(by hand)'}`)

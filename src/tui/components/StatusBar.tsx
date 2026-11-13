@@ -1,3 +1,4 @@
+import { createContext, useContext } from 'react'
 import stringWidth from 'string-width'
 import { Box, Text } from 'ink'
 import { VERSION } from '../../core/index.js'
@@ -6,6 +7,15 @@ import type { FlashTone } from '../store.js'
 import { STATUS } from '../tokens.js'
 
 const LABEL = `v${VERSION}`
+
+/**
+ * The home the footer names beside the version — null for the default, which
+ * says nothing. A context because nine components draw this bar and none of
+ * them knows anything a home is; threading a string through all of them to
+ * reach the one row they share is the divergence `StatusBar` was extracted to
+ * end. Provided once, at the root of `App`.
+ */
+export const HomeLabelContext = createContext<string | null>(null)
 
 /**
  * `info` is the dim the hints already render in, so the footer's resting state
@@ -57,15 +67,21 @@ export function StatusBar({
   /** Set only when `hints` is a flash; the keys themselves are always dim. */
   tone?: FlashTone
 }): React.ReactElement {
+  const home = useContext(HomeLabelContext)
   const colour = tone === 'info' ? { dimColor: true } : { color: TONE[tone] }
-  const fits = stringWidth(hints) + LABEL.length + 1 <= columns
+  // One label, measured whole. A home is a path and can be long, and a version
+  // kept after the home was cut would read as the whole label — the user who
+  // launched against a non-default home would see `v1.1.0` and take it for the
+  // default one, which is the one thing this label exists to prevent.
+  const label = home === null ? LABEL : `${LABEL} · ${home}`
+  const fits = stringWidth(hints) + stringWidth(label) + 1 <= columns
   if (!fits) return <Text {...colour}>{truncate(hints, columns)}</Text>
   return (
     <Box width={columns} justifyContent="space-between">
       <Text {...colour} wrap="truncate">
         {hints}
       </Text>
-      <Text dimColor>{LABEL}</Text>
+      <Text dimColor>{label}</Text>
     </Box>
   )
 }

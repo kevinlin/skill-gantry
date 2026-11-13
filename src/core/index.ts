@@ -25,6 +25,7 @@ export {
   type RepoEntry,
   type RepoInspection,
 } from './config/config.js'
+export type { ToolLock } from './config/schema.js'
 export {
   configChanges,
   withRepo,
@@ -67,7 +68,7 @@ export {
   stageDirFor,
   toolDirFor,
 } from './workspace/layout.js'
-export { readIndex, type IndexEntry } from './workspace/writer.js'
+export { newestEntry, readIndex, type IndexEntry } from './workspace/writer.js'
 export {
   CATALOGUE,
   PRESETS,
@@ -150,6 +151,8 @@ export {
 } from './isolation/recover.js'
 export { retireSkill, type RetireInput, type RetireResult } from './release/retire.js'
 export { releaseDirtyPaths } from './release/preflight.js'
+export { archiveNameFor } from './release/release.js'
+export { commitHint, gitChangedPaths, type CommitHintInput } from './release/commit-hint.js'
 export {
   gatherReleasePreconditions,
   type GatherInput,

@@ -1,14 +1,17 @@
 import {
+  commitHint,
+  gitChangedPaths,
   loadEnvFile,
   loadToolLock,
   openLedger,
   provenanceOf,
+  resolveTargetVersion,
   runPipeline,
   spawnEnv,
   syncLifecycle,
 } from '../core/index.js'
 import { detectInterrupted } from './recover-command.js'
-import { selectSkill, type CliDeps } from './run-command.js'
+import { selectSkill, skillName, type CliDeps } from './run-command.js'
 
 export interface ReleaseOptions {
   version: string
@@ -64,6 +67,10 @@ export async function runRelease(
       interrupted,
     })
 
+    // The paths of the change set the pipeline applied, which is the only place
+    // that knows them: the stage's scope is a plan, and this is what it became.
+    let applied: readonly string[] = []
+
     for await (const event of handle.events) {
       if (opts.json) {
         deps.write(JSON.stringify(event))
@@ -81,12 +88,30 @@ export async function runRelease(
       }
       // A headless release is prior-authorised, so the prompt is answered as it
       // arrives rather than waiting out the mutation timeout.
-      if (event.type === 'mutation:pending') handle.resolveMutation(event.requestId, 'apply')
+      if (event.type === 'mutation:pending') {
+        applied = event.scope
+        handle.resolveMutation(event.requestId, 'apply')
+      }
     }
 
     const summary = await handle.done
     if (!opts.json && summary.outcome === 'passed') {
       deps.write(`released ${skill.id} — run ${summary.runId}`)
+      // R9.7: named after the release and never run. Plain output only, since a
+      // `--json` stream is events a caller parses, and a repo that is not
+      // git-backed has no commit to name.
+      if (skill.repo.isGit) {
+        const paths = await gitChangedPaths(skill.repo.path, applied, deps.exec)
+        const hint = commitHint({
+          repo: skill.repo.path,
+          name: skillName(skill),
+          // The bump level the user typed, resolved the way the stage did: the
+          // message names the version that was written, not `patch`.
+          version: resolveTargetVersion(skill.version, opts.version),
+          paths,
+        })
+        for (const line of hint) deps.write(line)
+      }
     }
     return summary.outcome === 'passed' ? 0 : 1
   } finally {

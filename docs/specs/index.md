@@ -14,7 +14,7 @@ Which milestone owns which requirement is a separate question, answered only by 
 |---|---|---|
 | [requirements.md](requirements.md) | Requirements | Numbered R* requirements with milestone ownership table |
 | [design.md](design.md) | Design | Module map, stage contract, outcome model, ledger schema, sidecar layout |
-| [design_tui.md](design_tui.md) | Design | design.md §14 through §14.14, under their own numbers: the Ink store, the responsive row budget, Settings, fix-prompt copy, the queue's progress reporting, run rehydration, the Work screen, accepting a finding, the full-length detail view, the release target, the two prompt surfaces, the repo and skill list, the setup repo step, and the upgrade prompt |
+| [design_tui.md](design_tui.md) | Design | design.md §14 through §14.15, under their own numbers: the Ink store, the responsive row budget, Settings, fix-prompt copy, the queue's progress reporting, run rehydration, the Work screen, accepting a finding, the full-length detail view, the release target, the two prompt surfaces, the repo and skill list, the setup repo step, the upgrade prompt, and the rail's gate cells |
 | [design_version-check-and-upgrade.md](design_version-check-and-upgrade.md) | Design | design.md §20, under its own numbers: the GitHub Releases publishing contract, `CHANGELOG.md` and its backfill, the versioned install prefix and atomic relink, the throttled launch-time check, and the prompt, subcommand and doctor condition that reach it. Owns M9 |
 | [decision-log.md](decision-log.md) | Supporting | D* decisions the requirements derive from |
 
@@ -48,6 +48,7 @@ Every plan is shipped. The description names what the plan covers and the requir
 | [plan_m8-suppress-finding.md](plan_m8-suppress-finding.md) | M8 | Compacted | Accepting a finding from the terminal, write-side (R4.16, R8.16, R10.12, R11.16–R11.17, R12.7) |
 | [plan_m9-version-check-and-upgrade.md](plan_m9-version-check-and-upgrade.md) | M9 | Compacted | Version check and self-upgrade (R11.24, R12.10, R13.8–R13.12; D30–D31) |
 | [plan_m10-agent-friendly-cli.md](plan_m10-agent-friendly-cli.md) | M10 | — | A headless surface a coding agent can drive: `list`, `status`, the error contract, `repo add`, the reworded prompts and the bundled skill (R3.13, R6.15, R12.11–R12.15; R6.12, R6.13, R12.1 rev 33) |
+| [plan_m11-review-follow-ups.md](plan_m11-review-follow-ups.md) | M11 | — | The workflow review's open items, assessed one by one: the rail's gate cells, `run --repo`, `issue`, `setup --yes --preset`, `status --version`, the release commit hint, and the git-skill lock fix (R11.25, R12.16–R12.19; R9.7, R11.10, R12.12, R12.15, R13.12 rev 34) |
 
 ## Reviews (historical)
 
@@ -62,3 +63,4 @@ Every plan is shipped. The description names what the plan covers and the requir
 |---|---|
 | [meta/convention.md](meta/convention.md) | Naming and structure convention reference (used by spec-lint) |
 | [meta/lint-report-2026-08-11.md](meta/lint-report-2026-08-11.md) | spec-lint findings, 2026-08-11. Point-in-time; not a contract |
+| [meta/lint-report-2026-11-13.md](meta/lint-report-2026-11-13.md) | spec-lint findings for requirements revisions 33 and 34, 2026-11-13. Point-in-time; not a contract |

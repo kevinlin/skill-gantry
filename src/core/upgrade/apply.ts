@@ -51,9 +51,13 @@ function expectedDigest(sums: string, assetName: string): string {
   return digest
 }
 
-/** Prefixes under `versions/`, newest first; anything unparseable is ignored. */
-async function prefixes(versionsRoot: string): Promise<string[]> {
-  const entries = await readdir(versionsRoot, { withFileTypes: true })
+/**
+ * Version-named directories under `root`, newest first; anything unparseable is
+ * ignored. Shared by `versions/` and `backup/` so the two cannot disagree about
+ * what counts as a version — and so a stray file in either is never ours to delete.
+ */
+async function prefixes(root: string): Promise<string[]> {
+  const entries = await readdir(root, { withFileTypes: true })
   return entries
     .filter((entry) => entry.isDirectory() && /^\d+\.\d+\.\d+/.test(entry.name))
     .map((entry) => entry.name)
@@ -147,8 +151,18 @@ export async function applyUpgrade(options: ApplyOptions): Promise<ApplyResult> 
   // and must not turn a completed upgrade into a rejection.
   try {
     report('prune', `retaining ${RETAIN}`)
-    for (const stale of (await prefixes(versionsRoot)).slice(RETAIN)) {
+    const present = await prefixes(versionsRoot)
+    const retained = new Set(present.slice(0, RETAIN))
+    for (const stale of present.slice(RETAIN)) {
       await rm(join(versionsRoot, stale), { recursive: true, force: true })
+    }
+    // Membership in the retained set, not a count over the snapshot names: a
+    // snapshot exists to roll back to a prefix, and a count would keep one for
+    // a version that can no longer be linked. The predecessor's prefix is
+    // retained, so its snapshot survives by the same rule.
+    const backupRoot = join(options.home, 'backup')
+    for (const snapshot of await prefixes(backupRoot)) {
+      if (!retained.has(snapshot)) await rm(join(backupRoot, snapshot), { recursive: true, force: true })
     }
     await rm(staging, { recursive: true, force: true })
     await rm(join(options.home, 'cli'), { recursive: true, force: true })

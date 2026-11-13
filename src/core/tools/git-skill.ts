@@ -1,5 +1,5 @@
 import { lstat, mkdir, readFile, readlink, rm, stat, symlink, unlink } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join, resolve, sep } from 'node:path'
 import type { GitSkillSpec } from './catalogue.js'
 import type { Exec } from './exec.js'
 import { settingsDigest } from './skillhone-settings.js'
@@ -21,7 +21,10 @@ export const RUNTIME_SKILL_DIRS: readonly string[] = [
 
 export interface GitSkillInstall {
   bin: string
-  /** Absolute paths of the symlinks created, so uninstall removes exactly them. */
+  /**
+   * Absolute paths of every symlink the bundle owns after this install — made
+   * now or by an earlier one — so uninstall removes exactly them and no more.
+   */
   links: string[]
   sha: string
 }
@@ -37,16 +40,37 @@ const exists = async (path: string): Promise<boolean> => {
 }
 
 /**
- * Does not resolve, unlike `exists`. A dangling symlink still occupies the name,
- * so `symlink()` over it throws `EEXIST` — checking through `stat` would skip it
- * and turn a link we could have replaced into a failed install.
+ * The one "is this link ours" test, shared with `doctor`'s `skill-link-unmanaged`.
+ * `startsWith(dir)` also accepts `<dir>-fork`, and a link recorded as ours is a
+ * link uninstall removes — so it would delete a link into someone else's checkout.
+ * A relative target is resolved against the link's own directory, as the kernel
+ * does; against the process directory it lands wherever the process happens to be.
  */
-const occupied = async (path: string): Promise<boolean> => {
+export function linksInto(dir: string, link: string, target: string): boolean {
+  const root = resolve(dir)
+  const resolved = resolve(dirname(link), target)
+  return resolved === root || resolved.startsWith(root.endsWith(sep) ? root : root + sep)
+}
+
+type LinkState = 'absent' | 'ours' | 'foreign'
+
+/**
+ * lstat, not stat: a dangling symlink still occupies the name, so `symlink()`
+ * over it throws `EEXIST` — and one pointing into `dir` is ours whether or not
+ * the clone behind it is still there.
+ */
+async function linkState(dir: string, link: string): Promise<LinkState> {
+  let info
   try {
-    await lstat(path)
-    return true
+    info = await lstat(link)
   } catch {
-    return false
+    return 'absent'
+  }
+  if (!info.isSymbolicLink()) return 'foreign'
+  try {
+    return linksInto(dir, link, await readlink(link)) ? 'ours' : 'foreign'
+  } catch {
+    return 'foreign'
   }
 }
 
@@ -54,17 +78,22 @@ const occupied = async (path: string): Promise<boolean> => {
  * Per directory, not global: a machine holding the bundle in `~/.claude/skills`
  * and nothing in `~/.agents/skills` needs links in the second without the first
  * being touched. Answering this globally is what would leave one runtime short.
+ *
+ * `holds` is "an agent can load the whole bundle from here", so every skill
+ * counts. Probing the first alone read a directory missing the rest as complete.
  */
 export async function detectSkillDirs(
   home: string,
   spec: GitSkillSpec,
 ): Promise<{ dir: string; holds: boolean }[]> {
   const found: { dir: string; holds: boolean }[] = []
-  const probe = spec.skills[0] ?? 'skillhone'
   for (const runtime of RUNTIME_SKILL_DIRS) {
     const dir = join(home, runtime, 'skills')
     if (!(await exists(dir))) continue
-    found.push({ dir, holds: await exists(join(dir, probe, 'SKILL.md')) })
+    const present = await Promise.all(
+      spec.skills.map((name) => exists(join(dir, name, 'SKILL.md'))),
+    )
+    found.push({ dir, holds: spec.skills.length > 0 && present.every(Boolean) })
   }
   return found
 }
@@ -81,25 +110,7 @@ export async function gitSkillInstall(
   const venv = join(dir, '.venv')
   const interpreter = join(venv, 'bin', 'python')
 
-  const targets = (await detectSkillDirs(userHome, spec)).filter((entry) => !entry.holds)
-
-  // Refused before the clone: a dozen megabytes fetched and then rejected is a
-  // worse first run than a refusal that costs nothing.
-  for (const target of targets) {
-    for (const name of spec.skills) {
-      const link = join(target.dir, name)
-      if (!(await occupied(link))) continue
-      let current: string | null = null
-      try {
-        current = (await lstat(link)).isSymbolicLink() ? await readlink(link) : null
-      } catch {
-        current = null
-      }
-      if (current === null || !current.startsWith(dir)) {
-        throw new Error(`${link} already exists and is not managed by SkillGantry`)
-      }
-    }
-  }
+  const dirs = await detectSkillDirs(userHome, spec)
 
   if (!(await exists(repoDir))) {
     await mkdir(dir, { recursive: true })
@@ -109,14 +120,20 @@ export async function gitSkillInstall(
   const head = await exec('git', ['-C', repoDir, 'rev-parse', 'HEAD'])
   const sha = head.stdout.trim()
 
+  // Decided per (directory, skill) at the moment of writing, and a foreign
+  // entry is skipped rather than refused: there is nothing to refuse early, so
+  // no check precedes the clone. Deciding per directory read a reinstall as
+  // "already installed" through our own link and recorded none of them.
   const links: string[] = []
-  for (const target of targets) {
+  for (const target of dirs) {
     for (const name of spec.skills) {
       const link = join(target.dir, name)
+      const state = await linkState(dir, link)
+      if (state === 'foreign') continue
       // Per skill directory, never the parent `skills/`. Upstream advises
       // `cp -r`, and the reason it gives — other skills already live in the
       // directory — is an argument against linking the parent, not a member.
-      if (await occupied(link)) await unlink(link)
+      if (state === 'ours') await unlink(link)
       await symlink(join(repoDir, 'skills', name), link)
       links.push(link)
     }

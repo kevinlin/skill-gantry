@@ -41,6 +41,17 @@ export const KEYS: readonly (readonly [string, string])[] = [
 export const KEY_COLUMN = 16
 
 /**
+ * R11.25's legend rides the footnote rather than a binding row or a second
+ * line: `KEYS` already fills the 80×24 budget and the footnote is the one row
+ * under it that is not a key. It is not a key either — `~` is drawn, never
+ * pressed — so it belongs with the sentence that explains what the rail does
+ * rather than among the bindings. Short enough to survive the 80-column floor
+ * whole; `truncate` is only for the narrow terminals the overflow notice
+ * already speaks for.
+ */
+const FOOTNOTE = 'Marking nothing runs every stage · ~ on a rail verdict: other bytes'
+
+/**
  * Rows the help screen spends before its first binding: the panel's chrome and
  * title, the footnote, and the closing hint Work prints below it.
  */
@@ -85,7 +96,7 @@ export function Help({ layout }: { layout: Layout }): React.ReactElement {
         </Text>
       ) : (
         <Text wrap="truncate" dimColor>
-          {truncate('Marking nothing runs the selected skill through every stage.', cols)}
+          {truncate(FOOTNOTE, cols)}
         </Text>
       )}
     </Panel>

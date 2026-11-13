@@ -11,7 +11,7 @@ import { VERSION } from '../version.js'
 import { defaultAgentSkillPath, inspectAgentSkill } from './agent-skill.js'
 import { CATALOGUE, SKILLHONE_TOOL_ID, catalogueEntry } from './catalogue.js'
 import { type Exec, defaultExec } from './exec.js'
-import { RUNTIME_SKILL_DIRS, verifyGitSkill } from './git-skill.js'
+import { RUNTIME_SKILL_DIRS, linksInto, verifyGitSkill } from './git-skill.js'
 import { toolRoot, verifyTool } from './install.js'
 import { type RuntimeStatus, probeRuntimes, runtimesFor } from './runtimes.js'
 import {
@@ -329,7 +329,7 @@ async function unmanagedSkillLinks(home: string, userHome: string): Promise<Tool
         const entry = await lstat(link).catch(() => null)
         if (entry === null) continue
         const target = entry.isSymbolicLink() ? await readlink(link).catch(() => null) : null
-        if (target !== null && target.startsWith(ours)) continue
+        if (target !== null && linksInto(ours, link, target)) continue
         findings.push({
           toolId: spec.id,
           kind: 'skill-link-unmanaged',
@@ -367,56 +367,97 @@ async function agentSkillOutdated(userHome: string): Promise<ToolFinding | null>
   }
 }
 
+/** True when the probe throws — a missing runtime dependency is a finding, never an error. */
+const fails = async (probe: () => Promise<unknown>): Promise<boolean> => {
+  try {
+    await probe()
+    return false
+  } catch {
+    return true
+  }
+}
+
+/**
+ * Only for the SkillHone bundle. Concurrent among themselves for the reason the
+ * locked checks are, and returned in the order they have always been reported
+ * rather than the order they finish.
+ */
+async function skillhoneProbes(
+  bundle: ToolLockEntry,
+  home: string,
+  userHome: string,
+  exec: Exec,
+): Promise<ToolFinding[]> {
+  const finding = (kind: ToolDriftKind, detail: string): ToolFinding => ({
+    toolId: SKILLHONE_TOOL_ID,
+    kind,
+    expectedVersion: null,
+    actualVersion: null,
+    detail,
+  })
+
+  const [depsMissing, claudeMissing, config] = await Promise.all([
+    // R3.7's rule extended from host runtimes to a tool's own runtime
+    // dependency: probed and named, never installed, never failing the report.
+    fails(() => exec(bundle.bin, ['-c', 'import git, yaml, litellm'])),
+    fails(() => exec('command', ['-v', 'claude'])),
+    checkSkillhoneConfig(home, userHome, bundle),
+  ])
+
+  const findings: ToolFinding[] = []
+  if (depsMissing) {
+    findings.push(
+      finding('skillhone-deps', 're-run `skillgantry setup` to rebuild the managed venv'),
+    )
+  }
+  if (claudeMissing) {
+    findings.push(
+      finding(
+        'claude-cli-missing',
+        'claude-agent-sdk shells out to it, so optim.py fails at first run — ' +
+          'npm install -g @anthropic-ai/claude-code',
+      ),
+    )
+  }
+  if (config) findings.push({ toolId: SKILLHONE_TOOL_ID, ...config })
+  return findings
+}
+
 export async function doctor(input: DoctorInput): Promise<DoctorReport> {
   const lock = await loadToolLock(input.home)
 
   const exec = input.exec ?? defaultExec
   const userHome = input.userHome ?? homedir()
 
-  const tools: ToolFinding[] = []
-  for (const [toolId, entry] of Object.entries(lock.tools)) {
-    const checked = await checkLockedTool(toolId, entry, input.home, exec)
-    tools.push({ toolId, expectedVersion: entry.resolvedVersion, ...checked })
-  }
-
   const bundle = lock.tools[SKILLHONE_TOOL_ID]
-  if (bundle) {
-    // R3.7's rule extended from host runtimes to a tool's own runtime
-    // dependency: probed and named, never installed, never failing the report.
-    try {
-      await exec(bundle.bin, ['-c', 'import git, yaml, litellm'])
-    } catch {
-      tools.push({
-        toolId: SKILLHONE_TOOL_ID,
-        kind: 'skillhone-deps',
-        expectedVersion: null,
-        actualVersion: null,
-        detail: 're-run `skillgantry setup` to rebuild the managed venv',
-      })
-    }
-    try {
-      await exec('command', ['-v', 'claude'])
-    } catch {
-      tools.push({
-        toolId: SKILLHONE_TOOL_ID,
-        kind: 'claude-cli-missing',
-        expectedVersion: null,
-        actualVersion: null,
-        detail:
-          'claude-agent-sdk shells out to it, so optim.py fails at first run — ' +
-          'npm install -g @anthropic-ai/claude-code',
-      })
-    }
-    const config = await checkSkillhoneConfig(input.home, userHome, bundle)
-    if (config) tools.push({ toolId: SKILLHONE_TOOL_ID, ...config })
-  }
 
-  tools.push(...(await unmanagedSkillLinks(input.home, userHome)))
+  // Each locked tool is verified by running it, so one after another the report
+  // took as long as every tool's startup added together. All of these are
+  // independent reads: started together, collected in the order the sequential
+  // code reported them. `Promise.all` rather than separate awaits, so a
+  // rejection in one is never left unhandled while another is still pending.
+  const [locked, probes, unmanaged, agentSkill, installed, runtimes, lifecycle] = await Promise.all([
+    Promise.all(
+      Object.entries(lock.tools).map(
+        async ([toolId, entry]): Promise<ToolFinding> => ({
+          toolId,
+          expectedVersion: entry.resolvedVersion,
+          ...(await checkLockedTool(toolId, entry, input.home, exec)),
+        }),
+      ),
+    ),
+    bundle ? skillhoneProbes(bundle, input.home, userHome, exec) : [],
+    unmanagedSkillLinks(input.home, userHome),
+    agentSkillOutdated(userHome),
+    installedDirs(input.home),
+    probeRuntimes(runtimesFor(CATALOGUE), exec),
+    lifecycleDrift(input.skills, input.ledgerLifecycle),
+  ])
 
-  const agentSkill = await agentSkillOutdated(userHome)
+  const tools: ToolFinding[] = [...locked, ...probes, ...unmanaged]
   if (agentSkill) tools.push(agentSkill)
 
-  for (const dir of await installedDirs(input.home)) {
+  for (const dir of installed) {
     if (lock.tools[dir]) continue
     tools.push({
       toolId: dir,
@@ -442,9 +483,9 @@ export async function doctor(input: DoctorInput): Promise<DoctorReport> {
   }
 
   return {
-    runtimes: await probeRuntimes(runtimesFor(CATALOGUE), exec),
+    runtimes,
     tools,
-    lifecycle: await lifecycleDrift(input.skills, input.ledgerLifecycle),
+    lifecycle,
     skills: skillFindings(input.skills),
     upgrade: input.upgradeAvailable ?? null,
     failed: tools.some((finding) => FAILING.has(finding.kind)),

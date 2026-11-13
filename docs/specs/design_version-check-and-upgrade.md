@@ -119,7 +119,10 @@ baseline file.
 `install-cli.sh` writes the same layout, so the shape has one author rather than two that drift.
 
 **Retention is exactly two** — current and previous. Older prefixes are pruned after a successful
-relink. The previous prefix is what makes rollback a rename rather than a reinstall.
+relink, and so is every `backup/<version>/` snapshot whose prefix was not retained (R13.12 as
+amended): a snapshot exists to roll back to a prefix, and one whose prefix is gone rolls back to
+nothing. The rule is membership in the retained set, not a count of two taken over the snapshot
+names, which would keep a snapshot for a version that can no longer be linked. The previous prefix is what makes rollback a rename rather than a reinstall.
 
 ### 3.1 The legacy flat install
 
@@ -216,7 +219,10 @@ crosses a device boundary. Each step emits an `onProgress` event; the caller own
    for that version is overwritten: it describes the same version's documents, and the later copy is
    the one a rollback from here would need
 6. **relink** — `symlink` then atomic `rename`
-7. **prune** — drop prefixes beyond current and previous; remove a legacy `<home>/cli`
+7. **prune** — drop prefixes beyond current and previous, then every snapshot under
+   `<home>/backup/` whose version is not one of the two retained, so the predecessor's snapshot
+   always survives; remove a legacy `<home>/cli`. Still after the relink and still cosmetic: a
+   failure here is reported and never rejects an upgrade that has already been adopted
 
 **Any failure before step 6 is a no-op.** The temp directory and the half-built prefix are removed,
 the failure is reported, and the launch continues on the current version, because nothing the

@@ -1,5 +1,15 @@
 import { createHash } from 'node:crypto'
-import { access, mkdir, mkdtemp, readdir, realpath, symlink, writeFile } from 'node:fs/promises'
+import {
+  access,
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  realpath,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -231,4 +241,104 @@ describe('applyUpgrade', () => {
     ).rejects.toThrow()
     expect(await exists(join(second.home, 'cli'))).toBe(true)
   })
+})
+
+describe('applyUpgrade and the snapshots under backup/', () => {
+  const names = async (dir: string): Promise<string[]> => (await readdir(dir)).sort()
+
+  /** A snapshot per version, as five upgrades leave them, and a prefix for each of `prefixes`. */
+  async function aged(
+    home: string,
+    snapshots: readonly string[],
+    prefixes: readonly string[] = [],
+  ): Promise<void> {
+    for (const version of snapshots) {
+      await mkdir(join(home, 'backup', version), { recursive: true })
+      await writeFile(join(home, 'backup', version, 'config.json'), `{"from":"${version}"}\n`)
+    }
+    for (const version of prefixes) await mkdir(join(home, 'versions', version), { recursive: true })
+  }
+
+  it('keeps only the snapshots of retained prefixes, the predecessor included', async () => {
+    const { home, link } = await installed()
+    // 0.9.9 is newer than every prefix and has none: a count of two over the
+    // snapshot names would keep it, and it rolls back to a version that cannot
+    // be linked. 0.6.0 is a retained prefix, so its snapshot stays.
+    await aged(home, ['0.2.0', '0.3.0', '0.4.0', '0.6.0', '0.9.9'], ['0.3.0', '0.4.0'])
+    await writeFile(join(home, 'backup', 'notes.txt'), 'not a snapshot\n')
+
+    await applyUpgrade({
+      release: release(),
+      home,
+      link,
+      fromVersion: '0.5.1',
+      fetchImpl: serve(goodSums()),
+      exec: reportingExec('0.6.0'),
+    })
+
+    expect(await names(join(home, 'versions'))).toEqual(['0.5.1', '0.6.0'])
+    expect(await names(join(home, 'backup'))).toEqual(['0.5.1', '0.6.0', 'notes.txt'])
+    // The predecessor's is the one this apply just took, not an older copy.
+    expect(await readFile(join(home, 'backup', '0.5.1', 'config.json'), 'utf8')).toBe('{"version":1}\n')
+  })
+
+  it.each([
+    ['the checksum does not match', 'checksum'],
+    ['the rename itself fails', 'rename'],
+  ])('prunes nothing when %s', async (_label, failure) => {
+    const { home, link } = await installed()
+    await aged(home, ['0.2.0', '0.3.0', '0.4.0'], ['0.3.0', '0.4.0'])
+    const sums = failure === 'checksum' ? `${'0'.repeat(64)}  skillgantry-0.6.0.tgz\n` : goodSums()
+
+    await expect(
+      applyUpgrade({
+        release: release(),
+        home,
+        // A directory that is not there: the relink's `symlink` throws after the snapshot.
+        link: failure === 'rename' ? join(home, 'no-such-dir', 'skillgantry') : link,
+        fromVersion: '0.5.1',
+        fetchImpl: serve(sums),
+        exec: reportingExec('0.6.0'),
+      }),
+    ).rejects.toThrow()
+
+    for (const version of ['0.2.0', '0.3.0', '0.4.0']) {
+      expect(await exists(join(home, 'backup', version))).toBe(true)
+    }
+    for (const version of ['0.3.0', '0.4.0']) {
+      expect(await exists(join(home, 'versions', version))).toBe(true)
+    }
+  })
+
+  // Permission bits do not bind root, so there is nothing here to fail.
+  it.skipIf(process.getuid?.() === 0)(
+    'does not reject an apply that has already been adopted when a snapshot will not go',
+    async () => {
+      const { home, link } = await installed()
+      await aged(home, ['0.2.0', '0.3.0'], ['0.3.0'])
+      // Removing the file inside needs write permission on its directory.
+      await chmod(join(home, 'backup', '0.2.0'), 0o555)
+      const progress: string[] = []
+
+      try {
+        const result = await applyUpgrade({
+          release: release(),
+          home,
+          link,
+          fromVersion: '0.5.1',
+          fetchImpl: serve(goodSums()),
+          exec: reportingExec('0.6.0'),
+          onProgress: (step, detail) => {
+            if (step === 'prune') progress.push(detail)
+          },
+        })
+
+        expect(result.version).toBe('0.6.0')
+        expect(await realpath(link)).toContain(join('versions', '0.6.0'))
+        expect(progress.at(-1)).toMatch(/^left in place: /)
+      } finally {
+        await chmod(join(home, 'backup', '0.2.0'), 0o755)
+      }
+    },
+  )
 })

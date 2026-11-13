@@ -7,6 +7,7 @@ import { workspacePath } from '../../src/core/discovery/discover.js'
 import { openLedger } from '../../src/core/ledger/db.js'
 import { readLifecycleCache } from '../../src/core/ledger/lifecycle.js'
 import { writeSandboxRecord } from '../../src/core/isolation/record.js'
+import { gateStatuses } from '../../src/cli/status-command.js'
 import type { SkillRef } from '../../src/core/types.js'
 import { type Headless, makeHeadless } from '../helpers/headless.js'
 import { recordFixtureRun } from '../helpers/ledger-fixture.js'
@@ -30,9 +31,17 @@ interface StatusDoc {
     bySeverity: Array<{ severity: string; count: number }>
     items: Array<Record<string, unknown>>
   }
-  release: { ready: boolean; blockers: Array<{ code: string; message: string }>; dirty: string[]; unchecked: string[] }
+  release: {
+    ready: boolean
+    blockers: Array<{ code: string; message: string }>
+    dirty: string[]
+    unchecked: string[]
+    target?: { requested: string; resolved: string | null }
+  }
   next: Array<{ command: string | null; why: string }>
 }
+
+const UNVERSIONED_SKILL_MD = '---\nname: sk\ndescription: the sk skill\n---\n\n# sk\n'
 
 const digestOf = async (skill: SkillRef): Promise<string> =>
   skillDigest(await candidateManifest(skill))
@@ -297,5 +306,224 @@ describe('skillgantry status', () => {
     expect(text).toMatch(/not ready/)
     expect(text).toContain('skillgantry run')
     expect(() => JSON.parse(text)).toThrow()
+  })
+})
+
+describe('skillgantry status — a skill that declares no version', () => {
+  it('offers release a semver to fill in, never a bump level that cannot resolve', async () => {
+    const h = await makeHeadless({
+      releaseTool: true,
+      repos: [{ 'sk/SKILL.md': UNVERSIONED_SKILL_MD, 'sk/evals/eval.yaml': 'engine:\n  name: claude_code\ncases: []\n' }],
+    })
+    const [skill] = await h.skills()
+    const ledger = openLedger(h.dbPath)
+    seedGates(ledger, skill!, { digest: await digestOf(skill!) })
+    ledger.close()
+
+    const doc = await status(h)
+
+    expect(doc.skill['version']).toBeNull()
+    expect(doc.release).toMatchObject({ ready: true, blockers: [] })
+    expect(doc.next).toHaveLength(1)
+    expect(doc.next[0]?.command).toBe(`skillgantry release ${skill!.id} --version <semver> --yes`)
+    expect(doc.next[0]?.why).toMatch(/bump level has nothing to bump/)
+  })
+
+  it('resolves an explicit semver for it, and names that version', async () => {
+    const h = await makeHeadless({ releaseTool: true, repos: [{ 'sk/SKILL.md': UNVERSIONED_SKILL_MD }] })
+    const [skill] = await h.skills()
+    const ledger = openLedger(h.dbPath)
+    seedGates(ledger, skill!, { digest: await digestOf(skill!) })
+    ledger.close()
+
+    h.out.length = 0
+    expect(await h.run(['status', 'sk', '--json', '--version', '0.1.0'])).toBe(0)
+    const doc = h.json<StatusDoc>()
+
+    expect(doc.release.target).toEqual({ requested: '0.1.0', resolved: '0.1.0' })
+    expect(doc.next[0]?.command).toBe(`skillgantry release ${skill!.id} --version 0.1.0 --yes`)
+  })
+
+  it('calls a bump level target-invalid for it, in the words release would use', async () => {
+    const h = await makeHeadless({ releaseTool: true, repos: [{ 'sk/SKILL.md': UNVERSIONED_SKILL_MD }] })
+    const [skill] = await h.skills()
+    const ledger = openLedger(h.dbPath)
+    seedGates(ledger, skill!, { digest: await digestOf(skill!) })
+    ledger.close()
+
+    h.out.length = 0
+    expect(await h.run(['status', 'sk', '--json', '--version', 'patch'])).toBe(0)
+    const doc = h.json<StatusDoc>()
+
+    expect(doc.release.blockers).toEqual([
+      {
+        code: 'target-invalid',
+        message: 'no current version to bump: supply an explicit semver instead of patch',
+      },
+    ])
+    expect(doc.release.target).toEqual({ requested: 'patch', resolved: null })
+  })
+})
+
+describe('skillgantry status --version', () => {
+  it('leaves the document exactly as it was without the flag: no target key, all three checks unchecked', async () => {
+    const h = await makeHeadless({ releaseTool: true })
+
+    const doc = await status(h)
+
+    expect(Object.keys(doc.release)).toEqual(['ready', 'blockers', 'dirty', 'unchecked'])
+    expect(doc.release.unchecked).toEqual(['target-version', 'archive', 'sandbox'])
+  })
+
+  it('adds release.target and shrinks unchecked to the sandbox, which only a write could decide', async () => {
+    const h = await makeHeadless({ releaseTool: true })
+
+    h.out.length = 0
+    expect(await h.run(['status', 'sk', '--json', '--version', 'minor'])).toBe(0)
+    const doc = h.json<StatusDoc>()
+
+    expect(doc.release.target).toEqual({ requested: 'minor', resolved: '1.1.0' })
+    expect(doc.release.unchecked).toEqual(['sandbox'])
+  })
+
+  it('still reports the version-independent blockers beside a target that resolves', async () => {
+    const h = await makeHeadless({ releaseTool: true })
+
+    h.out.length = 0
+    expect(await h.run(['status', 'sk', '--json', '--version', 'patch'])).toBe(0)
+    const doc = h.json<StatusDoc>()
+
+    // Never run: three missing gates, and the target is not one of the blockers.
+    expect(doc.release.blockers.map((b) => b.code)).toEqual(['gate-missing', 'gate-missing', 'gate-missing'])
+    expect(doc.release.target?.resolved).toBe('1.0.1')
+  })
+
+  it('adds target-invalid after the gatherer\'s refusals, with the resolver\'s own message', async () => {
+    const h = await makeHeadless({ releaseTool: true })
+
+    h.out.length = 0
+    expect(await h.run(['status', 'sk', '--json', '--version', '0.9.0'])).toBe(0)
+    const doc = h.json<StatusDoc>()
+
+    expect(doc.release.ready).toBe(false)
+    expect(doc.release.blockers.map((b) => b.code)).toEqual([
+      'gate-missing',
+      'gate-missing',
+      'gate-missing',
+      'target-invalid',
+    ])
+    expect(doc.release.blockers.at(-1)?.message).toBe('0.9.0 is not greater than 1.0.0')
+    expect(doc.release.target).toEqual({ requested: '0.9.0', resolved: null })
+    // The target is the maintainer's to choose: an entry, and no command. It
+    // leads, with the other blockers no command clears.
+    expect(doc.next[0]).toEqual({ command: null, why: '0.9.0 is not greater than 1.0.0' })
+  })
+
+  it('exits 0 for a target that does not resolve, because the code says a document was produced', async () => {
+    const h = await makeHeadless({ releaseTool: true })
+
+    expect(await h.run(['status', 'sk', '--json', '--version', '1.0.0'])).toBe(0)
+    expect(h.err).toEqual([])
+  })
+
+  it('mirrors the target and the blocker in plain output', async () => {
+    const h = await makeHeadless({ releaseTool: true })
+
+    expect(await h.run(['status', 'sk', '--version', 'minor'])).toBe(0)
+    let text = h.out.join('\n')
+    expect(text).toMatch(/target\s+minor\s+->\s+1\.1\.0/)
+    expect(text).toContain('sandbox')
+    expect(text).not.toContain('target-version')
+
+    h.out.length = 0
+    expect(await h.run(['status', 'sk', '--version', '1.0.0'])).toBe(0)
+    text = h.out.join('\n')
+    expect(text).toMatch(/target\s+1\.0\.0\s+->\s+\(does not resolve\)/)
+    expect(text).toContain('blocked: 1.0.0 is not greater than 1.0.0')
+    expect(text).toContain('(by hand)')
+  })
+
+  it('prints no target line without the flag', async () => {
+    const h = await makeHeadless({ releaseTool: true })
+
+    expect(await h.run(['status', 'sk'])).toBe(0)
+
+    expect(h.out.join('\n')).not.toMatch(/\btarget\s+\S+\s+->/)
+  })
+})
+
+describe('gateStatuses', () => {
+  /** What a second caller holds: the two paths, and nothing else of `CliDeps`. */
+  const callerDeps = (h: Headless) => ({ home: h.home, dbPath: h.dbPath })
+
+  it('returns the three gates in GATE_STAGES order, never-run ones null, for a skill id', async () => {
+    const h = await makeHeadless({ releaseTool: true })
+    const [skill] = await h.skills()
+
+    expect(await gateStatuses(callerDeps(h), skill!.id)).toEqual(
+      ['validate', 'evaluate', 'security'].map((stage) => ({
+        stage,
+        outcome: null,
+        runId: null,
+        runDir: null,
+        current: false,
+      })),
+    )
+  })
+
+  it('answers the same for a SkillRef as for its id, and as the status document does', async () => {
+    const h = await makeHeadless({ releaseTool: true })
+    const [skill] = await h.skills()
+    const ledger = openLedger(h.dbPath)
+    // Two runs, so the verdicts come from different ones: the older run's
+    // digest is not the current one, and only the later stage is current.
+    seedGates(ledger, skill!, {
+      digest: 'sha256:' + '0'.repeat(64),
+      runId: '019000000000-a',
+      outcomes: { validate: 'passed', evaluate: 'failed' },
+    })
+    seedGates(ledger, skill!, {
+      digest: await digestOf(skill!),
+      runId: '019000000001-b',
+      outcomes: { security: 'passed' },
+    })
+    ledger.close()
+
+    const byId = await gateStatuses(callerDeps(h), skill!.id)
+    const byRef = await gateStatuses(callerDeps(h), skill!)
+
+    expect(byRef).toEqual(byId)
+    expect(byId.map((g) => [g.stage, g.outcome, g.runId, g.current])).toEqual([
+      ['validate', 'passed', '019000000000-a', false],
+      ['evaluate', 'failed', '019000000000-a', false],
+      ['security', 'passed', '019000000001-b', true],
+    ])
+    expect((await status(h)).gates).toEqual(byId)
+  })
+
+  it('still reads the gates against the current digest when versions.json is unreadable', async () => {
+    const h = await makeHeadless({
+      releaseTool: true,
+      repos: [{ 'sk/SKILL.md': SKILL_MD_FULL('sk'), 'versions.json': '{ not json' }],
+    })
+    const [skill] = await h.skills()
+    const ledger = openLedger(h.dbPath)
+    seedGates(ledger, skill!, { digest: await digestOf(skill!) })
+    ledger.close()
+
+    // The gatherer returns alone here, before it reads a digest or the gates,
+    // so this is the fallback `status` has always owed a document.
+    expect((await gateStatuses(callerDeps(h), skill!.id)).map((g) => [g.outcome, g.current])).toEqual([
+      ['passed', true],
+      ['passed', true],
+      ['passed', true],
+    ])
+    expect((await status(h)).gates.map((g) => g.current)).toEqual([true, true, true])
+  })
+
+  it('rejects an id that names no skill', async () => {
+    const h = await makeHeadless()
+
+    await expect(gateStatuses(callerDeps(h), 'nope')).rejects.toThrow('no skill matching "nope"')
   })
 })

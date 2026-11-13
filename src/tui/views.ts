@@ -2,6 +2,7 @@ import { readFile, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   STAGE_ORDER,
+  newestEntry,
   readIndex,
   runDirFor,
   stageDirFor,
@@ -9,7 +10,6 @@ import {
   type DashboardStats,
   type DoctorReport,
   type GantryConfig,
-  type IndexEntry,
   type IssueAction,
   type IssueFilter,
   type IssueRow,
@@ -63,20 +63,6 @@ export async function listArtefacts(runDir: string | null): Promise<string[]> {
   }
   return out.sort()
 }
-
-/**
- * The greatest run id's entry, never the `latest` symlink — which is absent
- * mid-write (§9.2). Ordered on the id, not the entry's directory name: two runs
- * starting in one second share that name's second, and the id cannot tie.
- *
- * One function rather than the same reduce in both readers below, because two
- * copies is how they come to disagree about which run is newest.
- */
-const newestEntry = (entries: readonly IndexEntry[]): IndexEntry | null =>
-  entries.reduce<IndexEntry | null>(
-    (max, entry) => (max === null || entry.runId > max.runId ? entry : max),
-    null,
-  )
 
 /**
  * Last recorded outcome per skill, read from each sidecar index rather than
@@ -282,6 +268,52 @@ export interface GantryViews {
   applySuppression(): Promise<void>
   /** Removes the staged temp file. Safe to call when nothing is staged. */
   discardSuppression(): Promise<void>
+  /**
+   * R11.25's verdicts: each gate stage's most recent one as R9.8 defines it, and
+   * whether the bytes it was recorded against are the ones on disk now. On the
+   * port because the ledger holds them and the digest needs the tree, and
+   * `src/tui/**` may open neither — and `status` is built from the same function,
+   * so the rail and the command cannot disagree about a verdict. Re-discovers the
+   * skill, for `planRelease`'s reason.
+   */
+  gates(skillId: string): Promise<GateStatus[]>
+  /**
+   * R9.7's two commit lines for a release that applied: empty for a repo that is
+   * not git-backed, and over only the paths git reports as changed. On the port
+   * because that filter spawns git.
+   */
+  releaseHint(request: ReleaseHintRequest): Promise<string[]>
+}
+
+/**
+ * One gate stage's verdict, declared here rather than imported from
+ * `src/cli/status-command.ts`: the direction is `cli → tui`, and the port's own
+ * result type is the terminal interface's to name. `outcome` is a string
+ * because that is what the ledger holds; the reducer decides which of them are
+ * verdicts.
+ */
+export interface GateStatus {
+  stage: Stage
+  /** Null when the stage has never reached a verdict. */
+  outcome: string | null
+  runId: string | null
+  runDir: string | null
+  /** The recorded run's digest is the one computed now. */
+  current: boolean
+}
+
+/**
+ * What a release job needs to name its commit: everything `release-command.ts`
+ * hands `commitHint`, in the shape the terminal can supply. `skill` is the ref
+ * the job was enqueued with — read before the release moved the version — and
+ * `version` the resolved target, since resolving a bump level against the
+ * written file would bump it twice.
+ */
+export interface ReleaseHintRequest {
+  skill: SkillRef
+  version: string
+  /** The `mutation:pending` event's scope: the paths the change set covered. */
+  scope: readonly string[]
 }
 
 /**

@@ -1,6 +1,7 @@
 import { appendFile, mkdir, readdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { runFix } from '../../src/cli/fix-command.js'
 import { planOptimiseFor, runOptimise } from '../../src/cli/optimise-command.js'
 import { selectSkill } from '../../src/cli/run-command.js'
 import { digestSkill } from '../../src/core/discovery/digest.js'
@@ -50,8 +51,8 @@ interface SeededRun {
   digest?: string
   /** stage → the outcome that stage recorded. */
   stages: Record<string, string>
-  /** False models a sidecar whose `run.json` is gone. */
-  runJson?: boolean
+  /** False models a sidecar whose `run.json` is gone, `'corrupt'` one that is there and will not parse. */
+  runJson?: boolean | 'corrupt'
 }
 
 /**
@@ -65,7 +66,9 @@ async function seed(fixture: CliFixture, runs: SeededRun[]): Promise<string> {
   for (const run of runs) {
     const runDir = join(fixture.runsRoot, run.id)
     await mkdir(runDir, { recursive: true })
-    if (run.runJson !== false) {
+    if (run.runJson === 'corrupt') {
+      await writeFile(join(runDir, 'run.json'), '{"runId": "torn')
+    } else if (run.runJson !== false) {
       await writeFile(
         join(runDir, 'run.json'),
         JSON.stringify({
@@ -243,6 +246,25 @@ describe('R6.12 optimise evidence across runs', () => {
     ])
 
     expect(block(body, 'security')).toContain('Recorded by run `019fe5a0`')
+  })
+
+  it('skips a corrupt run.json in an older run and still produces the prompt, where fix on that run rejects', async () => {
+    const fixture = await makeCliFixture()
+    await seed(fixture, [
+      { id: '019fe5a0', stages: { security: 'failed' }, runJson: 'corrupt' },
+      { id: '019fe5c3', stages: { evaluate: 'passed' } },
+    ])
+
+    expect(await runOptimise(fixture.deps, 'declawed', {})).toBe(0)
+    const body = fixture.out.join('')
+    expect(block(body, 'evaluate')).toContain('Recorded by run `019fe5c3`')
+    // Skipped, not named: without a readable run.json there is no digest to compare.
+    expect(body).not.toContain('019fe5a0')
+    expect(body).not.toContain('### security')
+
+    // The same bytes, read by the command whose strictness the shared reader
+    // must keep: a corrupt record is an error to report, not a run to step over.
+    await expect(runFix(fixture.deps, 'declawed', { run: '019fe5a0' })).rejects.toThrow(/JSON/)
   })
 
   it('names the digest and commit of each run it drew from', async () => {

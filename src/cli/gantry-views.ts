@@ -12,6 +12,7 @@ import { issueDetectionRules, listIssues, setIssueState } from '../core/ledger/i
 import { readLifecycleCache } from '../core/ledger/lifecycle.js'
 import { appliedRuleMapVersion } from '../core/ledger/rule-map-migration.js'
 import { dashboard, provenanceOptions } from '../core/ledger/stats.js'
+import { commitHint, gitChangedPaths } from '../core/release/commit-hint.js'
 import { releaseDirtyPaths } from '../core/release/preflight.js'
 import { previewSuppression } from '../core/suppress/target.js'
 import {
@@ -24,7 +25,8 @@ import type { SkillRef } from '../core/types.js'
 import type { GantryViews, SettingsCredential, SettingsView } from '../tui/views.js'
 import { planEvalsFor } from './evals-command.js'
 import { planOptimiseFor } from './optimise-command.js'
-import { type CliDeps, discoverAll } from './run-command.js'
+import { type CliDeps, discoverAll, skillName } from './run-command.js'
+import { gateStatuses } from './status-command.js'
 
 /**
  * Opened per call and closed straight after, rather than held for the session.
@@ -184,6 +186,19 @@ export function createGantryViews(deps: CliDeps): GantryViews {
     planRelease: async (skillId) => {
       const skill = await skillById(skillId)
       return { skill, dirty: await releaseDirtyPaths(skill) }
+    },
+    // R11.25. Through `gateStatuses`, the function `status` builds its `gates`
+    // from, so the rail and the command cannot disagree about a verdict — and
+    // through a fresh discovery, because a verdict is current against the bytes
+    // on disk *now*, and the ref the terminal launched with predates any edit.
+    gates: async (skillId) => gateStatuses(deps, await skillById(skillId)),
+    // R9.7. The same three inputs `release-command.ts` hands `commitHint`, and
+    // the same filter: a path git does not report is one `git add` would refuse,
+    // and one refusal takes the whole command down with it.
+    releaseHint: async ({ skill, version, scope }) => {
+      if (!skill.repo.isGit) return []
+      const paths = await gitChangedPaths(skill.repo.path, scope, deps.exec)
+      return commitHint({ repo: skill.repo.path, name: skillName(skill), version, paths })
     },
     planOptimise: async (skillId) => {
       const skill = await skillById(skillId)

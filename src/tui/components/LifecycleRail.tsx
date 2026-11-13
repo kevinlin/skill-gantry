@@ -144,10 +144,22 @@ export function LifecycleRail({
           // `cell` is sized from the longest status, so the text always fits.
           const colour =
             state?.running === true ? ACCENT : OUTCOME_COLOUR[state?.outcome ?? '']
+          // R11.25. `=== false`, not `!== true`: a cell no read has matched to a
+          // verdict carries no currency, and calling it stale would mark every
+          // cell on screen until the first read lands.
+          const stale = state?.running !== true && state?.outcome != null && state.current === false
           return (
             <Box key={stage} width={cell} flexShrink={0}>
-              <Text wrap="truncate" {...(colour ? { color: colour } : { dimColor: true })}>
-                {' '}
+              {/* The mark takes the cell's leading space, which `cell` already
+                  reserves, so it costs no column; dim keeps it from reading as a
+                  fresh result for a reader who has not learned the tilde. The
+                  hue stays, so a stale FAIL is still not a stale pass. */}
+              <Text
+                wrap="truncate"
+                dimColor={stale || !colour}
+                {...(colour ? { color: colour } : {})}
+              >
+                {stale ? '~' : ' '}
                 {status(stage)}
               </Text>
             </Box>

@@ -477,3 +477,55 @@ describe('setup wizard — the registered repos', () => {
     ink.unmount()
   })
 })
+
+describe('the done screen points at the agent skill', () => {
+  const COMMAND = 'skillgantry skill install'
+
+  const doneAt = (columns: number, rows: number, repoPath: string | null = '/tmp/repo'): string => {
+    const state = { ...initialSetupState(), state: 'done' as const, repoPath }
+    const ink = renderInk(<Setup state={state} cursor={0} />, { columns, rows })
+    const frame = ink.lastFrame()
+    ink.unmount()
+    return frame
+  }
+
+  it('names the command that teaches a coding agent this workflow', () => {
+    const frame = doneAt(100, 30)
+    expect(frame).toContain('Toolchain verified.')
+    expect(frame).toContain(COMMAND)
+    expect(frame).toMatch(/teaches a coding agent this workflow/)
+  })
+
+  it('names it with or without a registered repo', () => {
+    expect(doneAt(100, 30, null)).toContain(COMMAND)
+    expect(doneAt(100, 30, null)).toContain('No repo registered')
+  })
+
+  it('keeps the command whole at the 80x24 and 50x14 floors, where the sentence after it gives way', () => {
+    for (const [columns, rows] of [
+      [80, 24],
+      [50, 14],
+    ] as const) {
+      const frame = doneAt(columns, rows)
+      expect(frame).toContain(COMMAND)
+      expect(frame.split('\n').length).toBeLessThanOrEqual(rows)
+      for (const line of frame.split('\n')) expect(line.length).toBeLessThanOrEqual(columns)
+    }
+  })
+
+  it('costs exactly one row: the done frame was 8 rows at both floors and is now 9', () => {
+    // 8 is what the screen drew before the line existed — borders, title, step
+    // rail, a blank, the verdict, a blank and the exit hint. A wrapped line
+    // would make this 10 and push a 50x14 frame toward its own bottom edge.
+    expect(doneAt(80, 24).split('\n')).toHaveLength(9)
+    expect(doneAt(50, 14).split('\n')).toHaveLength(9)
+    expect(doneAt(100, 30, null).split('\n')).toHaveLength(9)
+    expect(doneAt(80, 24).split('\n').filter((line) => line.includes(COMMAND))).toHaveLength(1)
+  })
+
+  it('adds no key: the footer still names only the exit', () => {
+    const frame = doneAt(100, 30)
+    expect(frame).toContain('q quit')
+    expect(frame).not.toMatch(/\bi (install|skill)\b/)
+  })
+})

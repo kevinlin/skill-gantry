@@ -8,7 +8,7 @@ description: >
   findings, to see whether a skill is ready to ship, or to release one, and
   whenever they mention skillgantry or SkillOps.
 metadata:
-  version: 1.0.0
+  version: 1.1.0
 ---
 
 # SkillGantry
@@ -25,10 +25,10 @@ Read `next` in that document, do the first entry, and ask again. That loop is th
 
 ## Before you start
 
-1. `skillgantry --version` must print 1.0.0 or later. If the command is missing, stop and tell the user; you cannot install it.
+1. `skillgantry --version` must print 1.1.0 or later. If the command is missing, stop and tell the user; you cannot install it.
 2. `skillgantry list` shows every skill SkillGantry knows. Use the full id it prints (`<repo>/<name>`). A bare name fails when two repos hold the same one.
 3. If the skill's repo is not listed, register it: `skillgantry repo add <path-to-repo>`.
-4. If `list` shows no repos, or a gate reports a tool that is not installed, the machine needs `skillgantry setup`. That is a wizard and needs a real terminal and the user's credentials. Ask the user to run it. Do not try to run it yourself.
+4. If a gate reports a tool that is not installed, the machine needs its tools. Tell the user. They can run `skillgantry setup` in a terminal, or ask you to run `skillgantry setup --yes --preset <minimal|recommended|everything>`. Run that only when they ask and name the preset: it installs software and rewrites which tool each stage uses. Run it without `--yes` first to show them what it would install. It never installs a runtime (`uv`, `npm`) and never writes credentials; if it names either as missing, pass that on.
 
 ## The loop
 
@@ -52,6 +52,8 @@ Then take what `next` names:
 | an entry with no command | Something only a person can settle, such as two files disagreeing on the version. Report it and stop. |
 | `skillgantry release <skill> --version … --yes` | Every gate passed against the current files. See "Releasing". |
 
+For a skill that declares no version, `next` asks for `--version <semver>`. There is nothing for `patch` to bump, so the user has to name the first version.
+
 Any edit to the skill, including a new eval or a suppression, changes its digest. Gates recorded before the edit then count as stale, and `status` will send you back to `run`. This is expected. Finish your edits, then run the gates once.
 
 ## Working through findings
@@ -66,6 +68,8 @@ The `fix` prompt is the authority for a stage's findings; do what it says. The p
 
 Tell the user which findings you left open and why. Whether to release with them open is their decision.
 
+An open finding stays in the issue count until someone rules on it. When the user agrees one is right but will not be fixed, record that with `skillgantry issue <fingerprint> wontfix`. The fingerprint is in `issues.items` in the status document. `acknowledge` marks one as seen and still open, and `reopen` undoes either. This is triage, and the gates do not read it. Do not use it to make a number go down.
+
 ## Releasing
 
 `release.ready: true` means the gates and preconditions are clear. Three things are checked only once a version is given, listed under `release.unchecked`, so a release can still refuse.
@@ -73,20 +77,21 @@ Tell the user which findings you left open and why. Whether to release with them
 Before you run it:
 
 - Ask the user for the bump (`patch`, `minor`, `major`) or an exact version. SkillGantry will not infer one, and neither should you.
+- Check that target without writing anything: `skillgantry status <skill> --version <target> --json`. A target that does not resolve comes back as the blocker `target-invalid`. An archive of that version already in the repo shows up in `release.dirty`. Only `sandbox` is left under `release.unchecked`.
 - If `release.dirty` lists paths, tell the user. Add `--allow-dirty` only if they say so.
 
 ```bash
 skillgantry release <skill> --version patch --yes --notes "what changed"
 ```
 
-It prints the diff, then writes the version into `SKILL.md` and `versions.json`, adds a changelog entry, and builds `<name>_<version>.zip` at the repo root. It does not commit, tag or push. Offer that to the user as a separate step.
+It prints the diff, then writes the version into `SKILL.md` and `versions.json`, adds a changelog entry, and builds `<name>_<version>.zip` at the repo root. It does not commit, tag or push. In a git repo it ends by printing two commands, a `git add` and a `git commit`, each limited to the files the release changed. Show them to the user and run them only if asked.
 
 ## Rules that always hold
 
 - Never write under `*-workspace/` or `.skillgantry-workspace/`. That is the recorded evidence.
 - `release`, `retire` and `suppress` change the user's repo. Each prints its diff first and needs `--yes`. Do not pass `--yes` to `release` or `retire` unless the user asked for that action.
 - Never read, print or edit `~/.skillgantry/.env`. If a gate reports a missing credential, name the key to the user and let them add it.
-- One skill at a time. Finish the loop for one before starting the next.
+- One skill at a time. Finish the loop for one before starting the next. `skillgantry run --repo <repoId>` sweeps every skill in a repo. Use it only when the user asks for a sweep. With the default stages it runs every skill's eval suite, which is slow and costs money, so offer `--stage validate,security` first.
 - Exit code 0 means done. 1 means it ran and the answer was no. 2 means the request could not be carried out, and one `error:` line says why. Fix the request on 2. Do not retry it unchanged.
 
 ## Other commands
