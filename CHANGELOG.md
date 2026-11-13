@@ -11,6 +11,21 @@ rather than replaying its commits. Standalone fixes belonging to no plan are lis
 `parseChangelog` reads only the `- ` lines, and the upgrade prompt gives each one row. So a bullet
 is a headline that fits a terminal, and the paragraph under it carries the detail.
 
+## 1.1.1 — 2026-11-13
+- feat(skill): the agent sets an installed copy of a skill aside before gating it
+
+  The evaluate gate starts an agent on this machine, and that agent can load a skill of the same
+  name from `~/.claude/skills` or a project's `.claude/skills` in place of the files under test.
+  The bundled skill now tells the agent to move such a copy into `skills_disabled` beside it
+  before the first `run`, and to put it back when the work stops. A symlink goes back as it was.
+  A real copy is replaced from the release archive only after a release, and only when you agree.
+  No command changed. Re-run `skillgantry skill install` to get the new text.
+
+- fix(deps): development dependencies moved off nine advisories
+
+  `minimatch`, `vite` and `source-map-js` are pinned past the versions Dependabot flagged. All
+  three are development-only, so the installed CLI runs the same code as 1.1.0.
+
 ## 1.1.0 — 2026-11-13
 - feat(tui): the rail shows each gate's latest verdict and marks a stale one
 
