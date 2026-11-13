@@ -1,7 +1,7 @@
 # Plan — M10: a headless surface a coding agent can drive
 
 **Date:** 2026-11-12
-**Status:** in progress
+**Status:** shipped
 **Layer:** plan (layer 3 of 3: [requirements](requirements.md) → [design](design.md) → plan)
 **Satisfies:** R3.13, R6.15, R12.11–R12.15; R6.12, R6.13, R12.1 as amended in requirements revision 33
 **Design:** [design.md](design.md) §5.5, §9.4, §9.4a, §9.4b, §15, §15.1
@@ -63,13 +63,13 @@ Run through the agent-handoff flow: the driver plans, splits and reviews every d
 | T0 | driver | Spec amendments and this plan, committed before implementation | `pnpm vitest run tests/specs` passes | - | done `6f055b8` |
 | T1 | fast_worker | Dependency upgrade per the decisions above | `pnpm check` green; `pnpm outdated` lists only typescript and @types/node; frozen install works under pnpm 10 | T0 | done `b5a8104` |
 | T2 | fast_worker | `list`, `status`, `run` default stages, `repo add`, the error contract in `main()`, the non-TTY refusal, help text, `gatherReleasePreconditions` | `pnpm check` green; existing release tests pass untouched; unit tests for `next` ordering; status/release agreement tested through the release pipeline | T1 | done `6cade28`, one fix round |
-| T3 | fast_worker | Prompt changes with driver wording; per-stage optimise evidence; `evals` lists files only | `pnpm check` green; driver regenerates the three prompts for a real skill and reads them | T2 | running |
-| T4 | fast_worker | `skill install` / `skill path` with the marker rule, doctor's `agent-skill-outdated`, packaging tests, the release-script line, against a placeholder SKILL.md | `pnpm check` green; the tarball assertion passes | T2 | running, own worktree |
-| T5 | driver | Write the bundled skill and its reference; `declawed` pass | skill-lint verdict SAFE; the dogfood run below | T3, T4 | drafted |
-| T6 | driver | `tests/acceptance/m10.test.ts`: never-run to released by following `status.next` alone, the error contract, the install refusals | passes under `pnpm acceptance` | T3, T4 | drafted |
-| T7 | driver | Run the acceptance suite against the final release candidate | every acceptance test passes on the final commit | T5, T6, T9 | pending |
-| T8 | driver | Workflow review, README section, `CLAUDE.md`; `spec-lint` and `declawed` passes | spec-lint clean; traceability test green | T5 | drafted |
-| T9 | driver | `pnpm release:version major`, hand-edit the 1.0.0 changelog section into headlines, final `pnpm check`, commit | an install with a temp `SG_HOME` **and** a temp `SG_BIN_DIR` prints 1.0.0 | T8 | pending |
+| T3 | fast_worker | Prompt changes with driver wording; per-stage optimise evidence; `evals` lists files only | `pnpm check` green; driver regenerates the three prompts for a real skill and reads them | T2 | done `12175fb` |
+| T4 | fast_worker | `skill install` / `skill path` with the marker rule, doctor's `agent-skill-outdated`, packaging tests, the release-script line, against a placeholder SKILL.md | `pnpm check` green; the tarball assertion passes | T2 | done |
+| T5 | driver | Write the bundled skill and its reference; `declawed` pass | skill-lint verdict SAFE; the dogfood run below | T3, T4 | done |
+| T6 | driver | `tests/acceptance/m10.test.ts`: never-run to released by following `status.next` alone, the error contract, the install refusals | passes under `pnpm acceptance` | T3, T4 | done |
+| T7 | driver | Run the acceptance suite against the final release candidate | every acceptance test passes on the final commit | T5, T6, T9 | done |
+| T8 | driver | Workflow review, README section, `CLAUDE.md`; `spec-lint` and `declawed` passes | spec-lint clean; traceability test green | T5 | done |
+| T9 | driver | `pnpm release:version major`, hand-edit the 1.0.0 changelog section into headlines, final `pnpm check`, commit | an install with a temp `SG_HOME` **and** a temp `SG_BIN_DIR` prints 1.0.0 | T8 | done |
 
 - T1 → T2 → T3 run one at a time in the main tree: they share `src/cli/run-command.ts` and each needs a clean `pnpm check`. T4 runs in parallel in a worktree and is collected as a patch.
 - Workers do not commit. The driver commits each row after reading its whole diff against the row's brief.
@@ -118,4 +118,7 @@ The plan had one read-only review by the deep_reasoner identity before any work 
 - **Bare `skillgantry repo` exited 0.** commander uses one code for help that was asked for and help shown because a subcommand was missing. They are told apart by the error's own exit code.
 - **`stdinIsTTY` is filled in by `main()`, not by the actions.** An in-process caller that injects `startTui` has already decided there is a terminal, and vitest's stdin is not one.
 - **An uncommitted corrupt `versions.json` is seen by `status` and not by `release`.** Release reads its sandbox, a worktree at HEAD. `status` reads the live tree and reports the blocker, with the file also listed as dirty. The disagreement is in the safe direction and was left.
+- **The bundled skill has no eval suite.** Run through its own gates in a disposable repo, it passed validate and passed security after one confirmed false positive (a scanner reading a list of prohibitions as session persistence) was recorded in its suppression file. `status` then names `evals` as the next step. Writing and running a suite is a billed model call, which this milestone had no go-ahead for, so by SkillGantry's own rule the skill is not release-ready and M10's exit criterion claims validate only.
+- **`agent-skill-outdated` is a `ToolDriftKind`**, not a caller-supplied finding like `skillgantry-outdated`. It reads a file and needs no network. §5.5 says so.
+- **`CliDeps` gained `userHome`.** Without it the existing doctor CLI tests read the developer's real `~/.claude`.
 - **Ink 8 resolves `waitUntilExit` from a write callback.** The test double dropped the callback, so every "did not exit" assertion had been passing whether or not the app quit. Fixed in `tests/helpers/render-ink.tsx`.

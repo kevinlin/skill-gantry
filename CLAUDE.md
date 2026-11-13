@@ -35,7 +35,9 @@ pnpm vitest run tests/core/reconcile.test.ts -t 'closes only when every detector
 
 `vitest.config.ts` excludes two groups unless their env flag is set, keeping the default run offline and fast. `SG_INTEGRATION=1` unlocks `tests/core/install.test.ts` (reaches a real package index) and `tests/core/suppress-integration.test.ts` (drives the suppress write path over a real filesystem — the default run never exercises it, which matters because `suppress` is one of the three paths that write to the user's repo). `SG_ACCEPTANCE=1` unlocks `tests/acceptance/**`. The offline default holds because every install driver takes an injected `Exec` and `gh-release.ts` an injected `fetchImpl`.
 
-Design §15 is the CLI surface: ten subcommands plus a root action, all built by `buildProgram(deps)` in `src/cli/run-command.ts`.
+Design §15 is the CLI surface: fifteen subcommands plus a root action, all built by `buildProgram(deps)` in `src/cli/run-command.ts`. §15.1 is the part a coding agent drives — `list`, `status`, the exit codes — and it is a contract, because programs parse it. The bin entry is `main()` in `src/cli/main.ts`, which owns the one error handler: a thrown error becomes one `error:` line and exit `2`. Keep the handler there. Tests drive `buildProgram` in-process and assert on the rejection, so a command that caught its own errors would turn those into passes.
+
+`skills/skillgantry/` is the agent skill the package ships (design §5.5). It describes the CLI, so a change to a command, a flag, an exit code or the `status` document is a change to `SKILL.md` or `references/cli.md` in the same branch. Its `metadata.version` is pinned to `package.json` by a test and bumped by `release-version.sh`.
 
 ### scripts/
 
