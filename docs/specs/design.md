@@ -1475,7 +1475,7 @@ There is no `--then-run`, unlike §14.7's toggle. The shell composes `suppress &
 
 **`run` without `--stage` runs `GATE_STAGES`** — validate, evaluate, security, the three R9.8 reads — and never release, which needs a target and `--yes`.
 
-**`list`** prints one row per discovered skill and, under `--json`, one document:
+**`list`** (R12.11) prints one row per discovered skill and, under `--json`, one document:
 
 ```
 { "skills": [ { "id", "name", "repoId", "dir", "version": string|null, "deprecated": boolean,
@@ -1485,7 +1485,7 @@ There is no `--then-run`, unlike §14.7's toggle. The shell composes `suppress &
 
 It reads `latestGateOutcomes` and `openIssueCounts` and computes no digest, so a verdict here is the last one recorded and may be about other bytes. Saying whether it still holds costs a read of every file in the skill, which is `status`'s job for one skill and would be a walk of the whole repo here.
 
-**`status`** is the readiness document:
+**`status`** (R12.12) is the readiness document:
 
 ```
 { "skill":  { "id", "name", "repoId", "dir", "repoPath", "version": string|null,
