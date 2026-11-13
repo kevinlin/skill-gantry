@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { runTool } from '../../src/core/runner/spawn.js'
+import { runTool, type RunToolInput, type RunToolOutput } from '../../src/core/runner/spawn.js'
 import { ECHO_ENV_SCRIPT, GRANDCHILD_SCRIPT, makeFakeTool } from '../helpers/fake-tool.js'
 
 const SECRET = 'sk-testtokenvalue000000000000000000'
@@ -23,6 +23,37 @@ const alive = (pid: number): boolean => {
     return true
   } catch {
     return false
+  }
+}
+
+async function runUntilTimeout(input: RunToolInput, readyOutput: string): Promise<RunToolOutput> {
+  const ready = Promise.withResolvers<void>()
+  const controller = new AbortController()
+  let stdout = ''
+  // Keep subprocess I/O real, but do not let the deadline race shell startup.
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  const run = runTool({
+    ...input,
+    signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20_000)]),
+    onChunk: (stream, chunk) => {
+      if (stream !== 'stdout') return
+      stdout += chunk
+      if (stdout.includes(readyOutput)) ready.resolve()
+    },
+  })
+  try {
+    await Promise.race([
+      ready.promise,
+      run.then(() => {
+        throw new Error(`Tool exited before emitting ${JSON.stringify(readyOutput)}`)
+      }),
+    ])
+    await vi.advanceTimersByTimeAsync(input.timeoutMs)
+    return await run
+  } finally {
+    controller.abort()
+    vi.useRealTimers()
+    await run
   }
 }
 
@@ -63,33 +94,28 @@ describe('runTool', () => {
   it('kills the whole process tree on timeout', async () => {
     const pidFile = join(await toolDir(), 'grandchild.pid')
     const bin = await makeFakeTool('hang', GRANDCHILD_SCRIPT)
-    const out = await runTool({
+    const out = await runUntilTimeout({
       ...base,
       bin,
       argv: [pidFile],
       toolDir: await toolDir(),
-      // 3s for the same reason the partial-output case below uses it: the
-      // assertion is that the timeout kills the grandchild, not that one
-      // second is long enough for a loaded shell to spawn it and write its
-      // pid. At 1s the read of that file raced the shell and lost.
-      timeoutMs: 3_000,
-    })
+    }, 'ready\n')
     expect(out.timedOut).toBe(true)
+    expect(out.cancelled).toBe(false)
     expect(out.exitCode).toBeNull()
 
     const pid = Number((await readFile(pidFile, 'utf8')).trim())
     expect(Number.isInteger(pid)).toBe(true)
-    await new Promise((r) => setTimeout(r, 300))
-    expect(alive(pid)).toBe(false)
+    expect(pid).toBeGreaterThan(0)
+    await expect.poll(() => alive(pid), { timeout: 5_000 }).toBe(false)
   })
 
   it('preserves partial output written before the timeout', async () => {
-    const bin = await makeFakeTool('partial', 'echo before-hang; sleep 600')
+    const bin = await makeFakeTool('partial', 'echo before-hang; exec sleep 600')
     const dir = await toolDir()
-    // 3s, not 1s: the assertion is that a kill preserves what was written, and
-    // on a cold, loaded machine the shell can take longer than a second to get
-    // its first line out, which made this fail for reasons it does not test.
-    const out = await runTool({ ...base, bin, argv: [], toolDir: dir, timeoutMs: 3_000 })
+    const out = await runUntilTimeout({ ...base, bin, argv: [], toolDir: dir }, 'before-hang\n')
+    expect(out.timedOut).toBe(true)
+    expect(out.cancelled).toBe(false)
     expect(out.stdout).toContain('before-hang')
     expect(await readFile(join(dir, 'stdout.log'), 'utf8')).toContain('before-hang')
   })

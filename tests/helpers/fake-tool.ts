@@ -11,11 +11,13 @@ export async function makeFakeTool(name: string, script: string): Promise<string
   return path
 }
 
-/** Spawns a long-lived grandchild, writes its pid, then hangs. */
+/** Spawns a long-lived grandchild, writes its pid, signals readiness, then hangs. */
 export const GRANDCHILD_SCRIPT = `
 sleep 600 &
 echo $! > "$1"
-sleep 600
+echo ready
+# Do not fork after readiness: a group kill can race a child being created.
+wait
 `
 
 export const ECHO_ENV_SCRIPT = `
