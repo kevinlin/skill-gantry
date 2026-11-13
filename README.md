@@ -114,6 +114,15 @@ Pick a preset if you would rather not choose per stage:
 
 All three include vercel `skills`, because a toolchain without it cannot gate a release.
 
+On a machine with no terminal, such as CI, a preset installs without the wizard:
+
+```bash
+skillgantry setup --preset recommended         # what it would install, nothing written
+skillgantry setup --yes --preset recommended   # install it
+```
+
+That never installs a runtime and never writes your credential file. It names what is missing and stops.
+
 **2. Point it at a repo.** Setup asks for one. A skill is any direct child directory holding a `SKILL.md`; a repo whose own root has one is a single-skill repo. Git or not — that choice only selects how SkillGantry isolates a mutation.
 
 **3. Open the terminal app.**
@@ -137,17 +146,19 @@ skillgantry run declawed                    # the three gates
 skillgantry run declawed --stage security   # or just one
 skillgantry run declawed --json             # ndjson events
 skillgantry status declawed                 # where it stands, and what to do next
+skillgantry run --repo my-skills --stage validate,security   # every skill in a repo
 ```
 
-`run` exits 1 when a stage does not pass. Exit 2 means the request itself could not be carried out, such as a mistyped skill name, and comes with one `error:` line.
+`run` exits 1 when a stage does not pass, and `run --repo` when any skill does not. Exit 2 means the request itself could not be carried out, such as a mistyped skill name, and comes with one `error:` line.
 
 **5. Release, when the gates are green.**
 
 ```bash
+skillgantry status declawed --version minor   # check the target first, writing nothing
 skillgantry release declawed --version minor --yes
 ```
 
-Release refuses unless the last gate outcomes all passed *and* were recorded against exactly the bytes you are shipping. It then stages the version bump, packages the archive, extracts it, installs it, and only after all of that shows you a diff and writes. An abort leaves no archive behind and no modified file. It never commits or tags — that stays your keystroke.
+Release refuses unless the last gate outcomes all passed *and* were recorded against exactly the bytes you are shipping. It then stages the version bump, packages the archive, extracts it, installs it, and only after all of that shows you a diff and writes. An abort leaves no archive behind and no modified file. It never commits or tags — that stays your keystroke. In a git repo it ends by printing the `git add` and `git commit` for exactly the files it changed, so work you had staged for something else stays out of the commit.
 
 ## Driving it from a coding agent
 
@@ -168,20 +179,23 @@ skillgantry skill install --dir <path>    # or into another agent's skills direc
 
 Then ask your agent, in the skill's repo, to get a skill ready to release. `skillgantry doctor` tells you when the installed copy is older than the binary.
 
-Two things still need you and a real terminal: `skillgantry setup`, because it installs tools and takes your credentials, and the decision to release.
+Two things still need you: your credential file, which no command writes, and the decision to release. Installing the tools no longer needs a terminal, but it is still your call: `skillgantry setup --yes --preset <name>` installs software and sets which tool each stage uses, so the bundled skill tells an agent to run it only when asked.
 
 ## The rest of the surface
 
 ```
 skillgantry                        # the terminal app
 skillgantry setup                  # first-run wizard, re-runnable
+skillgantry setup --yes --preset <minimal|recommended|everything>   # the same install, no terminal
 skillgantry list [--json]          # every skill and its last gate verdicts
-skillgantry status <skill> [--json]  # readiness, blockers, and the next commands
+skillgantry status <skill> [--version <target>] [--json]  # readiness, blockers, and the next commands
 skillgantry run <skill> [--stage validate,evaluate,security] [--json] [--yes]
+skillgantry run --repo <repoId> [--stage <list>] [--json]   # every skill in a repo, gates only
 skillgantry release <skill> --version <semver|major|minor|patch> [--yes] [--notes <text>]
 skillgantry retire <skill> [--undo] [--superseded-by <id>]
 skillgantry fix <skill> [--stage <stage>] [--run <id>]      # print a fix prompt
 skillgantry suppress <skill> --tool <id> --rule <id> --path <p> --reason <text>
+skillgantry issue <fingerprint> <acknowledge|wontfix|reopen>   # triage one issue
 skillgantry evals <skill>          # print a prompt for writing the eval suite
 skillgantry optimise <skill>       # print a prompt for improving the skill
 skillgantry repo add <path>        # register a skill repo without the wizard
