@@ -145,3 +145,4 @@ The plan had one read-only review by the deep_reasoner identity before any work 
     - Requirements and design are unchanged. R3.13 and §5.5 say how the skill is shipped and installed, not what it teaches.
     - A session that dies between the move and the put-back leaves the skill disabled. The next session's pre-flight finds it and asks.
     - `skillgantry` itself is the exception to replacing a copy from an archive. The new copy would have no `.skillgantry-bundled.json`, so a later `skill install` refuses it. For that one skill the right put-back is the old copy moved back, then `skillgantry skill install`.
+- 2026-11-14 — **Superseded: the set-aside step above is replaced by a check that the suite isolates its engine** (design §9.4b, R6.13 rev 35). With `CLAUDE_CONFIG_DIR` pointed at an empty per-case directory the eval agent loads no user-level skill, so there is nothing left to move aside. Shipped in 1.1.3.
