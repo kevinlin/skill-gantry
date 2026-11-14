@@ -196,3 +196,70 @@ describe('R6.15 the eval prompt for an agent that drives the CLI', () => {
     }
   })
 })
+
+describe('R6.13 the suite isolates its engine from the user’s own agent configuration', () => {
+  const ISOLATION =
+    "- Set `CLAUDE_CONFIG_DIR: .eval-claude-config` under `environment.env` in the suite, and add or correct it in an existing suite. Without it the `claude_code` engine loads the user's own agent configuration (their global CLAUDE.md, settings and installed skills), and the gate measures their setup instead of this skill. Keep the path relative: skill-up runs each case in a fresh temporary directory, so it resolves to an empty directory per case. The skill under test still loads, because skill-up installs it into the case's own `.claude/skills`. The engine then authenticates from the environment alone, because a `claude` login is stored in the directory this replaces. The credential has to reach it as `ANTHROPIC_API_KEY`, or as `ANTHROPIC_AUTH_TOKEN` with `ANTHROPIC_BASE_URL`."
+  const CREDENTIAL = '- The engine is declared by the suite itself and authenticated by that CLI.'
+  const AUTHORED_NONE = '- SkillGantry has authored none of this. Everything here is yours to write.'
+
+  const modes: ReadonlyArray<[string, EvalPromptInput]> = [
+    ['author', input({ hasSuite: false })],
+    ['extend', input({ hasSuite: true, evalAssets: ['declawed/evals/eval.yaml'] })],
+  ]
+
+  it.each(modes)('renders the line, byte for byte and on one line, in %s mode', (_mode, given) => {
+    const lines = buildEvalPrompt(given).split('\n')
+
+    expect(lines).toContain(ISOLATION)
+  })
+
+  it.each(modes)('names the variable and where it goes, in %s mode', (_mode, given) => {
+    const line = buildEvalPrompt(given)
+      .split('\n')
+      .find((l) => l.startsWith('- Set `CLAUDE_CONFIG_DIR'))
+
+    // Both halves are load-bearing: the value is a relative path and the key
+    // sits under `environment.env`, which is what skill-up lays over the host.
+    expect(line).toContain('`CLAUDE_CONFIG_DIR: .eval-claude-config`')
+    expect(line).toContain('`environment.env`')
+    // An existing suite is corrected, not only a new one written with it.
+    expect(line).toContain('add or correct it in an existing suite')
+  })
+
+  it.each(modes)('gives the reason: the user’s own configuration, in %s mode', (_mode, given) => {
+    const body = buildEvalPrompt(given)
+
+    expect(body).toContain("loads the user's own agent configuration")
+    expect(body).toContain('the gate measures their setup instead of this skill')
+    // Said so the agent does not read "empty directory" as "the skill is gone".
+    expect(body).toContain('The skill under test still loads')
+  })
+
+  it.each(modes)('gives the auth consequence: a `claude` login, in %s mode', (_mode, given) => {
+    const body = buildEvalPrompt(given)
+
+    // The login lives in the directory this replaces, so a machine holding only
+    // a login would otherwise meet this as an errored gate rather than a sentence.
+    expect(body).toContain('a `claude` login is stored in the directory this replaces')
+    expect(body).toContain('authenticates from the environment alone')
+    expect(body).toContain('as `ANTHROPIC_API_KEY`, or as `ANTHROPIC_AUTH_TOKEN` with `ANTHROPIC_BASE_URL`')
+  })
+
+  it.each(modes)('sits right after the credential bullet, in %s mode', (_mode, given) => {
+    const lines = buildEvalPrompt(given).split('\n')
+    const at = lines.indexOf(ISOLATION)
+
+    expect(at).toBeGreaterThan(0)
+    expect(lines[at - 1]?.startsWith(CREDENTIAL)).toBe(true)
+    expect(lines[at + 1]).toBe(AUTHORED_NONE)
+  })
+
+  it('adds no credential value and no id, so R7.3 and the id rule still hold', () => {
+    const body = buildEvalPrompt(input())
+
+    expect(body).not.toMatch(/sk-[A-Za-z0-9]/)
+    expect(ISOLATION).not.toMatch(/\bR\d+\.\d+\b/)
+    expect(ISOLATION).not.toContain('§')
+  })
+})

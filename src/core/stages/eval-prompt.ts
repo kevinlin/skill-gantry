@@ -175,6 +175,19 @@ export function buildEvalPrompt(input: EvalPromptInput): string {
       `or, against a gateway, the pair ${GATEWAY_KEYS.map((key) => `\`${key}\``).join(' and ')}. ` +
       'Ask the user; never write a key into a YAML file.',
   )
+  // Without it the engine loads the maintainer's own `~/.claude`, and one suite
+  // scored 3/6 under a global CLAUDE.md that scored 5/6 once the line was set.
+  lines.push(
+    '- Set `CLAUDE_CONFIG_DIR: .eval-claude-config` under `environment.env` in the suite, and add ' +
+      "or correct it in an existing suite. Without it the `claude_code` engine loads the user's " +
+      'own agent configuration (their global CLAUDE.md, settings and installed skills), and the ' +
+      'gate measures their setup instead of this skill. Keep the path relative: skill-up runs ' +
+      'each case in a fresh temporary directory, so it resolves to an empty directory per case. ' +
+      "The skill under test still loads, because skill-up installs it into the case's own " +
+      '`.claude/skills`. The engine then authenticates from the environment alone, because a ' +
+      '`claude` login is stored in the directory this replaces. The credential has to reach it ' +
+      `as \`${CREDENTIAL_KEYS[0]}\`, or as \`${GATEWAY_KEYS[0]}\` with \`${GATEWAY_KEYS[1]}\`.`,
+  )
   lines.push('- SkillGantry has authored none of this. Everything here is yours to write.')
   lines.push('')
 
