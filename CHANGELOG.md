@@ -11,6 +11,25 @@ rather than replaying its commits. Standalone fixes belonging to no plan are lis
 `parseChangelog` reads only the `- ` lines, and the upgrade prompt gives each one row. So a bullet
 is a headline that fits a terminal, and the paragraph under it carries the detail.
 
+## 1.1.3 — 2026-11-14
+- feat(evals): an eval suite's agent no longer loads your own `~/.claude`
+
+  The prompt `skillgantry evals` prints now has the agent set
+  `CLAUDE_CONFIG_DIR: .eval-claude-config` under `environment.env` when it writes or extends a
+  suite. Without that line the suite's `claude_code` engine loaded your global CLAUDE.md,
+  settings and installed skills, and the evaluate gate scored your setup along with the skill.
+  One suite went from 3/6 to 5/6 once they stopped loading, with no change to the skill. The
+  engine then signs in from the environment only, so the gate needs `ANTHROPIC_API_KEY`, or
+  `ANTHROPIC_AUTH_TOKEN` with `ANTHROPIC_BASE_URL`. A `claude` login is not read.
+
+- feat(skill): the agent checks a suite's isolation before the first evaluate run
+
+  The bundled skill now has the agent read `evals/eval.yaml` for the `CLAUDE_CONFIG_DIR` line and
+  add or correct it. This replaces the 1.1.1 step that moved an installed copy of the skill into
+  `skills_disabled` and put it back afterwards: an isolated suite never loads that copy. A copy an
+  earlier session left in `skills_disabled` is reported and left where it is. Run
+  `skillgantry skill install` to pick up the new text.
+
 ## 1.1.2 — 2026-11-14
 - fix(evaluate): a failing without-skill baseline case no longer fails the gate
 
